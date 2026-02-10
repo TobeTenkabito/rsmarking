@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSMarking | 遥感影像工作站</title>
+
+    <!-- 核心样式依赖 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        /* 基础布局样式 */
+        #map { height: calc(100vh - 64px); width: 100%; background: #f8fafc; }
+        .sidebar-height { height: calc(100vh - 64px); }
+
+        /* 隐藏滚动条但保留功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 动画效果 */
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin 3s linear infinite; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans text-slate-900 overflow-hidden">
+
+    <!-- 导航栏 -->
+    <nav class="h-16 bg-slate-900 text-white flex items-center justify-between px-6 shadow-xl relative z-[1001]">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 002 2h1a2.5 2.5 0 012.5 2.5v.5m-9-11a9 9 0 1118 0 9 9 0 01-18 0z"></path></svg>
+            </div>
+            <h1 class="text-lg font-bold tracking-tight">RSMarking <span class="text-indigo-400 font-medium">Pro</span></h1>
+        </div>
+
+        <div class="flex items-center space-x-6">
+            <div id="layer-counter" class="text-xs font-medium text-slate-400 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700">
+                已载入图层: 0
+            </div>
+            <div class="h-4 w-[1px] bg-slate-700"></div>
+            <button onclick="clearDatabase()" class="text-xs text-red-400 hover:text-red-300 font-medium transition-colors">
+                清空数据
+            </button>
+        </div>
+    </nav>
+
+    <main class="flex">
+        <!-- 侧边栏 -->
+        <aside class="w-80 bg-white border-r border-slate-200 shadow-sm z-[1000] sidebar-height flex flex-col">
+            <!-- 工具面板 (保持不变) -->
+            <div class="p-4 border-b border-slate-100 bg-slate-50/50">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">分析工具</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="openMergeModal()" class="flex flex-col items-center justify-center p-3 rounded-xl bg-white border border-slate-200 hover:border-indigo-500 hover:text-indigo-600 transition-all shadow-sm">
+                        <span class="text-xs font-bold">波段合成</span>
+                    </button>
+                    <button onclick="openNDVIModal()" class="flex flex-col items-center justify-center p-3 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
+                        <span class="text-xs font-bold">NDVI 计算</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 影像列表区域 -->
+            <div class="flex-1 overflow-y-auto p-4 no-scrollbar">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-bold text-slate-800 uppercase tracking-tight">影像资源</h2>
+                    <div class="flex items-center space-x-1">
+                        <!-- 上传按钮 -->
+                        <button onclick="document.getElementById('raster-upload-input').click()" title="上传影像" class="p-1.5 text-slate-400 hover:text-emerald-500 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                        </button>
+                        <!-- 隐藏的文件输入框 -->
+                        <input type="file" id="raster-upload-input" class="hidden" accept=".tif,.tiff,.geotiff">
+
+                        <button onclick="fetchRasters()" class="p-1.5 text-slate-400 hover:text-indigo-500 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="raster-list" class="space-y-4">
+                    <!-- 由 SidebarComponent 渲染 -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- 地图容器 -->
+        <section class="flex-1 relative">
+            <div id="map"></div>
+
+            <!-- 全局加载提示 -->
+            <div id="global-loader" class="hidden absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-xl border border-indigo-100 z-[1001] flex items-center space-x-2">
+                <div class="w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-[11px] font-bold text-slate-600 uppercase tracking-widest">正在处理空间数据...</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- 弹窗容器：波段合成 -->
+    <div id="merge-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-slate-800">波段合成 (Band Stacking)</h3>
+                <button onclick="closeMergeModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div id="merge-selection-list" class="p-5 max-h-[400px] overflow-y-auto space-y-2 no-scrollbar">
+                <!-- 由 ModalComponent.renderMergeList 渲染 -->
+            </div>
+            <div class="p-5 bg-slate-50 border-t border-slate-100 flex justify-end space-x-3">
+                <button onclick="closeMergeModal()" class="px-4 py-2 text-xs font-bold text-slate-400">取消</button>
+                <button id="confirm-merge-btn" onclick="executeMerge()" disabled class="bg-indigo-600 text-white px-6 py-2 rounded-lg text-xs font-bold shadow-lg shadow-indigo-200 disabled:opacity-50">开始合成</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 弹窗容器：NDVI 计算 -->
+    <div id="ndvi-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl">
+            <div class="flex items-center space-x-2 mb-6 text-emerald-600">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                <h3 class="font-bold">NDVI 指数分析</h3>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">红光波段 (Red)</label>
+                    <select id="ndvi-red-select" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"></select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">近红外波段 (NIR)</label>
+                    <select id="ndvi-nir-select" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm"></select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1 block">输出名称</label>
+                    <input type="text" id="ndvi-name-input" placeholder="NDVI_Result.tif" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm">
+                </div>
+                <div class="pt-4 flex flex-col space-y-2">
+                    <button onclick="executeNDVI()" id="execute-ndvi-btn" class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs shadow-lg shadow-emerald-100">开始计算</button>
+                    <button onclick="closeNDVIModal()" class="w-full text-slate-400 text-[10px] font-bold uppercase">返回</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 影像详情浮动面板 -->
+    <div id="detail-panel" class="hidden fixed right-6 bottom-10 w-80 bg-white/95 backdrop-blur-md shadow-2xl rounded-2xl p-5 z-[1002] border border-slate-100 ring-1 ring-slate-900/5">
+        <div class="flex justify-between items-start mb-4">
+            <div class="flex items-center space-x-2">
+                <div class="w-2 h-2 bg-indigo-500 rounded-full"></div>
+                <h3 class="font-bold text-slate-800 text-xs truncate max-w-[180px]" id="detail-title">影像详情</h3>
+            </div>
+            <button onclick="hideDetail()" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+        <div id="detail-content" class="text-slate-600">
+            <!-- 由 ModalComponent.renderDetail 渲染 -->
+        </div>
+    </div>
+
+    <!-- 引入地图依赖 -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
+    <!-- 应用入口 -->
+    <script type="module" src="/client/packages/app/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+services/tile_service/
+├── main.py              # 服务入口，FastAPI 路由
+├── engine/              # 核心计算引擎
+│   ├── __init__.py
+│   ├── tiler.py         # 封装 mercantile 和 rasterio 的切片逻辑
+│   └── translator.pyx   # 【Cython】高性能像素拉伸与归一化逻辑
+├── core/                # 基础配置
+│   ├── config.py        # 存储路径、缓存阈值等配置
+│   └── cache.py         # LRU 缓存实现 (内存 + 磁盘)
+├── setup.py             # Cython 编译配置文件
+├── requirements.txt     # 依赖清单
+└── tests/               # 瓦片精度与并发测试
+
+
+Tile Service 全链路结构
+前端地图（Mapbox / OpenLayers / Leaflet）
+        │
+        │  GET /tile/{index_id}/{z}/{x}/{y}.png?bands=1,2,3
+        ▼
+FastAPI 路由层
+        │
+        ├─ L1/L2 Cache（index_id + z/x/y + bands）
+        │
+        ├─ DB 查询
+        │    raster_metadata
+        │    └─ index_id → file_path
+        │
+        ├─ 文件系统
+        │    file_path (GeoTIFF)
+        │
+        ├─ TileEngine
+        │    ├─ CRS 校验 / 重投影
+        │    ├─ tile → bounds
+        │    ├─ raster window
+        │    ├─ resampling
+        │    ├─ band 处理
+        │    └─ RGBA
+        │
+        └─ PNG encode → HTTP Response

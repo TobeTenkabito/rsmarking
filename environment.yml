@@ -1,0 +1,26 @@
+name: rsmarking
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - gdal=3.8.4
+  - geos=3.12.1
+  - proj
+  - libgdal
+  - pip:
+    - fastapi
+    - uvicorn[standard]
+    - pydantic-settings
+    - rasterio
+    - rio-tiler
+    - cython
+    - numpy>=1.26.0
+    - shapely>=2.0.0
+    - sqlalchemy[asyncio]
+    - asyncpg
+    - alembic
+    - onnxruntime
+    - celery
+    - redis
+    - python-multipart
+    - httpx
