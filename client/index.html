@@ -91,7 +91,63 @@
             <!-- 可滚动区域 -->
             <div class="flex-1 sidebar-scroll flex flex-col">
 
-                <!-- 影像处理工具箱 -->
+                <!-- 1. 矢量标注中心 -->
+                <div class="bg-indigo-50/30 border-b border-indigo-100">
+                    <div class="p-4 pb-2">
+                        <p class="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">矢量标注中心</p>
+                    </div>
+
+                    <div class="px-4 pb-4 space-y-3">
+                        <!-- 项目选择器 -->
+                        <div class="space-y-1.5">
+                            <label class="text-[11px] font-bold text-slate-500 flex items-center justify-between">
+                                <span>标注项目</span>
+                                <button onclick="RS.createProject()" class="text-indigo-600 hover:text-indigo-700">+ 新建项目</button>
+                            </label>
+                            <select id="project-selector"
+                                    onchange="RS.selectProject(this.value)"
+                                    class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all">
+                                <option value="">-- 请选择或创建项目 --</option>
+                            </select>
+                        </div>
+
+                        <!-- 图层管理 -->
+                        <div id="vector-layer-section" class="hidden space-y-2">
+                            <div class="flex items-center justify-between border-t border-indigo-100 pt-3 mt-1">
+                                <span class="text-[11px] font-bold text-slate-500">标注图层</span>
+                                <button onclick="RS.createLayer()" class="text-[10px] bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 transition-colors">添加图层</button>
+                            </div>
+                            <!-- 标注工具栏 -->
+                        <div id="drawing-toolbar" class="hidden border-t border-indigo-100 pt-3 mt-2">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[11px] font-bold text-slate-500">工具箱</span>
+                                <button onclick="RS.cancelDraw()" class="text-[10px] text-red-500 hover:underline">取消绘制</button>
+                            </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="RS.setDrawMode('polygon')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                <span class="text-lg">⬢</span>
+                                <span class="text-[10px]">多边形</span>
+                                </button>
+                            <button onclick="RS.setDrawMode('rectangle')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                <span class="text-lg">▭</span>
+                                <span class="text-[10px]">矩形</span>
+                            </button>
+                            <button onclick="RS.setDrawMode('marker')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
+                                <span class="text-lg">📍</span>
+                                <span class="text-[10px]">打点</span>
+                            </button>
+                        </div>
+                        </div>
+                            <!-- 矢量图层列表容器 -->
+                            <div id="vector-list" class="space-y-1 max-h-40 overflow-y-auto pr-1">
+                                <!-- 动态注入示例：<div class="flex items-center px-2 py-1.5 bg-white border border-slate-100 rounded">...</div> -->
+                            </div>
+                            
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. 影像处理工具箱 (原有) -->
                 <div class="bg-slate-50/50">
                     <div class="p-4 pb-2 border-b border-slate-100">
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">影像处理中心</p>
@@ -199,7 +255,7 @@
                     </div>
                 </div>
 
-                <!-- 影像资源列表 -->
+                <!-- 3. 影像资源列表 (原有) -->
                 <div class="flex-1 p-4">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">影像目录</h2>
