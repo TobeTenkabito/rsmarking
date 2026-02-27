@@ -33,9 +33,3 @@ async def get_db():
             raise
         finally:
             await session.close()
-
-
-async def init_db():
-    from .models.feature import Base as FeatureBase
-    async with engine.begin() as conn:
-        await conn.run_sync(FeatureBase.metadata.create_all)
