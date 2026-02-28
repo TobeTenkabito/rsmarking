@@ -1,5 +1,6 @@
 import { MapEngine } from '../../core/src/map.js';
 import { RasterAPI } from './api/raster.js';
+import { VectorAPI } from './api/vector.js';
 import { Store } from './store/index.js';
 import { ModalComponent } from '../../ui/src/components/Modal.js';
 import { ModalTemplates } from '../../ui/src/templates/Modals.js';
@@ -8,15 +9,18 @@ import { ModalTemplates } from '../../ui/src/templates/Modals.js';
 import { MapController } from './modules/MapController.js';
 import { AnalysisModule } from './modules/AnalysisModule.js';
 import { ExtractionModule } from './modules/ExtractionModule.js';
+import { AnnotationModule } from './modules/AnnotationModule.js';
 
 /**
  * App Class - 系统调度中心
  */
 class App {
     constructor() {
+        this.mapEngine = null;
         this.mapController = null;
         this.analysis = null;
         this.extraction = null;
+        this.annotation = null;
     }
 
     /**
@@ -24,23 +28,27 @@ class App {
      */
     async init() {
         try {
-            // 1. 动态注入 HTML 骨架 (解耦 index.html)
+            // 1. 动态注入 HTML 骨架
             this.injectModals();
 
             // 2. 初始化核心引擎 (Leaflet)
-            const engine = new MapEngine('map');
+            this.mapEngine = new MapEngine('map');
 
             // 3. 实例化子模块
-            this.mapController = new MapController(engine);
+            this.mapController = new MapController(this.mapEngine);
             this.analysis = new AnalysisModule(this);
             this.extraction = new ExtractionModule(this);
+
+            // 🆕 整合 AnnotationModule
+            this.annotation = new AnnotationModule(this);
 
             // 4. 建立桥梁并绑定事件
             this.mountGlobalBridge();
             this.bindEvents();
 
             // 5. 首次加载数据
-            await this.refreshData();
+            await this.refreshData();             // 加载栅格影像数据
+            await this.refreshVectorProjects();   // 加载矢量项目数据
 
             console.log("%c[RSMarking] 🟢 系统初始化成功", "color: #6366f1; font-weight: bold;");
         } catch (error) {
@@ -49,7 +57,7 @@ class App {
     }
 
     /**
-     * 注入弹窗骨架，保持 index.html 简洁
+     * 注入弹窗骨架
      */
     injectModals() {
         const container = document.getElementById('modals-container');
@@ -59,7 +67,6 @@ class App {
                 ModalTemplates.extractionModal +
                 ModalTemplates.mergeModal;
         }
-        // 详情面板注入
         const detailContainer = document.getElementById('detail-panel-container') || document.body;
         const detailDiv = document.createElement('div');
         detailDiv.innerHTML = ModalTemplates.detailPanel;
@@ -67,40 +74,52 @@ class App {
     }
 
     /**
-     * 暴露 RS 全局命名空间，解决模块化下的 HTML onclick 识别问题
+     * 暴露 RS 全局命名空间
      */
     mountGlobalBridge() {
         window.RS = {
-            // 基础操作
+            // --- 基础操作 ---
             fetchRasters: () => this.refreshData(),
             clearDatabase: () => this.handleClearDatabase(),
 
-            // 指数分析
+            // --- 指数分析 ---
             openIndexModal: (type) => this.analysis.openModal(type),
             closeIndexModal: () => this.analysis.closeModal(),
             executeIndexCalculation: () => this.analysis.execute(),
 
-            // 要素提取
+            // --- 要素提取 ---
             openExtractionModal: (type) => this.extraction.openModal(type),
             closeExtractionModal: () => this.extraction.closeModal(),
             runExtraction: () => this.extraction.run(),
 
-            // 波段合成
+            // --- 波段合成 ---
             openMergeModal: () => this.handleOpenMergeModal(),
             closeMergeModal: () => document.getElementById('merge-modal').classList.add('hidden'),
             executeMerge: () => this.handleExecuteMerge(),
             toggleMergeItem: (id) => this.handleToggleMergeSelection(id),
 
-            // UI 辅助
-            hideDetail: () => document.getElementById('detail-panel').classList.add('hidden')
+            // --- UI 辅助 ---
+            hideDetail: () => document.getElementById('detail-panel').classList.add('hidden'),
+            
+            createProject: () => this.handleCreateProject(),
+            selectProject: (id) => this.handleSelectProject(id),
+            createLayer: () => this.handleCreateLayer(),
+            toggleVectorLayer: (id) => this.handleToggleVectorLayer(id),
+
+            // 标注工具指令整合 (映射到内部带校验的方法)
+            toggleEditMode: (enabled) => this.annotation.toggleEditMode(enabled),
+            setDrawMode: (mode) => this.handleSetDrawMode(mode),
+            cancelDraw: () => this.handleCancelDraw(),
+
+            // 基础刷新
+            refreshData: () => this.refreshData(),
         };
     }
 
     /**
-     * 统一绑定 DOM 事件（使用委托机制）
+     * 统一绑定 DOM 事件
      */
     bindEvents() {
-        // 影像列表委托点击
         const listContainer = document.getElementById('raster-list');
         listContainer?.addEventListener('click', async (e) => {
             const item = e.target.closest('[data-id]');
@@ -118,7 +137,6 @@ class App {
             }
         });
 
-        // 文件上传
         document.getElementById('raster-upload-input')?.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
@@ -146,7 +164,7 @@ class App {
     async handleDelete(id) {
         if (!confirm("确定从工作站移除此影像？该操作不可恢复。")) return;
         await RasterAPI.delete(id);
-        this.mapController.engine.removeLayer(id);
+        this.mapEngine.removeLayer(id);
         Store.removeActiveLayer(id);
         await this.refreshData();
     }
@@ -157,7 +175,6 @@ class App {
         }
     }
 
-    // 波段合成专有逻辑
     handleOpenMergeModal() {
         Store.clearMergeSelection();
         const list = document.getElementById('merge-selection-list');
@@ -171,7 +188,6 @@ class App {
     handleToggleMergeSelection(id) {
         Store.toggleMergeSelection(id);
         const selectedIds = Store.getMergeSelection();
-        // 刷新列表显示
         const list = document.getElementById('merge-selection-list');
         if (list) list.innerHTML = ModalComponent.renderMergeList(Store.state.rasters, selectedIds);
 
@@ -209,6 +225,99 @@ class App {
         if (loader) {
             show ? loader.classList.remove('hidden') : loader.classList.add('hidden');
         }
+    }
+
+    async refreshVectorProjects() {
+        try {
+            const projects = await VectorAPI.fetchProjects();
+            Store.setProjects(projects);
+        } catch (err) {
+            console.error("[App] 矢量项目加载失败:", err);
+        }
+    }
+
+    async handleCreateProject() {
+        const name = prompt("请输入新矢量项目名称：", "默认标注项目");
+        if (!name) return;
+
+        this.showGlobalLoader(true);
+        try {
+            await VectorAPI.createProject(name);
+            await this.refreshVectorProjects();
+        } catch (e) {
+            alert(`创建项目失败: ${e.message}`);
+        } finally {
+            this.showGlobalLoader(false);
+        }
+    }
+
+    async handleSelectProject(projectId) {
+        if (!projectId) {
+            Store.setActiveProject(null);
+            return;
+        }
+        const proj = Store.state.projects.find(p => p.id == projectId);
+        if (!proj) return;
+
+        Store.setActiveProject(proj);
+        this.showGlobalLoader(true);
+        try {
+            const layers = await VectorAPI.fetchLayers(proj.id);
+            Store.setVectorLayers(layers);
+        } catch (e) {
+            console.error("[App] 加载矢量图层失败:", e);
+        } finally {
+            this.showGlobalLoader(false);
+        }
+    }
+
+    async handleCreateLayer() {
+        const activeProj = Store.state.activeProject;
+        if (!activeProj) {
+            alert("请先选择或创建一个矢量项目！");
+            return;
+        }
+
+        const name = prompt("请输入新标注图层名称：", "建筑物标注");
+        if (!name) return;
+
+        const activeRasters = Array.from(Store.state.activeLayerIds);
+        const sourceRasterId = activeRasters.length > 0 ? activeRasters[0] : null;
+
+        this.showGlobalLoader(true);
+        try {
+            await VectorAPI.createLayer(activeProj.id, name, sourceRasterId);
+            await this.handleSelectProject(activeProj.id);
+        } catch (e) {
+            alert(`创建图层失败: ${e.message}`);
+        } finally {
+            this.showGlobalLoader(false);
+        }
+    }
+
+    handleToggleVectorLayer(layerId) {
+        if (this.mapController) {
+            this.mapController.toggleVectorLayer(layerId);
+        }
+    }
+
+    /**
+     * 🆕 设置绘图模式业务处理
+     */
+    handleSetDrawMode(mode) {
+        // 校验：必须选中一个图层才能开始绘图
+        if (!Store.state.activeVectorLayerId) {
+            alert("请先在左侧选择或创建一个目标标注图层");
+            return;
+        }
+        this.annotation.startDrawing(mode);
+    }
+
+    /**
+     * 🆕 取消绘图
+     */
+    handleCancelDraw() {
+        this.annotation.stopDrawing();
     }
 }
 
