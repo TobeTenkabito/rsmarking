@@ -4,34 +4,55 @@ import logging
 logger = logging.getLogger("functions.spectral_indices")
 
 
-def calculate_ndvi_array(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    red = red.astype('float32')
-    nir = nir.astype('float32')
-    with np.errstate(divide='ignore', invalid='ignore'):
-        ndvi = (nir - red) / (nir + red)
-        return np.nan_to_num(ndvi, nan=0.0, posinf=1.0, neginf=-1.0)
+def _normalized_difference(
+    band1: np.ndarray,
+    band2: np.ndarray,
+) -> np.ndarray:
+    """
+    计算标准归一化差值指数：
+        (band1 - band2) / (band1 + band2)
+    统一处理：
+    - float32 转换
+    - 除零保护
+    - NaN / Inf 清理
+    """
+    band1 = band1.astype("float32", copy=False)
+    band2 = band2.astype("float32", copy=False)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        result = (band1 - band2) / (band1 + band2)
+
+    return np.nan_to_num(
+        result,
+        nan=0.0,
+        posinf=1.0,
+        neginf=-1.0,
+    )
 
 
-def calculate_ndwi_array(green: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    green = green.astype('float32')
-    nir = nir.astype('float32')
-    with np.errstate(divide='ignore', invalid='ignore'):
-        ndwi = (green - nir) / (green + nir)
-        return np.nan_to_num(ndwi, nan=0.0, posinf=1.0, neginf=-1.0)
+def calculate_ndvi_array(red: np.ndarray, nir: np.ndarray,) -> np.ndarray:
+    """
+    NDVI = (NIR - RED) / (NIR + RED)
+    """
+    return _normalized_difference(nir, red)
 
 
-def calculate_ndbi_array(swir: np.ndarray, nir: np.ndarray) -> np.ndarray:
-    swir = swir.astype('float32')
-    nir = nir.astype('float32')
-    with np.errstate(divide='ignore', invalid='ignore'):
-        ndbi = (swir - nir) / (swir + nir)
-        return np.nan_to_num(ndbi, nan=0.0, posinf=1.0, neginf=-1.0)
+def calculate_ndwi_array(green: np.ndarray, nir: np.ndarray,) -> np.ndarray:
+    """
+    NDWI = (GREEN - NIR) / (GREEN + NIR)
+    """
+    return _normalized_difference(green, nir)
 
 
-def calculate_mndwi_array(green: np.ndarray, swir: np.ndarray) -> np.ndarray:
-    green = green.astype('float32')
-    swir = swir.astype('float32')
-    with np.errstate(divide='ignore', invalid='ignore'):
-        mndwi = (green - swir) / (green + swir)
-        return np.nan_to_num(mndwi, nan=0.0, posinf=1.0, neginf=-1.0)
-      
+def calculate_ndbi_array(swir: np.ndarray, nir: np.ndarray,) -> np.ndarray:
+    """
+    NDBI = (SWIR - NIR) / (SWIR + NIR)
+    """
+    return _normalized_difference(swir, nir)
+
+
+def calculate_mndwi_array(green: np.ndarray, swir: np.ndarray,) -> np.ndarray:
+    """
+    MNDWI = (GREEN - SWIR) / (GREEN + SWIR)
+    """
+    return _normalized_difference(green, swir)
