@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def extract_cloud(bands: list[np.ndarray]) -> np.ndarray:
+def extract_cloud(bands: list[np.ndarray], threshold: float) -> np.ndarray:
     if len(bands) < 1:
         raise ValueError("Cloud extraction requires at least 1 band (Blue)")
 
@@ -9,6 +9,6 @@ def extract_cloud(bands: list[np.ndarray]) -> np.ndarray:
     cloud_mask = (blue > 0.4)
     if len(bands) >= 2:
         swir = bands[1]
-        cloud_mask = cloud_mask & (swir > 0.3)
+        cloud_mask = cloud_mask & (swir > threshold)
 
     return cloud_mask.astype('uint8')
