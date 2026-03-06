@@ -8,7 +8,7 @@ class SnowflakeGenerator:
     格式: 1位符号位 + 41位时间戳 + 10位机器ID + 12位序列号
     """
     def __init__(self, machine_id: int):
-        self.twepoch = 1767268800000
+        self.twepoch = 1770429600000
 
         self.machine_id = machine_id
         self.machine_id_bits = 4
@@ -68,3 +68,4 @@ id_worker = SnowflakeGenerator(machine_id=worker_id)
 def get_next_index_id() -> int:
     """全局调用接口"""
     return id_worker.generate()
+
