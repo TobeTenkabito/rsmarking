@@ -8,11 +8,14 @@
     <!-- 核心依赖 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- 🆕 新增：引入 Leaflet.draw 的样式 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
     <style>
         #map { height: calc(100vh - 64px); width: 100%; background: #f8fafc; }
         .sidebar-height { height: calc(100vh - 64px); }
-
+        /* 绘图按钮激活样式 */
+        .draw-btn-active { @apply ring-2 ring-indigo-600 bg-indigo-50 border-indigo-500 text-indigo-600; }
         /* 侧边栏滚动条美化 */
         .sidebar-scroll {
             overflow-y: auto;
@@ -117,32 +120,36 @@
                                 <span class="text-[11px] font-bold text-slate-500">标注图层</span>
                                 <button onclick="RS.createLayer()" class="text-[10px] bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700 transition-colors">添加图层</button>
                             </div>
-                            <!-- 标注工具栏 -->
-                        <div id="drawing-toolbar" class="hidden border-t border-indigo-100 pt-3 mt-2">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-[11px] font-bold text-slate-500">工具箱</span>
-                                <button onclick="RS.cancelDraw()" class="text-[10px] text-red-500 hover:underline">取消绘制</button>
-                            </div>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button onclick="RS.setDrawMode('polygon')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
-                                <span class="text-lg">⬢</span>
-                                <span class="text-[10px]">多边形</span>
-                                </button>
-                            <button onclick="RS.setDrawMode('rectangle')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
-                                <span class="text-lg">▭</span>
-                                <span class="text-[10px]">矩形</span>
-                            </button>
-                            <button onclick="RS.setDrawMode('marker')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 transition-all">
-                                <span class="text-lg">📍</span>
-                                <span class="text-[10px]">打点</span>
-                            </button>
-                        </div>
-                        </div>
+
                             <!-- 矢量图层列表容器 -->
                             <div id="vector-list" class="space-y-1 max-h-40 overflow-y-auto pr-1">
                                 <!-- 动态注入示例：<div class="flex items-center px-2 py-1.5 bg-white border border-slate-100 rounded">...</div> -->
                             </div>
-                            
+
+                            <!-- 🆕 编辑过的标注工具栏 (与你原来的位置和思路完全一致，优化了图标和事件绑定) -->
+                            <div id="drawing-toolbar" class="hidden border-t border-indigo-100 pt-3 mt-2">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-[11px] font-bold text-slate-500">绘图工具箱</span>
+                                    <!-- 修改为统一的 handleSetDrawMode(null) -->
+                                    <button onclick="RS.handleSetDrawMode(null)" class="text-[10px] text-red-500 hover:underline">取消绘制</button>
+                                </div>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <!-- 事件名统一采用 handleSetDrawMode -->
+                                    <button onclick="RS.handleSetDrawMode('polygon')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l-8 5 3 10h10l3-10-8-5z"></path></svg>
+                                        <span class="text-[10px] font-medium">多边形</span>
+                                    </button>
+                                    <button onclick="RS.handleSetDrawMode('rectangle')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v12H4z"></path></svg>
+                                        <span class="text-[10px] font-medium">矩形</span>
+                                    </button>
+                                    <button onclick="RS.handleSetDrawMode('marker')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        <span class="text-[10px] font-medium">打点</span>
+                                    </button>
+                                </div>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -293,9 +300,9 @@
     <div id="modals-container"></div>
     <!-- 详情面板容器 -->
     <div id="detail-panel-container"></div>
-
     <!-- 脚本依赖 -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
     <script type="module" src="/client/packages/app/src/main.js"></script>
 </body>
