@@ -1,0 +1,37 @@
+/client (SPA)
+  app: api/raster | modules(Analysis, Extraction, MapCtrl) | store | main
+  core: map(render API)
+  ui: components(Modal, Sidebar) | templates
+  plugins: AI tools(SAM/YOLO/OCR)(TBD)
+
+/services (microservices)
+  auth: RBAC(TBD)
+  data: metadata + band mgmt + alignment
+  tile[Cython]: tiling + multi-LRU cache + render engine
+  annotation(TBD): vector CRUD + PostGIS
+  ai_gateway: model scheduling + load balance
+
+/functions
+  common: utils
+  implement:
+    io_ops(COG, pyramid)
+    manipulation(raster merge)
+    spatial_ops(CRS→WGS84)
+    spectral_indices
+  ml(TBD)
+
+/worker_cluster (TBD)
+  preprocess(pyramid, reprojection, stats)
+  export(COCO/GeoJSON/TFRecord)
+
+/core_lib (Cython/C++, TBD)
+  spatial-math | topology | telemetry(OpenTelemetry)
+
+/infrastructure
+  docker | k8s(TBD) | alembic
+
+/storage
+  cog | raw
+
+/tests
+  e2e(Playwright) | benchmark(tile + spatial)

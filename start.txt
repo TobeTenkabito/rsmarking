@@ -1,0 +1,78 @@
+简体中文
+├── /client                # 前端单页应用
+│   ├── index.html         # 前端入口，仅包含必要功能
+│   ├── /packages/app/src
+│   │   ├── /api/
+│   │   │   ├── raster.js  # 栅格api
+│   │   │   ├── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
+│   │   ├── /modules
+│   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
+│   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
+│   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
+│   │   ├── /store
+│   │   │   ├──index.js     # 核心状态管理中心
+│   │   ├── main.js         # 接口
+│   ├── /packages/core/src  # 核心渲染接口
+│   │   ├── map.js
+│   ├── /packages/ui/src    # 业务组件 (属性编辑器、任务看板)
+│   │   ├── /components
+│   │   │   ├── Modal.js    # 负责所有弹出层内容的 HTML 模板渲染
+│   │   │   ├── Sidebar.js  # 处理左侧影像资源列表的渲染
+│   │   ├── /templates
+│   │   │   ├── Modal.js    # 存放所有大型 HTML 骨架片段
+│   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)
+├── /services               # 后端微服务化 (或高内聚模块)
+│   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限
+│   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
+│   │   ├── __init__.py
+│   │   ├── control.py      # 后端路由层
+│   │   ├── crud.py         # 解析和删除元数据
+│   │   ├── database.py     # 创建url获取异步数据库依赖
+│   │   ├── db_ops.py       # 后端数据库操作，存入
+│   │   ├── main.py         # 启动
+│   │   ├── models.py       # 定义元数据
+│   │   ├── processor.py    # 调用算法
+│   ├── /tile_service       # [Cython] 前端渲染逻辑, 动态瓦片分发，支持多级 LRU 缓存
+│   │   ├── __init__.py
+│   │   ├── control.py      # 渲染路由层
+│   │   ├── logic.py        # 索引和切片处理
+│   │   ├── main.py         # 启动
+│   │   ├── setup.py        # cython 配置
+│   │   ├── /core
+│   │   │   ├── cache.py
+│   │   │   ├── config.py
+│   │   ├── /engine
+│   │   │   ├── stats.py
+│   │   │   ├── tiler.py    # 核心渲染引擎,其余模块为解耦
+│   │   │   ├── rendering.pyx
+│   │   │   ├── translator.pyx
+│   ├── /annotation_service # 矢量要素增删改查、空间索引 (PostGIS 交互)
+│   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡
+├── /functions              # 函数和功能
+│   ├── /common             # 简单算法如生成id等
+│   ├── /implement          # 核心函数
+│   │   ├── /extraction     # 提取算法(已实现部分，这里略过)
+│   │   ├── __init__.py
+│   │   ├── io_ops.py            # cog转换，构建金字塔
+│   │   ├── manipulation.py      # 栅格合成
+│   │   ├── spatial_ops.py       # 坐标系转换为wgs84
+│   │   ├── spectral_indices.py  # 遥感常见指数计算
+│   ├── /ml                # 机器学习(未实现)
+├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)(未实现)
+│   ├── /tasks/preprocess  # 影像金字塔构建、统计计算、重投影
+│   └── /tasks/export      # 异步导出 COCO/GeoJSON/TFRecord
+├── /core_lib              # [Cython/C++] 高性能底层库(未实现)
+│   ├── /spatial-math      # 坐标变换、球面几何计算
+│   ├── /topology-engine   # 拓扑校验器 (检查空隙、自相交)
+│   └── /telemetry         # 结构化日志、OpenTelemetry 接入
+├── /infrastructure        # 基础设施即代码 (IaC)
+│   ├── /docker            # 各模块 Dockerfile
+│   ├── /kubernetes        # K8s 部署配置文件
+│   ├── /annot_migrations  # 矢量数据迁移脚本
+│   └── /db_migrations     # 栅格元数据数据库迁移脚本
+├── /storage               # 本地磁盘/云磁盘(可修改)
+│   ├──/cog                # 可服务对象
+│   ├──/raw                # 原始对象
+└── /tests                 # 自动化测试
+    ├── /e2e               # Playwright 端到端测试
+    └── /benchmark         # 性能压测脚本 (针对瓦片加载和空间查询)

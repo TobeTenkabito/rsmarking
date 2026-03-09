@@ -1,0 +1,6 @@
+data_service/
+├── main.py         # 服务入口层
+├── database.py     # 数据库连接层
+├── models.py       # 数据结构定义层
+├── crud.py         # 数据操作层
+└── processor.py    # 数据处理层

@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: rsmarking-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: rs_admin
+      POSTGRES_PASSWORD: rs_password
+      POSTGRES_DB: rsmarking
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - rsmarking_pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rs_admin -d rsmarking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  rsmarking_pgdata:
