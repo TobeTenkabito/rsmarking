@@ -8,7 +8,7 @@
     <!-- 核心依赖 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- 🆕 新增：引入 Leaflet.draw 的样式 -->
+    <!-- 引入 Leaflet.draw 的样式 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
 
     <style>
@@ -16,6 +16,10 @@
         .sidebar-height { height: calc(100vh - 64px); }
         /* 绘图按钮激活样式 */
         .draw-btn-active { @apply ring-2 ring-indigo-600 bg-indigo-50 border-indigo-500 text-indigo-600; }
+        path.vector-polygon-blend {
+        mix-blend-mode: multiply;
+        transition: stroke 0.2s, stroke-width 0.2s;
+        }
         /* 侧边栏滚动条美化 */
         .sidebar-scroll {
             overflow-y: auto;
@@ -126,11 +130,13 @@
                                 <!-- 动态注入示例：<div class="flex items-center px-2 py-1.5 bg-white border border-slate-100 rounded">...</div> -->
                             </div>
 
-                            <!-- 🆕 编辑过的标注工具栏 (与你原来的位置和思路完全一致，优化了图标和事件绑定) -->
+                            <!-- 编辑过的标注工具栏 -->
                             <div id="drawing-toolbar" class="hidden border-t border-indigo-100 pt-3 mt-2">
                                 <div class="flex items-center justify-between mb-2">
-                                    <span class="text-[11px] font-bold text-slate-500">绘图工具箱</span>
-                                    <!-- 修改为统一的 handleSetDrawMode(null) -->
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-[11px] font-bold text-slate-500">绘图工具箱</span>
+                                        <input type="color" id="draw-color-picker" value="#4f46e5" onchange="RS.setDrawColor(this.value)" class="w-5 h-5 p-0 border-0 rounded cursor-pointer">
+                                    </div>
                                     <button onclick="RS.cancelDraw(null)" class="text-[10px] text-red-500 hover:underline">取消绘制</button>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2">
@@ -154,7 +160,7 @@
                     </div>
                 </div>
 
-                <!-- 2. 影像处理工具箱 (原有) -->
+                <!-- 2. 影像处理工具箱 -->
                 <div class="bg-slate-50/50">
                     <div class="p-4 pb-2 border-b border-slate-100">
                         <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">影像处理中心</p>
@@ -262,7 +268,7 @@
                     </div>
                 </div>
 
-                <!-- 3. 影像资源列表 (原有) -->
+                <!-- 3. 影像资源列表 -->
                 <div class="flex-1 p-4">
                     <div class="flex items-center justify-between mb-4">
                         <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">影像目录</h2>
