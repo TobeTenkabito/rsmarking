@@ -40,7 +40,9 @@ export class MapController {
                 projects: Store.state.projects,
                 activeProject: Store.state.activeProject,
                 vectorLayers: Store.state.vectorLayers,
-                activeVectorLayerId: Store.state.activeVectorLayerId
+                activeVectorLayerId: Store.state.activeVectorLayerId,
+                // 将图层可见性集合作为参数下发
+                visibleVectorLayerIds: Store.state.visibleVectorLayerIds
             });
         }
 
@@ -145,13 +147,12 @@ export class MapController {
      * 核心逻辑：获取当前视口的矢量要素并更新 Store 与地图
      */
     async fetchViewportFeatures() {
-        const layerId = Store.state.activeVectorLayerId;
-        if (!layerId) return;
+        const visibleIds = Array.from(Store.state.visibleVectorLayerIds);
+        if (visibleIds.length === 0) return;
 
         const map = this.engine.map || this.engine;
         let bbox = [];
 
-        // 兼容不同地图引擎的边界获取方式 (Leaflet 为主)
         if (map.getBounds) {
             const bounds = map.getBounds();
             bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
@@ -160,18 +161,24 @@ export class MapController {
         }
 
         if (bbox.length === 4) {
-            try {
-                // 调用 API 获取当前范围内的 GeoJSON 数据
-                const data = await VectorAPI.fetchFeaturesInBbox(layerId, bbox);
+            // 🆕 发起并发请求，拉取所有当前可见的图层数据
+            const fetchPromises = visibleIds.map(async (layerId) => {
+                try {
+                    const data = await VectorAPI.fetchFeaturesInBbox(layerId, bbox);
 
-                // 更新 Store 状态，自动触发通知
-                Store.setCurrentFeatures(data);
+                    // 仅将正在编辑的图层数据写回 Store 供其他业务(如高亮选中)使用
+                    if (layerId === Store.state.activeVectorLayerId) {
+                        Store.setCurrentFeatures(data);
+                    }
 
-                // 将数据同步推送到地图渲染引擎
-                this.renderVectorData(data);
-            } catch (error) {
-                console.error("[MapController] 视口矢量加载失败:", error);
-            }
+                    // 传入真实的图层 ID 进行多实例渲染
+                    this.renderVectorData(layerId, data);
+                } catch (error) {
+                    console.error(`[MapController] 图层 ${layerId} 视口加载失败:`, error);
+                }
+            });
+
+            await Promise.all(fetchPromises);
         }
     }
 
@@ -180,35 +187,24 @@ export class MapController {
      * 适配 main.js 中暴露的 RS 全局变量
      */
     handleVectorStateChange(state) {
-        // 如果当前没有任何激活的矢量图层，确保地图清除旧的残留
-        if (!state.activeVectorLayerId) {
-            this.renderVectorData({ type: "FeatureCollection", features: [] });
-
-            // 联动 UI：如果没有选中图层，强制关闭编辑模式
-            if (window.RS && window.RS.toggleEditMode) {
-                window.RS.toggleEditMode(false);
-            }
-        } else {
-            // 联动 UI：选中图层时，显示绘图工具栏
-            if (window.RS && window.RS.toggleEditMode) {
-                window.RS.toggleEditMode(true);
-            }
+        // 🆕 核心逻辑：通知底层引擎同步当前的可见图层列表，清理掉被取消勾选的图层
+        if (this.engine.syncVisibleLayers) {
+            this.engine.syncVisibleLayers(Array.from(state.visibleVectorLayerIds));
         }
+        // 联动 UI：如果没有激活的编辑图层，强制关闭编辑工具栏
+        if (window.RS && window.RS.toggleEditMode) {
+            window.RS.toggleEditMode(!!state.activeVectorLayerId);
+        }
+        // 触发并发数据拉取
+        this.fetchViewportFeatures();
     }
 
     /**
      * 负责调用核心引擎接口，将 GeoJSON 渲染到地图上
      */
-    renderVectorData(geojson) {
+    renderVectorData(layerId, geojson) {
         if (this.engine.updateVectorLayer) {
-            this.engine.updateVectorLayer('annotation-layer', geojson, Store.state.selectedFeatureId);
-            return;
-        }
-
-        // 降级处理 (针对标准 Leaflet 结构)
-        const map = this.engine.map || this.engine;
-        if (map && map.getSource && map.getSource('annotation-source')) {
-            map.getSource('annotation-source').setData(geojson);
+            this.engine.updateVectorLayer(layerId, geojson, Store.state.selectedFeatureId);
         }
     }
 
@@ -217,8 +213,8 @@ export class MapController {
     * @param {string} layerId
     */
     async refreshVectorLayer(layerId) {
-        // 只有当刷新的图层是当前激活图层时才执行视口拉取
-        if (Store.state.activeVectorLayerId === layerId) {
+        // 只要这个图层在地图上可见，发生数据变动时就刷新视口
+        if (Store.state.visibleVectorLayerIds.has(layerId)) {
             await this.fetchViewportFeatures();
         }
     }

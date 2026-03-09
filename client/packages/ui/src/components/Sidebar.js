@@ -9,7 +9,7 @@ export const SidebarComponent = {
     render(data) {
         const {
             rasters, activeLayerIds, loadingIds,
-            projects, activeProject, vectorLayers, activeVectorLayerId
+            projects, activeProject, vectorLayers, activeVectorLayerId, visibleVectorLayerIds
         } = data;
 
         return `
@@ -34,7 +34,8 @@ export const SidebarComponent = {
                     <button onclick="RS.createProject()" class="text-emerald-500 hover:text-emerald-700 font-bold text-[10px]">+ 新建项目</button>
                 </div>
                 <div id="vector-list-container">
-                    ${this.renderVectorSection(projects, activeProject, vectorLayers, activeVectorLayerId)}
+                    ${this.renderVectorSection(projects, activeProject, vectorLayers, 
+            activeVectorLayerId, visibleVectorLayerIds)}
                 </div>
             </div>
         `;
@@ -140,46 +141,51 @@ export const SidebarComponent = {
     // ==========================================
     // 矢量部分专用渲染 (不混合进栅格逻辑)
     // ==========================================
-    renderVectorSection(projects, activeProject, layers, activeLayerId) {
-        if (!projects || projects.length === 0) return this.renderEmpty('暂无标注项目');
+    renderVectorSection(projects, activeProject, layers, activeLayerId, visibleIds) {
+    if (!projects || projects.length === 0) return this.renderEmpty('暂无标注项目');
 
-        return `
-            <div class="mx-2">
-                <select onchange="RS.selectProject(this.value)" class="w-full mb-3 p-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-600 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all">
-                    <option value="">-- 选择标注项目 --</option>
-                    ${projects.map(p => `<option value="${p.id}" ${activeProject?.id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
-                </select>
+    return `
+        <div class="mx-2">
+            <select onchange="RS.selectProject(this.value)" class="w-full mb-3 p-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-600 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all">
+                <option value="">-- 选择标注项目 --</option>
+                ${projects.map(p => `<option value="${p.id}" ${activeProject?.id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+            </select>
 
-                ${activeProject ? `
-                    <div class="bg-emerald-50/30 rounded-xl border border-emerald-100 overflow-hidden shadow-sm">
-                        <div class="px-3 py-2 bg-emerald-100/50 border-b border-emerald-100 flex justify-between items-center">
-                            <span class="text-[9px] font-black text-emerald-700 uppercase tracking-wider">📂 项目: ${activeProject.name}</span>
-                            <button onclick="RS.createLayer()" class="w-5 h-5 flex items-center justify-center bg-white rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors" title="新建图层">＋</button>
-                        </div>
-                        <div class="divide-y divide-emerald-50 bg-white" id="vector-list">
-                            ${layers.length === 0 ? '<div class="p-6 text-center text-[10px] text-slate-400 italic">尚未创建标注图层</div>' : 
-                              layers.map(l => this.renderVectorItem(l, activeLayerId === l.id)).join('')}
-                        </div>
+            ${activeProject ? `
+                <div class="bg-emerald-50/30 rounded-xl border border-emerald-100 overflow-hidden shadow-sm">
+                    <div class="px-3 py-2 bg-emerald-100/50 border-b border-emerald-100 flex justify-between items-center">
+                        <span class="text-[9px] font-black text-emerald-700 uppercase tracking-wider">📂 项目: ${activeProject.name}</span>
+                        <button onclick="RS.createLayer()" class="w-5 h-5 flex items-center justify-center bg-white rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors" title="新建图层">＋</button>
                     </div>
-                ` : '<div class="text-center py-6 text-[10px] text-slate-300 italic">请先从下拉菜单选择项目</div>'}
-            </div>
-        `;
-    },
+                    <div class="divide-y divide-emerald-50 bg-white" id="vector-list">
+                        ${layers.length === 0 ? '<div class="p-6 text-center text-[10px] text-slate-400 italic">尚未创建标注图层</div>' : 
+                          // 传入第三个参数：判断当前图层 ID 是否存在于可见集合中
+                          layers.map(l => this.renderVectorItem(l, activeLayerId === l.id, visibleIds?.has(l.id))).join('')}
+                    </div>
+                </div>
+            ` : '<div class="text-center py-6 text-[10px] text-slate-300 italic">请先从下拉菜单选择项目</div>'}
+        </div>
+    `;
+},
 
-    renderVectorItem(layer, isActive) {
-        return `
-            <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${isActive ? 'border-l-4 border-emerald-500 bg-emerald-50/20' : 'border-l-4 border-transparent'}" data-vector-id="${layer.id}">
-                <div class="mr-3">
-                    <input type="checkbox" ${isActive ? 'checked' : ''} 
-                           class="vector-layer-checkbox w-4 h-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer">
-                </div>
-                <div class="flex-1 min-w-0 cursor-pointer" onclick="RS.toggleVectorLayer('${layer.id}')">
-                    <div class="text-sm font-bold ${isActive ? 'text-emerald-700' : 'text-slate-700'} truncate">${layer.name}</div>
-                    <div class="text-[9px] text-slate-400 mt-0.5 tracking-tight font-mono">TABLE: ${layer.table_name}</div>
+    // 接收 isVisible 参数
+    renderVectorItem(layer, isActive, isVisible) {
+    return `
+        <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${isActive ? 'border-l-4 border-emerald-500 bg-emerald-50/20' : 'border-l-4 border-transparent'}" data-vector-id="${layer.id}">
+            <div class="mr-3">
+                <input type="checkbox" ${isVisible ? 'checked' : ''} 
+                       onclick="event.stopPropagation(); RS.toggleVectorVisibility('${layer.id}')"
+                       class="vector-layer-checkbox w-4 h-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer">
+            </div>
+            <div class="flex-1 min-w-0 cursor-pointer" onclick="RS.setActiveVectorLayer('${layer.id}')">
+                <div class="text-sm font-bold ${isActive ? 'text-emerald-700' : 'text-slate-700'} truncate">${layer.name}</div>
+                <div class="text-[9px] text-slate-400 mt-0.5 tracking-tight font-mono">
+                    ${isActive ? '<span class="text-emerald-600 font-bold">● 当前编辑图层</span>' : '点击激活编辑'}
                 </div>
             </div>
-        `;
-    },
+        </div>
+    `;
+},
 
     renderEmpty(text) {
         return `<div class="text-center py-10 text-[10px] text-slate-300 italic tracking-widest uppercase">${text}</div>`;

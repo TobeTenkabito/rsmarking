@@ -142,53 +142,77 @@ export class MapEngine {
      * 适配 MapController.js 中的 this.engine.updateVectorLayer('annotation-layer', geojson)
      */
     updateVectorLayer(layerId, geojson, selectedId) {
-        if (!this.isReady) return;
+    if (!this.isReady || !this.map) return;
 
-        let vectorLayer = this.vectorLayers.get(layerId);
+    // 1. 获取图层缓存
+    let vectorLayer = this.vectorLayers.get(layerId);
 
-        // 每次调用都生成最新的 style 函数，确保拿到最新的 selectedId
-        const dynamicStyle = function (feature) {
-            // 同时兼容根节点 id 和属性里的 id
-            const fid = feature.id || feature.properties?.id;
-            const isSelected = fid && fid === selectedId;
-            const featureColor = feature.properties?.color || "#4f46e5";
+    // 2. 定义高阶样式函数
+    const getFeatureStyle = (feature) => {
+        const fid = feature.id || feature.properties?.id;
+        const isSelected = fid && fid === selectedId;
+        const featureColor = feature.properties?.color || "#4f46e5";
 
-            return {
-                color: isSelected ? "#ef4444" : featureColor,  // 边框颜色
-                weight: isSelected ? 4 : 2,                    // 边框粗细
-                opacity: 1,                                    // 边框透明度
-                fillColor: featureColor,                       // 填充颜色
-                fillOpacity: 0.3,                              // 填充透明度
-                className: 'vector-polygon-blend'              // 混合模式类名
-            };
+        return {
+            color: isSelected ? "#ef4444" : featureColor,
+            weight: isSelected ? 3 : 1.5, // 稍微调细一点更精致
+            opacity: 1,
+            fillColor: featureColor,
+            fillOpacity: isSelected ? 0.5 : 0.2, // 选中时填充加深
+            className: 'vector-polygon-blend'
         };
+    };
 
-        if (!vectorLayer) {
-            // 第一次加载：创建图层并配置样式
-            console.log(`[MapEngine] 🎨 初始化矢量图层: ${layerId}`);
-            vectorLayer = L.geoJSON(geojson, {
-                style: dynamicStyle,
-                // 绑定点击事件，供UI侧拉取属性面板
-                onEachFeature: (feature, layer) => {
-                    layer.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); // 阻止事件冒泡到地图
-                        // 派发全局事件给 UI 层监听
-                        const fid = feature.id || feature.properties?.id;
-                        window.dispatchEvent(new CustomEvent('inspect-feature', {detail: { id: fid, feature }}));
-                    });
-                }
-            });
+    // 3. 情况 A：图层不存在，进行首次初始化
+    if (!vectorLayer) {
+        console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
+        vectorLayer = L.geoJSON(geojson, {
+            style: getFeatureStyle,
+            onEachFeature: (feature, layer) => {
+                layer.on('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    const fid = feature.id || feature.properties?.id;
+                    window.dispatchEvent(new CustomEvent('inspect-feature', {
+                        detail: { id: fid, feature, layerId: layerId } // 额外传出 layerId 方便追踪
+                    }));
+                });
+            }
+        });
+        vectorLayer.addTo(this.map);
+        this.vectorLayers.set(layerId, vectorLayer);
+        return;
+    }
 
-            vectorLayer.addTo(this.map);
-            this.vectorLayers.set(layerId, vectorLayer);
-        } else {
-            // 图层已存在：清空旧数据，注入新数据
-            console.log(`[MapEngine] 🔄 更新矢量图层: ${layerId}, 要素数量: ${geojson.features?.length || 0}`);
-            vectorLayer.clearLayers();
-            if (geojson && geojson.features && geojson.features.length > 0) {
-                // 将带有最新 selectedId 闭包的函数覆写回去，解决选中不变色的 Bug
-                vectorLayer.options.style = dynamicStyle;
-                vectorLayer.addData(geojson);
+    // 4. 情况 B：图层已存在，执行增量/局部更新（性能核心）
+
+    // 技巧：判断数据指纹是否变化（简单判断要素数量和第一个要素ID）
+    // 如果你追求极致性能，这里可以做更深的 DeepEqual，但通常 clear + addData 足够
+    const currentCount = vectorLayer.getLayers().length;
+    const newDataCount = geojson?.features?.length || 0;
+
+    // 只有当数据量变了，或者要素集合变了，才重新加载几何体
+    if (currentCount !== newDataCount) {
+        vectorLayer.clearLayers();
+        if (newDataCount > 0) {
+            vectorLayer.addData(geojson);
+        }
+    }
+
+    // 5. 无论几何体是否重绘，都统一更新一次样式（解决选中高亮问题）
+    // setStyle 是 Leaflet 最快的样式更新方式，它直接修改现有 SVG 元素的属性，不重新创建 DOM
+    vectorLayer.setStyle(getFeatureStyle);
+}
+
+    syncVisibleLayers(visibleIdsArray) {
+        if (!this.isReady) return;
+        const visibleSet = new Set(visibleIdsArray);
+
+        // 遍历缓存中的所有图层实例
+        for (const [layerId, vectorLayer] of this.vectorLayers.entries()) {
+            // 如果某图层不在最新可见列表中，从地图中拔除并销毁缓存
+            if (!visibleSet.has(layerId)) {
+                this.map.removeLayer(vectorLayer);
+                this.vectorLayers.delete(layerId);
             }
         }
     }

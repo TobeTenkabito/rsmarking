@@ -26,20 +26,14 @@ export class AnnotationModule {
         this.map.on('draw:created', async (e) => {
             const { layerType, layer } = e;
             const geojson = layer.toGeoJSON();
-
-            // 业务校验：必须先选中一个图层才能保存标注
             const activeLayerId = Store.state.activeVectorLayerId;
             if (!activeLayerId) {
-                // 如果没有图层 ID，移除刚画好的临时层并提示
                 this.map.removeLayer(layer);
                 console.warn("[Annotation] 未选择目标图层，放弃保存");
-                // 注意：在实际 iframe 环境中不建议使用原生 alert，这里由 App 层处理 UI 反馈
                 return;
             }
-
             this.app.showGlobalLoader(true);
             try {
-                // 1. 将几何数据发送到后端 API
                 const newFeature = await VectorAPI.createFeature(
                     activeLayerId,
                     geojson.geometry,
@@ -48,77 +42,84 @@ export class AnnotationModule {
                         draw_type: layerType,
                         source: "web_editor",
                         created_at: new Date().toISOString(),
-                        color: Store.state.drawColor // 将用户选择的颜色写入 GeoJSON 属性
+                        color: Store.state.drawColor
                     }
                 );
-
                 console.log("[Annotation] 要素保存成功:", newFeature);
-
-                // 2. 移除地图上的临时绘制层（关键：防止与即将刷新的正式数据重叠）
                 this.map.removeLayer(layer);
-
-                // 3. 通知 MapController 局部刷新当前视口的矢量数据
                 if (this.app.mapController && this.app.mapController.refreshVectorLayer) {
                     await this.app.mapController.refreshVectorLayer(activeLayerId);
                 }
-
-                // 4. 停止当前绘制状态，清理 UI
                 this.stopDrawing();
+            } catch (err) {console.error("[Annotation] 保存失败:", err);this.map.removeLayer(layer);}
+            finally {this.app.showGlobalLoader(false);}
+        });
 
-            } catch (err) {
-                console.error("[Annotation] 保存失败:", err);
-                this.map.removeLayer(layer); // 失败也清理临时层
-            } finally {
-                this.app.showGlobalLoader(false);
+        const mapContainer = this.map.getContainer();
+        L.DomEvent.on(mapContainer, 'contextmenu', (e) => {
+            if (this.currentHandler && this.currentHandler.enabled()) {
+                L.DomEvent.preventDefault(e);
+                L.DomEvent.stopPropagation(e);
+                console.log("[Annotation] 容器级右键拦截：退回上一个顶点");
+                this.undoLastPoint();
             }
         });
-    }
+
+        // 监听 Esc
+        document.addEventListener('keydown', (e) => {
+            if (!this.currentHandler || !this.currentHandler.enabled()) return;
+            if (e.key === 'Backspace' || e.key === 'Delete') {this.undoLastPoint();}  // 撤销
+            if (e.key === 'Escape') {e.preventDefault();this.resetCurrentAction();}});  // 退出
+        }
 
     /**
      * 设置绘图模式
      * @param {string} mode - 'polygon', 'rectangle', 'marker'
      */
     startDrawing(mode) {
-        // 先停止之前的绘制
         this.stopDrawing();
-
-        // 检查 Leaflet.draw 插件及其全局 L 对象是否存在
-        if (typeof L.Draw === 'undefined') {
-            console.error("[Annotation] 未找到 Leaflet.draw 插件");
-            return;
-        }
+        if (typeof L.Draw === 'undefined') {console.error("[Annotation] 未找到 Leaflet.draw 插件");return;}
         const color = Store.state.drawColor;
         const options = {
             shapeOptions: {
-                color: color, // 使用系统主题色：Indigo-600'#4f46e5'
+                color: color,
                 fillcolor: color,
                 fillOpacity: 0.2,
                 weight: 3
             }
         };
-
-        // 实例化处理器
         switch (mode) {
             case 'polygon': this.currentHandler = new L.Draw.Polygon(this.map, options);break;
             case 'rectangle': this.currentHandler = new L.Draw.Rectangle(this.map, options);break;
             case 'marker': this.currentHandler = new L.Draw.Marker(this.map);break;
             default: console.warn("[Annotation] 不支持的绘制模式:", mode);return;
         }
-
-        if (this.currentHandler) {
-            this.currentHandler.enable();
-            this.updateUI(mode);
-        }
+        if (this.currentHandler) {this.currentHandler.enable();this.updateUI(mode);}
     }
+
+    /**
+    * 【动作级】：退回上一个顶点（针对多边形/折线）
+    */
+    undoLastPoint() {
+        if (this.currentHandler && typeof this.currentHandler.deleteLastVertex === 'function') {
+        console.log("[Annotation] 退回上一个顶点");
+        this.currentHandler.deleteLastVertex();} else {this.resetCurrentAction();}}
+
+    /**
+    * 【动作级】：重置当前动作（清空正在画的线条，但保留工具高亮）
+    */
+    resetCurrentAction() {
+        if (!this.currentHandler) return;
+        console.log("[Annotation] 重置当前动作，保留工具功能");
+        const type = this.currentType;
+        this.currentHandler.disable();
+        this.setDrawMode(type);}
 
     /**
      * 停止绘制并清理状态
      */
     stopDrawing() {
-        if (this.currentHandler) {
-            this.currentHandler.disable();
-            this.currentHandler = null;
-        }
+        if (this.currentHandler) {this.currentHandler.disable();this.currentHandler = null;}
         this.updateUI(null);
     }
 
@@ -130,16 +131,9 @@ export class AnnotationModule {
         const buttons = document.querySelectorAll('.draw-btn');
         buttons.forEach(btn => {
             const onclickAttr = btn.getAttribute('onclick') || "";
-            // 通过检查 onclick 属性中的字符串参数来识别模式
             const isMatch = activeMode && onclickAttr.includes(`'${activeMode}'`);
-
-            if (isMatch) {
-                // 添加高亮样式
-                btn.classList.add('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
-            } else {
-                // 恢复默认样式
-                btn.classList.remove('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
-            }
+            if (isMatch) {btn.classList.add('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
+            } else {btn.classList.remove('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');}
         });
     }
 
@@ -152,7 +146,6 @@ export class AnnotationModule {
     const toolbar = document.getElementById('drawing-toolbar');
     const parentSection = document.getElementById('vector-layer-section'); // 获取父容器
     if (!toolbar) return;
-
     if (enabled) {
         toolbar.classList.remove('hidden');
         if (parentSection) parentSection.classList.remove('hidden'); // 强制显示父容器
@@ -160,6 +153,5 @@ export class AnnotationModule {
         toolbar.classList.add('hidden');
         if (parentSection) parentSection.classList.add('hidden');
         this.stopDrawing();
-    }
-}
+    }}
 }

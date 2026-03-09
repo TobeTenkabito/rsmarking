@@ -83,7 +83,7 @@ class App {
             fetchRasters: () => this.refreshData(),
             clearDatabase: () => this.handleClearDatabase(),
 
-            // --- 指数分析 (使用可选链 ?. 增强健壮性) ---
+            // --- 指数分析 ---
             openIndexModal: (type) => this.analysis?.openModal(type),
             closeIndexModal: () => this.analysis?.closeModal(),
             executeIndexCalculation: () => this.analysis?.execute(),
@@ -113,8 +113,13 @@ class App {
             toggleEditMode: (enabled) => {
                 if(this.annotation?.toggleEditMode) this.annotation.toggleEditMode(enabled);
             },
+            // 多图层状态控制
+            toggleVectorVisibility: (layerId) => Store.toggleVectorVisibility(layerId),
+            setActiveVectorLayer: (layerId) => Store.setActiveVectorLayer(layerId),
+            // 编辑模式
             setDrawMode: (mode) => this.handleSetDrawMode(mode),
             cancelDraw: () => this.handleCancelDraw(),
+            exitEditMode:() => this.handleExitEditMode(),
             setDrawColor: (color) => Store.setDrawColor(color),
             // 删除
             deleteSelectedFeature: () => this.handleDeleteSelectedFeature(),
@@ -205,7 +210,6 @@ class App {
         });
     }
 
-    // 栅格影像业务逻辑
     async refreshData() {
         try {
             const data = await RasterAPI.fetchAll();
@@ -283,7 +287,6 @@ class App {
         }
     }
 
-    // 矢量标注业务逻辑整合
     async refreshVectorProjects() {
         try {
             const projects = await VectorAPI.fetchProjects();
@@ -296,7 +299,6 @@ class App {
     async handleCreateProject() {
         const name = prompt("请输入新矢量项目名称：", "默认标注项目");
         if (!name) return;
-
         this.showGlobalLoader(true);
         try {
             await VectorAPI.createProject(name);
@@ -313,10 +315,8 @@ class App {
             Store.setActiveProject(null);
             return;
         }
-        // 注意：HTML select 下拉框传来的 projectId 可能是 string，使用 == 进行弱类型比对
         const proj = Store.state.projects.find(p => p.id == projectId);
         if (!proj) return;
-
         Store.setActiveProject(proj);
         this.showGlobalLoader(true);
         try {
@@ -336,10 +336,8 @@ class App {
             alert("请先选择或创建一个矢量项目！");
             return;
         }
-
         const name = prompt("请输入新标注图层名称：", "建筑物标注");
         if (!name) return;
-
         // 尝试自动关联当前正在查看的栅格底图
         const activeRasters = Array.from(Store.state.activeLayerIds);
         const sourceRasterId = activeRasters.length > 0 ? activeRasters[0] : null;
@@ -347,7 +345,6 @@ class App {
         this.showGlobalLoader(true);
         try {
             await VectorAPI.createLayer(activeProj.id, name, sourceRasterId);
-            // 创建成功后重新拉取该项目的图层列表
             await this.handleSelectProject(activeProj.id);
         } catch (e) {
             alert(`创建图层失败: ${e.message}`);
@@ -368,13 +365,10 @@ class App {
      * 🆕 设置绘图模式业务处理
      */
     handleSetDrawMode(mode) {
-        // 校验：必须选中一个图层才能开始绘图
         if (!Store.state.activeVectorLayerId) {
             alert("请先在左侧选择或创建一个目标标注图层");
             return;
         }
-
-        // 容错处理：确保 AnnotationModule 存在此方法
         if (this.annotation && typeof this.annotation.startDrawing === 'function') {
             this.annotation.startDrawing(mode);
         } else {
@@ -383,23 +377,20 @@ class App {
     }
 
     /**
-     * 🆕 取消绘图
+     *  取消绘图和编辑模式
      */
-    handleCancelDraw() {
-        if (this.annotation && typeof this.annotation.stopDrawing === 'function') {
-            this.annotation.stopDrawing();
-        }
-    }
+    handleCancelDraw() {if (this.annotation) {this.annotation.stopDrawing();}console.log("[App] Drawing canceled");}
 
-    // 具体删除逻辑实现
+    handleExitEditMode() {if (this.annotation) {this.annotation.stopDrawing();}Store.setActiveVectorLayer(null);
+    if (this.mapController) {this.mapController.fetchViewportFeatures();}}
+
+    // 删除单独图层的某一元素
     async handleDeleteSelectedFeature() {
         const targetId = Store.state.selectedFeatureId;
         if (!targetId) return;
         if (confirm('确认删除该标注？')) {
             try {
-                // 1. 调用后端接口删除
                 await VectorAPI.deleteFeature(targetId);
-                // 2. 清理前端选中状态
                 Store.setSelectedFeatureId(null);
                 const delBtn = document.getElementById('btn-delete-feature');
                 if (delBtn) delBtn.classList.add('hidden');

@@ -15,6 +15,7 @@ export const Store = {
         activeProject: null,   // 当前选中的项目对象
         vectorLayers: [],      // 当前项目下的所有矢量图层
         activeVectorLayerId: null, // 当前正在编辑/查看的矢量图层 ID
+        visibleVectorLayerIds: new Set(), // 存储当前所有需要在地图上渲染的图层 ID
         currentFeatures: {     // 当前地图视口内加载的 GeoJSON 要素
             type: "FeatureCollection",
             features: []
@@ -89,9 +90,13 @@ export const Store = {
      * 设置当前正在操作的矢量图层
      * @param {string|null} layerId
      */
+    // 独立设置编辑激活状态
     setActiveVectorLayer(layerId) {
         this.state.activeVectorLayerId = layerId;
-        // 切换图层时重置要素缓存，等待 MapController 触发 BBox 加载
+        // 联动：激活编辑的图层必须保证是可见的
+        if (layerId && !this.state.visibleVectorLayerIds.has(layerId)) {
+            this.state.visibleVectorLayerIds.add(layerId);
+        }
         this.state.currentFeatures = { type: "FeatureCollection", features: [] };
         this.notifyVectorChange();
     },
@@ -138,5 +143,18 @@ export const Store = {
     setSelectedFeatureId(id) {
         this.state.selectedFeatureId = id;
         this.notifyVectorChange();
-    }
+    },
+    // 切换单个图层的地图可见性
+    toggleVectorVisibility(layerId) {
+        if (this.state.visibleVectorLayerIds.has(layerId)) {
+            this.state.visibleVectorLayerIds.delete(layerId);
+            // 容错：如果关闭显示的图层正好是正在编辑的图层，强制退出编辑模式
+            if (this.state.activeVectorLayerId === layerId) {
+                this.state.activeVectorLayerId = null;
+            }
+        } else {
+            this.state.visibleVectorLayerIds.add(layerId);
+        }
+        this.notifyVectorChange();
+    },
 };
