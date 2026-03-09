@@ -9,15 +9,15 @@ export class MapController {
     constructor(engine) {
         this.engine = engine;
 
-        // 初始化地图事件监听 (如视口移动)
+        // 初始化地图事件监听
         this.initVectorEvents();
 
-        // 1. 订阅栅格变化 (原有)
+        // 1. 订阅栅格变化
         Store.onRastersChange = () => {
             this.updateUI();
         };
 
-        // 2. 订阅矢量状态变化 (新增)，实现数据驱动视图
+        // 2. 订阅矢量状态变化，实现数据驱动视图
         Store.onVectorStateChange = (state) => {
             this.handleVectorStateChange(state);
             this.updateUI(); // 矢量状态变化时同步更新侧边栏
@@ -28,7 +28,7 @@ export class MapController {
      * 更新侧边栏 UI 与图层计数器
      */
     updateUI() {
-        // 关键修改：传递整个 Store.state 对象给 SidebarComponent
+        // 传递整个 Store.state 对象给 SidebarComponent
         const container = document.getElementById('sidebar-content') || document.getElementById('raster-list');
         if (container) {
             container.innerHTML = SidebarComponent.render({
@@ -58,6 +58,7 @@ export class MapController {
             isAllEmpty ? emptyHint.classList.remove('hidden') : emptyHint.classList.add('hidden');
         }
     }
+
     /**
      * 切换图层显示状态
      */
@@ -105,6 +106,7 @@ export class MapController {
             this.engine.fitLayer(raster.index_id || numericId, raster.bounds || raster.extent);
         }
     }
+
     /**
      * 切换矢量图层的激活状态
      * @param {string} layerId 矢量图层 ID
@@ -120,7 +122,7 @@ export class MapController {
             // 立即尝试加载当前视野内的要素
             await this.fetchViewportFeatures();
         }
-        // UI 更新由 Store 的监听器 handleVectorStateChange 触发，此处调用 updateUI 以确保复选框状态同步
+        // UI 更新由 Store 的监听器触发，此处手动刷新确保即时性
         this.updateUI();
     }
 
@@ -131,7 +133,7 @@ export class MapController {
         const map = this.engine.map || this.engine;
         if (!map || !map.on) return;
 
-        // 监听地图移动结束事件，动态加载当前视口的矢量标注
+        // 监听地图移动结束事件，动态加载当前视口的矢量标注 (BBox 加载策略)
         map.on('moveend', async () => {
             if (Store.state.activeVectorLayerId) {
                 await this.fetchViewportFeatures();
@@ -149,7 +151,7 @@ export class MapController {
         const map = this.engine.map || this.engine;
         let bbox = [];
 
-        // 兼容不同地图引擎的边界获取方式
+        // 兼容不同地图引擎的边界获取方式 (Leaflet 为主)
         if (map.getBounds) {
             const bounds = map.getBounds();
             bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
@@ -159,13 +161,13 @@ export class MapController {
 
         if (bbox.length === 4) {
             try {
-                // 调用 API 获取 GeoJSON 数据
+                // 调用 API 获取当前范围内的 GeoJSON 数据
                 const data = await VectorAPI.fetchFeaturesInBbox(layerId, bbox);
 
                 // 更新 Store 状态，自动触发通知
                 Store.setCurrentFeatures(data);
 
-                // 将数据同步推送到地图引擎
+                // 将数据同步推送到地图渲染引擎
                 this.renderVectorData(data);
             } catch (error) {
                 console.error("[MapController] 视口矢量加载失败:", error);
@@ -175,11 +177,22 @@ export class MapController {
 
     /**
      * 处理 Store 中矢量状态的变化通知
+     * 适配 main.js 中暴露的 RS 全局变量
      */
     handleVectorStateChange(state) {
         // 如果当前没有任何激活的矢量图层，确保地图清除旧的残留
         if (!state.activeVectorLayerId) {
             this.renderVectorData({ type: "FeatureCollection", features: [] });
+
+            // 联动 UI：如果没有选中图层，强制关闭编辑模式
+            if (window.RS && window.RS.toggleEditMode) {
+                window.RS.toggleEditMode(false);
+            }
+        } else {
+            // 联动 UI：选中图层时，显示绘图工具栏
+            if (window.RS && window.RS.toggleEditMode) {
+                window.RS.toggleEditMode(true);
+            }
         }
     }
 
@@ -188,11 +201,11 @@ export class MapController {
      */
     renderVectorData(geojson) {
         if (this.engine.updateVectorLayer) {
-            this.engine.updateVectorLayer('annotation-layer', geojson);
+            this.engine.updateVectorLayer('annotation-layer', geojson, Store.state.selectedFeatureId);
             return;
         }
 
-        // 降级处理
+        // 降级处理 (针对标准 Leaflet 结构)
         const map = this.engine.map || this.engine;
         if (map && map.getSource && map.getSource('annotation-source')) {
             map.getSource('annotation-source').setData(geojson);
@@ -200,11 +213,11 @@ export class MapController {
     }
 
     /**
-    * 局部刷新特定的矢量图层数据（通常在标注保存后调用）
+    * 局部刷新特定的矢量图层数据（通常在标注保存或 AI 提取完成后调用）
     * @param {string} layerId
     */
     async refreshVectorLayer(layerId) {
-        // 只有当刷新的图层是当前激活图层时才执行
+        // 只有当刷新的图层是当前激活图层时才执行视口拉取
         if (Store.state.activeVectorLayerId === layerId) {
             await this.fetchViewportFeatures();
         }
