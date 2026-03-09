@@ -139,4 +139,8 @@ def jrc_water(
         mask, _ = result
         return mask
 
+<<<<<<< HEAD
     return result
+=======
+    return result
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

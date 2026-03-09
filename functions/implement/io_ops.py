@@ -42,4 +42,8 @@ def convert_raster_to_cog(input_path: str, output_path: str, block_size: int = 5
         logger.info(f"COG conversion completed: {output_path}")
         return True
     finally:
+<<<<<<< HEAD
         ds = None
+=======
+        ds = None
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

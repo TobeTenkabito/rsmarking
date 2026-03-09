@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from rasterio.windows import from_bounds
 from rasterio.enums import Resampling
 from sqlalchemy import text
+<<<<<<< HEAD
 
 
 from services.tile_service.core.config import settings
@@ -17,6 +18,11 @@ from services.tile_service.engine.tiler import TileEngine
 from services.data_service.database import get_db
 
 
+=======
+from services.tile_service.core.config import settings
+from services.tile_service.engine.tiler import TileEngine
+from services.data_service.database import get_db
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 import services.tile_service.logic as logic
 
 logger = logging.getLogger("tile_service.control")
@@ -35,7 +41,10 @@ async def get_tile(
         buf = io.BytesIO()
         img.save(buf, format='PNG')
         return Response(content=buf.getvalue(), media_type="image/png")
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     try:
         engine = TileEngine(file_path)
         requested_bands = [int(b) for b in bands.split(",")]
@@ -55,16 +64,24 @@ async def get_tile(
         logger.error(traceback.format_exc())
         return Response(status_code=500)
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 @router.get("/debug/render-first.png")
 async def debug_render_first(db: AsyncSession = Depends(get_db)):
     query = text("SELECT index_id, file_path FROM raster_metadata ORDER BY id DESC LIMIT 1")
     result = await db.execute(query)
     row = result.fetchone()
+<<<<<<< HEAD
 
     if not row:
         raise HTTPException(status_code=404, detail="No raster records found")
 
+=======
+    if not row:
+        raise HTTPException(status_code=404, detail="No raster records found")
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     index_id, file_path = row
     try:
         z, x, y = 2, 2, 1
@@ -82,9 +99,17 @@ async def debug_render_first(db: AsyncSession = Depends(get_db)):
             )
             img_rgba = logic.process_tile_pixels_fallback(tile_data)
             img = Image.fromarray(img_rgba)
+<<<<<<< HEAD
+=======
+
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             return Response(content=buf.getvalue(), media_type="image/png")
     except Exception as e:
         logger.error(f"Debug render failed: {e}")
+<<<<<<< HEAD
         raise HTTPException(status_code=500, detail=str(e))
+=======
+        raise HTTPException(status_code=500, detail=str(e))
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

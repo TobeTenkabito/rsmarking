@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from .vegetation import extract_vegetation
 from .water import extract_water
 from .building import extract_building
@@ -9,3 +10,6 @@ __all__ = [
     "extract_building",
     "extract_cloud"
 ]
+=======
+
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

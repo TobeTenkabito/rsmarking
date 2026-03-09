@@ -4,11 +4,20 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
+<<<<<<< HEAD
 
 import sys
 import os
 
 
+=======
+# 1. 动态导入项目根目录
+# 这样无论在哪个目录下运行 alembic，都能正确找到 services 模块
+import sys
+import os
+
+# 获取当前文件的绝对路径，并向上推三级到达项目根目录 (F:\rsmarking)
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 current_dir = os.path.dirname(os.path.realpath(__file__))
 root_dir = os.path.abspath(os.path.join(current_dir, '..', '..', '..'))
 
@@ -67,7 +76,10 @@ def include_object(object, name, type_, reflected, compare_to):
 
     return True
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 def run_migrations_offline() -> None:
     """脱机模式迁移"""
     url = config.get_main_option("sqlalchemy.url")
@@ -82,7 +94,10 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 def do_run_migrations(connection):
     context.configure(
         connection=connection,
@@ -92,7 +107,10 @@ def do_run_migrations(connection):
     with context.begin_transaction():
         context.run_migrations()
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 async def run_migrations_online() -> None:
     """联机模式迁移（处理异步引擎）"""
     # 允许从 alembic.ini 或环境变量获取 URL

@@ -70,4 +70,8 @@ def render_tile(float[:, :, :] data, float[:] mins, float[:] maxs):
                 else:
                     out[y, x, 3] = 0
 
+<<<<<<< HEAD
     return out
+=======
+    return out
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

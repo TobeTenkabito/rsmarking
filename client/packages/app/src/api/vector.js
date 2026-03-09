@@ -142,6 +142,10 @@ export const VectorAPI = {
         });
     },
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     /**
      * 获取 MVT 矢量瓦片服务的 URL 模板
      * 增加时间戳参数防止由于标注更新导致的浏览器缓存不一致
@@ -149,4 +153,8 @@ export const VectorAPI = {
     getMvtUrlTemplate(layerId) {
         return `${VTILE_BASE_URL}/tiles/${layerId}/{z}/{x}/{y}.pbf?t=${Date.now()}`;
     }
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

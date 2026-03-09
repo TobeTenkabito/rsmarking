@@ -117,4 +117,8 @@ export class ExtractionModule {
             this.app.showGlobalLoader(false);
         }
     }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

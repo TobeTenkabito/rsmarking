@@ -112,6 +112,7 @@ class GeoAdaptive:
 
         mask_closed = ndimage.binary_closing(mask_cleaned, structure=np.ones((3, 3)))
         return ndimage.binary_fill_holes(mask_closed).astype('uint8')
+<<<<<<< HEAD
 
 
 
@@ -215,3 +216,5 @@ GeoAdaptive 算法是一种混合遥感分类架构。其核心数学逻辑在�
 
 \end{document}
 """
+=======
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

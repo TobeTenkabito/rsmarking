@@ -15,4 +15,8 @@ def extract_building(bands: list[np.ndarray], threshold: float) -> np.ndarray:
         ndvi = calculate_ndvi_array(red, nir)
         building_mask = building_mask & (ndvi < 0.2)
 
+<<<<<<< HEAD
     return building_mask.astype('uint8')
+=======
+    return building_mask.astype('uint8')
+>>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
