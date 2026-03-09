@@ -19,8 +19,4 @@ def _pure_numpy_otsu_vectorized(valid_data: np.ndarray, bins: int = 256) -> floa
     mean2 = (np.cumsum((hist * bin_centers)[::-1]) / np.maximum(weight2[::-1], 1))[::-1]
     inter_class_variance = weight1[:-1] * weight2[1:] * (mean1[:-1] - mean2[1:]) ** 2
     max_idx = np.argmax(inter_class_variance)
-<<<<<<< HEAD
     return float(bin_centers[max_idx])
-=======
-    return float(bin_centers[max_idx])
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

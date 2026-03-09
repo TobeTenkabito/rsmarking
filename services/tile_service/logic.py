@@ -15,10 +15,6 @@ async def get_raster_path(db: AsyncSession, index_id: str) -> str:
         query = text("SELECT file_path FROM raster_metadata WHERE index_id = :val OR id = :val")
         result = await db.execute(query, {"val": val})
         row = result.one_or_none()
-<<<<<<< HEAD
-=======
-
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
         if row:
             return row[0]
         else:
@@ -48,8 +44,4 @@ def process_tile_pixels_fallback(data: np.ndarray) -> np.ndarray:
         rgb = np.zeros((height, width, 3), dtype=np.uint8)
     alpha = np.where(np.max(data, axis=0) > 0, 255, 0).astype(np.uint8)
 
-<<<<<<< HEAD
     return np.dstack([rgb, alpha])
-=======
-    return np.dstack([rgb, alpha])
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

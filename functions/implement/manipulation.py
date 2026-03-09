@@ -5,11 +5,7 @@ from typing import List
 logger = logging.getLogger("functions.manipulation")
 
 
-<<<<<<< HEAD
 def extract_raster_bands(input_path: str, output_path: str, band_indices: List[int]) -> bool:
-=======
-def extract_raster_bands(input_path: str, output_path: str, band_indices: List[int]):
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     with rasterio.open(input_path) as src:
         out_meta = src.meta.copy()
         out_meta.update({
@@ -23,11 +19,7 @@ def extract_raster_bands(input_path: str, output_path: str, band_indices: List[i
     return True
 
 
-<<<<<<< HEAD
 def merge_raster_bands(input_paths: List[str], output_path: str) -> bool:
-=======
-def merge_raster_bands(input_paths: List[str], output_path: str):
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     if not input_paths:
         raise ValueError("Input paths list cannot be empty")
 

@@ -164,11 +164,7 @@ export class MapController {
                 // 调用 API 获取当前范围内的 GeoJSON 数据
                 const data = await VectorAPI.fetchFeaturesInBbox(layerId, bbox);
 
-<<<<<<< HEAD
-                // 更新 Store 状态，自动触发通知（如果设置了监听）
-=======
                 // 更新 Store 状态，自动触发通知
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
                 Store.setCurrentFeatures(data);
 
                 // 将数据同步推送到地图渲染引擎
@@ -188,11 +184,7 @@ export class MapController {
         if (!state.activeVectorLayerId) {
             this.renderVectorData({ type: "FeatureCollection", features: [] });
 
-<<<<<<< HEAD
-            // 联动 UI：如果没有选中图层，强制关闭编辑模式（隐藏工具栏）
-=======
             // 联动 UI：如果没有选中图层，强制关闭编辑模式
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
             if (window.RS && window.RS.toggleEditMode) {
                 window.RS.toggleEditMode(false);
             }
@@ -230,8 +222,4 @@ export class MapController {
             await this.fetchViewportFeatures();
         }
     }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

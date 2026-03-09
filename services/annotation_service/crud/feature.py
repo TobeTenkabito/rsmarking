@@ -161,10 +161,6 @@ class FeatureCRUD:
         await self.db.commit()
 
 
-<<<<<<< HEAD
-=======
-
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 class LayerCRUD:
     def __init__(self, db: AsyncSession):
         self.db = db

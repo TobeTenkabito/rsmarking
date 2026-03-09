@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-"""
-Location: F:/rsmarking/functions/implement/extraction/water.py
-"""
-=======
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 import numpy as np
 from ..spectral_indices import calculate_mndwi_array, calculate_ndwi_array
 from .water_utils import(

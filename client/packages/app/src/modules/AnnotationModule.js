@@ -162,8 +162,4 @@ export class AnnotationModule {
         this.stopDrawing();
     }
 }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

@@ -1,16 +1,8 @@
-<<<<<<< HEAD
 import uuid
 from sqlalchemy import Column, String, DateTime, ForeignKey, func, BigInteger, Index, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from geoalchemy2 import Geometry
-=======
-from sqlalchemy import Column, String, DateTime, ForeignKey, func, BigInteger
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
-from sqlalchemy.orm import declarative_base, relationship
-from geoalchemy2 import Geometry
-import uuid
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 
 Base = declarative_base()
 
@@ -19,20 +11,15 @@ class Project(Base):
     __tablename__ = "projects"
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
-<<<<<<< HEAD
 
     # server_default 让数据库处理时间戳，确保多实例时间一致性
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-=======
-    created_at = Column(DateTime, server_default=func.now())
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
 
     layers = relationship("Layer", back_populates="project", cascade="all, delete-orphan")
 
 
 class Layer(Base):
     __tablename__ = "layers"
-<<<<<<< HEAD
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(PG_UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False,
@@ -40,14 +27,6 @@ class Layer(Base):
     name = Column(String(255), nullable=False)
 
     # 外部关联 ID，BigInteger 匹配分布式 ID (如 Snowflake)
-=======
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    project_id = Column(PG_UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
-    name = Column(String(255), nullable=False)
-
-    # 扩展：记录该图层是基于哪个影像文件标注的
-    # 关联到 data_service 中的 RasterMetadata.index_id
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
     source_raster_index_id = Column(BigInteger, nullable=True, index=True)
 
     project = relationship("Project", back_populates="layers")
@@ -55,7 +34,6 @@ class Layer(Base):
 
 
 class Feature(Base):
-<<<<<<< HEAD
     __tablename__ = "features"
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -64,24 +42,11 @@ class Feature(Base):
     # 1. 核心修复：spatial_index=False 彻底杜绝 Alembic 升级时的 DuplicateTableError
     geom = Column(
         Geometry(geometry_type='GEOMETRY', srid=4326, spatial_index=False),
-=======
-    """
-    Core Spatial Feature Model
-    """
-    __tablename__ = "features"
-
-    id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    layer_id = Column(PG_UUID(as_uuid=True), ForeignKey("layers.id"), nullable=False, index=True)
-
-    geom = Column(
-        Geometry(geometry_type='GEOMETRY', srid=4326, spatial_index=True),
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
         nullable=False
     )
 
     category = Column(String(100), index=True)
 
-<<<<<<< HEAD
     # 2. JSONB 性能优化：在 PostgreSQL 中 JSONB 配合 Gin 索引比普通 JSON 快得多
     properties = Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     meta = Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
@@ -96,12 +61,3 @@ class Feature(Base):
         Index('idx_features_properties_gin', 'properties', postgresql_using='gin'),
         Index('idx_layer_category', 'layer_id', 'category'),
     )
-=======
-    properties = Column(JSONB, server_default='{}')
-
-    meta = Column(JSONB, server_default='{}')
-
-    created_at = Column(DateTime, server_default=func.now())
-
-    layer = relationship("Layer", back_populates="features")
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd

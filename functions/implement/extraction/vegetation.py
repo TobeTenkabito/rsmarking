@@ -10,8 +10,4 @@ def extract_vegetation(bands: list[np.ndarray], threshold: float, mode: str = "n
         ndvi = calculate_ndvi_array(red, nir)
         return (ndvi > threshold).astype('uint8')
     else:
-<<<<<<< HEAD
         raise ValueError(f"Unknown vegetation extraction mode or insufficient bands: {mode}")
-=======
-        raise ValueError(f"Unknown vegetation extraction mode or insufficient bands: {mode}")
->>>>>>> bd05e13daabf3cba3f74fa7d9fbf6191d3065cfd
