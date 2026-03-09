@@ -47,7 +47,8 @@ export class AnnotationModule {
                         category: "manual_annotation",
                         draw_type: layerType,
                         source: "web_editor",
-                        created_at: new Date().toISOString()
+                        created_at: new Date().toISOString(),
+                        color: Store.state.drawColor // 将用户选择的颜色写入 GeoJSON 属性
                     }
                 );
 
@@ -86,10 +87,11 @@ export class AnnotationModule {
             console.error("[Annotation] 未找到 Leaflet.draw 插件");
             return;
         }
-
+        const color = Store.state.drawColor;
         const options = {
             shapeOptions: {
-                color: '#4f46e5', // 使用系统主题色：Indigo-600
+                color: color, // 使用系统主题色：Indigo-600'#4f46e5'
+                fillcolor: color,
                 fillOpacity: 0.2,
                 weight: 3
             }
@@ -97,18 +99,10 @@ export class AnnotationModule {
 
         // 实例化处理器
         switch (mode) {
-            case 'polygon':
-                this.currentHandler = new L.Draw.Polygon(this.map, options);
-                break;
-            case 'rectangle':
-                this.currentHandler = new L.Draw.Rectangle(this.map, options);
-                break;
-            case 'marker':
-                this.currentHandler = new L.Draw.Marker(this.map);
-                break;
-            default:
-                console.warn("[Annotation] 不支持的绘制模式:", mode);
-                return;
+            case 'polygon': this.currentHandler = new L.Draw.Polygon(this.map, options);break;
+            case 'rectangle': this.currentHandler = new L.Draw.Rectangle(this.map, options);break;
+            case 'marker': this.currentHandler = new L.Draw.Marker(this.map);break;
+            default: console.warn("[Annotation] 不支持的绘制模式:", mode);return;
         }
 
         if (this.currentHandler) {
