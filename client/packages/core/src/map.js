@@ -2,7 +2,11 @@ export class MapEngine {
     constructor(containerId) {
         console.group("%c[MapEngine] 🏗️ 引擎初始化", "color: #8b5cf6; font-weight: bold;");
         this.containerId = containerId;
-        this.layers = new Map(); // Key: index_id (string), Value: L.TileLayer
+
+        // --- 图层容器 ---
+        this.layers = new Map();       // Key: index_id (string), Value: L.TileLayer (栅格瓦片)
+        this.vectorLayers = new Map(); // Key: layerId (string), Value: L.GeoJSON (矢量要素)
+
         this.isReady = false;
         this.tileServiceBase = "http://localhost:8005";
         this.PROJ_DEFS = {
@@ -23,7 +27,7 @@ export class MapEngine {
         try {
             this.map = L.map(this.containerId, {
                 zoomControl: false,
-                preferCanvas: true
+                preferCanvas: true // 开启 Canvas 渲染，大幅提升海量矢量要素渲染性能
             }).setView([35, 105], 4);
 
             L.control.zoom({ position: 'bottomright' }).addTo(this.map);
@@ -38,6 +42,7 @@ export class MapEngine {
             console.error("[MapEngine] 初始化异常:", e);
         }
     }
+
     _projectToWGS84(boundsArray, sourceCRS = "EPSG:32651") {
         if (typeof proj4 === 'undefined') {
             console.error("[MapEngine] ❌ 未发现 proj4 库。");
@@ -145,5 +150,73 @@ export class MapEngine {
             this.map.fitBounds(leafletBounds, { padding: [40, 40], animate: true });
         }
         console.groupEnd();
+    }
+
+    /**
+     * 更新或创建矢量 GeoJSON 图层
+     * 适配 MapController.js 中的 this.engine.updateVectorLayer('annotation-layer', geojson)
+     */
+    updateVectorLayer(layerId, geojson, selectedId) {
+        if (!this.isReady) return;
+
+        let vectorLayer = this.vectorLayers.get(layerId);
+
+        // 每次调用都生成最新的 style 函数，确保拿到最新的 selectedId
+        const dynamicStyle = function (feature) {
+            // 补全缺失的变量声明与逻辑判定
+            const isSelected = feature.properties?.id && feature.properties.id === selectedId;
+            const featureColor = feature.properties?.color || "#4f46e5";
+
+            return {
+                color: isSelected ? "#ef4444" : featureColor,  // 边框颜色
+                weight: isSelected ? 4 : 2,                    // 边框粗细
+                opacity: 1,                                    // 边框透明度
+                fillColor: featureColor,                       // 填充颜色
+                fillOpacity: 0.3,                              // 填充透明度
+                className: 'vector-polygon-blend'              // 混合模式类名
+            };
+        };
+
+        if (!vectorLayer) {
+            // 第一次加载：创建图层并配置样式
+            console.log(`[MapEngine] 🎨 初始化矢量图层: ${layerId}`);
+            vectorLayer = L.geoJSON(geojson, {
+                style: dynamicStyle,
+                // 绑定点击事件，供UI侧拉取属性面板
+                onEachFeature: (feature, layer) => {
+                    layer.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e); // 阻止事件冒泡到地图
+                        // 派发全局事件给 UI 层监听
+                        window.dispatchEvent(new CustomEvent('inspect-feature', {
+                            detail: { id: feature.properties?.id, feature }
+                        }));
+                    });
+                }
+            });
+
+            vectorLayer.addTo(this.map);
+            this.vectorLayers.set(layerId, vectorLayer);
+        } else {
+            // 图层已存在：清空旧数据，注入新数据
+            console.log(`[MapEngine] 🔄 更新矢量图层: ${layerId}, 要素数量: ${geojson.features?.length || 0}`);
+            vectorLayer.clearLayers();
+            if (geojson && geojson.features && geojson.features.length > 0) {
+                // 将带有最新 selectedId 闭包的函数覆写回去，解决选中不变色的 Bug
+                vectorLayer.options.style = dynamicStyle;
+                vectorLayer.addData(geojson);
+            }
+        }
+    }
+
+    /**
+     * 隐藏或移除矢量图层 (当取消选中图层时调用)
+     */
+    removeVectorLayer(layerId) {
+        const layer = this.vectorLayers.get(layerId);
+        if (layer) {
+            this.map.removeLayer(layer);
+            this.vectorLayers.delete(layerId);
+            console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
+        }
     }
 }
