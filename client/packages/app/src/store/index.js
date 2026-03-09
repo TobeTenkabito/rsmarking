@@ -19,6 +19,8 @@ export const Store = {
             type: "FeatureCollection",
             features: []
         },
+        drawColor: '#4f46e5',
+        selectedFeatureId: null, // 存储当前被选中的要素 ID
     },
 
     // 监听回调
@@ -65,7 +67,6 @@ export const Store = {
         }
     },
 
-
     setProjects(projects) {
         this.state.projects = projects;
         this.notifyVectorChange();
@@ -95,6 +96,7 @@ export const Store = {
         this.notifyVectorChange();
     },
 
+
     /**
      * 更新当前视口的要素集合 (由 MapController 移动结束后调用)
      */
@@ -110,7 +112,6 @@ export const Store = {
         this.state.currentFeatures.features.push(feature);
         this.notifyVectorChange();
     },
-
 
     toggleMergeSelection(id) {
         const index = this.state.selectedMergeIds.indexOf(id);
@@ -128,5 +129,14 @@ export const Store = {
 
     getMergeSelection() {
         return this.state.selectedMergeIds;
+    },
+
+    setDrawColor(color) {
+        this.state.drawColor = color;
+    },
+
+    setSelectedFeatureId(id) {
+        this.state.selectedFeatureId = id;
+        this.notifyVectorChange();
     }
 };
