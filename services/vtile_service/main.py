@@ -6,16 +6,13 @@ from typing import Optional
 from uuid import UUID
 import os
 
-# =============================================================================
-# DATABASE CONFIGURATION (Optimized for Read)
-# =============================================================================
 
 DATABASE_URL = os.getenv(
     "VTILER_DATABASE_URL",
     "postgresql+asyncpg://rs_admin:rs_password@localhost:5432/vector_db"
 )
 
-# 使用专用的只读引擎，增大连接池以支持瓦片并发拉取
+
 engine = create_async_engine(
     DATABASE_URL,
     pool_size=40,
@@ -38,19 +35,11 @@ async def get_db():
             await session.close()
 
 
-# =============================================================================
-# FASTAPI APP
-# =============================================================================
-
 app = FastAPI(
     title="Vector Tile Service",
     description="High-performance MVT rendering engine using PostGIS"
 )
 
-
-# =============================================================================
-# CORE RENDERING LOGIC (ST_AsMVT Implementation)
-# =============================================================================
 
 @app.get(
     "/tiles/{layer_id}/{z}/{x}/{y}.pbf",
@@ -120,10 +109,6 @@ async def get_tile(
 
 from fastapi import Response
 
-
-# =============================================================================
-# HEALTH CHECK
-# =============================================================================
 
 @app.get("/health")
 async def health_check():
