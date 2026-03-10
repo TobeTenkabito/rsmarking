@@ -2,7 +2,7 @@
 
 遥感影像高性能标注系统
 
-[English](#English Documentation) | [中文](#中文文档)
+[English](#english-documentation) | [中文](#中文文档)
 
 ---
 
