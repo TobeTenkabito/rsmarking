@@ -9,18 +9,19 @@
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
+│   │   │   ├── AnnotationModule.js  # 负责矢量标注的模块
 │   │   ├── /store
 │   │   │   ├──index.js     # 核心状态管理中心
 │   │   ├── main.js         # 接口
-│   ├── /packages/core/src  # 核心渲染接口
+│   ├── /packages/core/src  # 地图核心渲染接口
 │   │   ├── map.js
 │   ├── /packages/ui/src    # 业务组件 (属性编辑器、任务看板)
 │   │   ├── /components
 │   │   │   ├── Modal.js    # 负责所有弹出层内容的 HTML 模板渲染
 │   │   │   ├── Sidebar.js  # 处理左侧影像资源列表的渲染
 │   │   ├── /templates
-│   │   │   ├── Modal.js    # 存放所有大型 HTML 骨架片段
-│   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)
+│   │   │   ├── Modals.js    # 存放所有大型 HTML 骨架片段
+│   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
 ├── /services               # 后端微服务化 (或高内聚模块)
 │   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限
 │   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
@@ -47,6 +48,13 @@
 │   │   │   ├── rendering.pyx
 │   │   │   ├── translator.pyx
 │   ├── /annotation_service # 矢量要素增删改查、空间索引 (PostGIS 交互)
+│   │   ├── __init__.py
+│   │   ├── /crud/feature.py  # 数据库增删查改
+│   │   ├── /models/feature.py  # project,layer,feature等模型定义
+│   │   ├── control.py   # features 的路由层
+│   │   ├── projects.py  # projects 的路由层
+│   │   ├── database.py  # 数据库连接
+│   │   ├── main.py  # 服务接口
 │   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等

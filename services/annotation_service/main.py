@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 
 from services.annotation_service.database import engine
-from services.annotation_service import control, projects
+from services.annotation_service import layers, projects
 
 
 @asynccontextmanager
