@@ -2,13 +2,13 @@
 
 遥感影像高性能标注系统
 
-English | 中文
+[English](#English Documentation) | [中文](#中文文档)
 
 ---
 
-<a name="english"></a>
 
-## 🇬🇧 English Documentation
+
+##  English Documentation
 
 ### 1. Introduction
 
@@ -89,9 +89,7 @@ npm run dev
 
 ---
 
-<a name="中文"></a>
-
-## 🇨🇳 中文文档
+## 中文文档
 
 ### 1. 简介
 
@@ -254,3 +252,4 @@ High coverage reports from **Vitest** and **Pytest**.
 
 *渲染延迟随 tile 大小增加的趋势(3 波段，128–4096 像素)*
 
+[Come Back to the Top](#rsmarking-high-performance-remote-sensing-annotation-system)
