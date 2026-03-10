@@ -7,6 +7,12 @@ export class MapEngine {
         this.layers = new Map();       // Key: index_id (string), Value: L.TileLayer (栅格瓦片)
         this.vectorLayers = new Map(); // Key: layerId (string), Value: L.GeoJSON (矢量要素)
 
+        // 容器缓存
+        this.spatialIndices = new Map(); // layerId -> RBush 实例
+        this.selectedStates = new Map(); // layerId -> selectedId
+        // 使用单例 Canvas 渲染器，减少 GPU 上下文切换
+        this.canvasRenderer = L.canvas({ padding: 0.5, tolerance: 5 });
+
         this.isReady = false;
         this.tileServiceBase = "http://localhost:8005";
         this.PROJ_DEFS = {
@@ -142,74 +148,75 @@ export class MapEngine {
      * 适配 MapController.js 中的 this.engine.updateVectorLayer('annotation-layer', geojson)
      */
     updateVectorLayer(layerId, geojson, selectedId) {
-    if (!this.isReady || !this.map) return;
+        if (!this.isReady || !this.map) return;
+        const vectorLayer = this.vectorLayers.get(layerId);
+        const prevSelectedId = this.selectedStates.get(layerId);
+        // 1. 数据更新检查：若不存在或指纹变了，重写整个图层
+        if (!vectorLayer || this._shouldRefreshData(vectorLayer, geojson)) {
+            this.selectedStates.set(layerId, selectedId);
+            this._setupLayer(layerId, geojson);
+            return;
+        }
+        // 2. 局部样式更新
+        if (prevSelectedId !== selectedId) {
+            const index = this.spatialIndices.get(layerId);
+            if (!index) return;
+            this.selectedStates.set(layerId, selectedId);
+            const layersToUpdate = [];
+            if (prevSelectedId) layersToUpdate.push(index.get(prevSelectedId));
+            if (selectedId) layersToUpdate.push(index.get(selectedId));
+            layersToUpdate.forEach(layer => {
+                if (layer) {
+                    const isNowSelected = (layer.feature.id || layer.feature.properties?.id) === selectedId;
+                    layer.setStyle(this._getStyleConfig(layer.feature, isNowSelected));}});}}
 
-    // 1. 获取图层缓存
-    let vectorLayer = this.vectorLayers.get(layerId);
-
-    // 2. 定义高阶样式函数
-    const getFeatureStyle = (feature) => {
-        const fid = feature.id || feature.properties?.id;
-        const isSelected = fid && fid === selectedId;
-        const featureColor = feature.properties?.color || "#4f46e5";
-
-        return {
-            color: isSelected ? "#ef4444" : featureColor,
-            weight: isSelected ? 3 : 1.5, // 稍微调细一点更精致
-            opacity: 1,
-            fillColor: featureColor,
-            fillOpacity: isSelected ? 0.5 : 0.2, // 选中时填充加深
-            className: 'vector-polygon-blend'
-        };
-    };
-
-    // 3. 情况 A：图层不存在，进行首次初始化
-    if (!vectorLayer) {
-        console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
-        vectorLayer = L.geoJSON(geojson, {
-            style: getFeatureStyle,
+    _setupLayer(layerId, geojson) {
+        if (this.vectorLayers.has(layerId)) {
+            this.map.removeLayer(this.vectorLayers.get(layerId));
+        }
+        const index = new Map();
+        const vectorLayer = L.geoJSON(geojson, {
+            renderer: this.canvasRenderer,
+            style: (f) => this._getStyleConfig(f, f.id === this.selectedStates.get(layerId)),
             onEachFeature: (feature, layer) => {
+                const fid = feature.id || feature.properties?.id;
+                if (fid) index.set(fid, layer);
                 layer.on('click', (e) => {
                     L.DomEvent.stopPropagation(e);
-                    const fid = feature.id || feature.properties?.id;
-                    window.dispatchEvent(new CustomEvent('inspect-feature', {
-                        detail: { id: fid, feature, layerId: layerId } // 额外传出 layerId 方便追踪
-                    }));
+                    this._dispatchInspect(fid, feature, layerId);
                 });
             }
         });
+
         vectorLayer.addTo(this.map);
         this.vectorLayers.set(layerId, vectorLayer);
-        return;
+        this.spatialIndices.set(layerId, index);
+        vectorLayer._hash = this._generateHash(geojson);
     }
 
-    // 4. 情况 B：图层已存在，执行增量/局部更新（性能核心）
-
-    // 技巧：判断数据指纹是否变化（简单判断要素数量和第一个要素ID）
-    // 如果你追求极致性能，这里可以做更深的 DeepEqual，但通常 clear + addData 足够
-    const currentCount = vectorLayer.getLayers().length;
-    const newDataCount = geojson?.features?.length || 0;
-
-    // 只有当数据量变了，或者要素集合变了，才重新加载几何体
-    if (currentCount !== newDataCount) {
-        vectorLayer.clearLayers();
-        if (newDataCount > 0) {
-            vectorLayer.addData(geojson);
-        }
+    _getStyleConfig(feature, isSelected) {
+        const color = feature.properties?.color || "#4f46e5";
+        return {
+            fillColor: color,
+            fillOpacity: isSelected ? 0.7 : 0.2,
+            color: isSelected ? "#ff0000" : color,
+            weight: isSelected ? 3 : 1,
+            interactive: true
+        };
     }
 
-    // 5. 无论几何体是否重绘，都统一更新一次样式（解决选中高亮问题）
-    // setStyle 是 Leaflet 最快的样式更新方式，它直接修改现有 SVG 元素的属性，不重新创建 DOM
-    vectorLayer.setStyle(getFeatureStyle);
-}
+    _generateHash(geojson) {
+        return `${geojson?.features?.length || 0}_${geojson?.features?.[0]?.id || ''}`;
+    }
+
+    _shouldRefreshData(layer, geojson) {
+        return layer._hash !== this._generateHash(geojson);
+    }
 
     syncVisibleLayers(visibleIdsArray) {
         if (!this.isReady) return;
         const visibleSet = new Set(visibleIdsArray);
-
-        // 遍历缓存中的所有图层实例
         for (const [layerId, vectorLayer] of this.vectorLayers.entries()) {
-            // 如果某图层不在最新可见列表中，从地图中拔除并销毁缓存
             if (!visibleSet.has(layerId)) {
                 this.map.removeLayer(vectorLayer);
                 this.vectorLayers.delete(layerId);
