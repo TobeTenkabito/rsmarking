@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>遥感标注系统 - 前端逻辑单元测试</title>
+    <!-- 引入 Mocha 样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/mocha/mocha.css" />
+    <style>
+        body { font-family: sans-serif; background: #f4f4f9; }
+        #mocha { margin-left: 0; margin-right: 0; }
+        #map-test-container { display: none; } /* 测试用的隐藏地图容器 */
+    </style>
+</head>
+<body>
+    <div id="mocha"></div>
+    <div id="map-test-container"></div>
+
+    <!-- 1. 引入测试框架库 -->
+    <script src="https://unpkg.com/mocha/mocha.js"></script>
+    <script src="https://unpkg.com/chai/chai.js"></script>
+    <!-- 引入 Leaflet (测试环境需要真实 Leaflet 对象) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script type="module">
+        // 2. 初始化测试环境
+        mocha.setup('bdd');
+        const expect = chai.expect;
+
+        // 模拟全局业务变量
+        window.__app_id = 'test-app-id';
+        window.RS = { cancelDraw: () => {}, exitEditMode: () => {} };
+
+        // 3. 导入待测模块 (注意：路径需相对于当前 HTML 文件)
+        // 假设路径为 ../../client/packages/app/src/...
+        import { Store } from '../../client/packages/app/src/store/index.js';
+        import { AnnotationModule } from '../../client/packages/app/src/modules/AnnotationModule.js';
+
+        // 4. 编写测试用例
+        describe('Store 状态机测试', () => {
+            beforeEach(() => {
+                Store.state.activeVectorLayerId = null;
+                Store.state.visibleVectorLayerIds = new Set();
+            });
+
+            it('切换图层可见性逻辑应正确', () => {
+                Store.toggleVectorVisibility('layer-1');
+                expect(Store.state.visibleVectorLayerIds.has('layer-1')).to.be.true;
+                Store.toggleVectorVisibility('layer-1');
+                expect(Store.state.visibleVectorLayerIds.has('layer-1')).to.be.false;
+            });
+        });
+
+        describe('AnnotationModule 交互测试', () => {
+            let map;
+            before(() => {
+                map = L.map('map-test-container').setView([0, 0], 10);
+            });
+
+            it('撤销点功能 undoLastPoint 应能正常调用', () => {
+                const module = new AnnotationModule(map);
+                const mockHandler = {
+                    enabled: () => true,
+                    deleteLastVertex: () => { mockHandler.called = true; },
+                    called: false
+                };
+                module.currentHandler = mockHandler;
+                module.undoLastPoint();
+                expect(mockHandler.called).to.be.true;
+            });
+        });
+
+        // 5. 执行测试
+        mocha.run();
+    </script>
+</body>
+</html>
