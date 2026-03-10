@@ -187,7 +187,7 @@ export class MapController {
      * 适配 main.js 中暴露的 RS 全局变量
      */
     handleVectorStateChange(state) {
-        // 🆕 核心逻辑：通知底层引擎同步当前的可见图层列表，清理掉被取消勾选的图层
+        // 核心逻辑：通知底层引擎同步当前的可见图层列表，清理掉被取消勾选的图层
         if (this.engine.syncVisibleLayers) {
             this.engine.syncVisibleLayers(Array.from(state.visibleVectorLayerIds));
         }

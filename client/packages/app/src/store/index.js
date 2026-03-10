@@ -144,6 +144,7 @@ export const Store = {
         this.state.selectedFeatureId = id;
         this.notifyVectorChange();
     },
+
     // 切换单个图层的地图可见性
     toggleVectorVisibility(layerId) {
         if (this.state.visibleVectorLayerIds.has(layerId)) {

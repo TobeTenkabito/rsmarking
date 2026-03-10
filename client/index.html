@@ -138,9 +138,9 @@
                                         <input type="color" id="draw-color-picker" value="#4f46e5" onchange="RS.setDrawColor(this.value)" class="w-5 h-5 p-0 border-0 rounded cursor-pointer">
                                     </div>
                                     <div class="flex items-center space-x-2">
-                                        <button id="btn-delete-feature" onclick="RS.deleteSelectedFeature()" class="hidden text-[10px] bg-red-50 text-red-500 px-2 py-1 rounded border border-red-200 hover:bg-red-100 hover:text-red-600 transition-colors">删除选中</button>
-                                        <button onclick="RS.cancelDraw(null)" class="text-[10px] text-red-500 hover:underline">取消</button>
-                                        <button onclick="RS.exitEditMode()" class="text-[10px] text-red-600 hover:underline">退出</button>
+                                        <button id="btn-delete-feature" onclick="RS.deleteSelectedFeature()" class="hidden text-[10px] bg-red-50 text-red-400 px-2 py-1 rounded border border-red-200 hover:bg-red-100 hover:text-red-600 transition-colors">撤销</button>
+                                        <button onclick="RS.cancelDraw(null)" class="text-[10px] text-blue-500 hover:underline">取消</button>
+                                        <button onclick="RS.exitEditMode()" class="text-[10px] text-blue-600 hover:underline">退出</button>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2">
