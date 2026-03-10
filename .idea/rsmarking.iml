@@ -3,6 +3,7 @@
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/services/tile_service/build/lib.win-amd64-cpython-312" />
+      <excludeFolder url="file://$MODULE_DIR$/storage" />
     </content>
     <orderEntry type="jdk" jdkName="rsmarking" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

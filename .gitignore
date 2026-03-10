@@ -53,3 +53,5 @@ Thumbs.db
 # Files
 # =========================
 storage/
+
+benchmark_results/

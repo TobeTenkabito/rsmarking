@@ -231,3 +231,26 @@ Real-time status of **tile service** and **annotation engine**.
 
 High coverage reports from **Vitest** and **Pytest**.  
 来自 **Vitest** 和 **Pytest** 的高覆盖率测试报告。
+
+---
+
+## 6. ⚙️ Performance Results / 性能结果
+
+### 6.1 Rendering Engine Performance / 渲染引擎性能
+
+#### 6.1.1 Concurrency Test / 高并发争抢测试
+
+![Figure 6-1-1 Vector Example](resources/6_1_1.png)
+
+*Relationship between band and latency under high concurrency*
+
+*高并发下波段与延迟的关系*
+
+#### 6.1.2 Rendering Test / 渲染测试
+
+![Figure 6-1-2 Vector Example](resources/6_1_2.png)
+
+*The trend of rendering latency increasing with tile size(3 bands, 128–4096 pixels)*
+
+*渲染延迟随 tile 大小增加的趋势(3 波段，128–4096 像素)*
+
