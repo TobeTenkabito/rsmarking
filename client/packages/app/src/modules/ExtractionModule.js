@@ -2,6 +2,9 @@ import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { Store } from '../store/index.js';
 
+/**
+ * ExtractionModule - 负责多波段特征提取逻辑（植被、水体、建筑等）
+ */
 export class ExtractionModule {
     constructor(app) {
         this.app = app;
@@ -91,30 +94,28 @@ export class ExtractionModule {
         const threshold = parseFloat(document.getElementById('extract-threshold-input')?.value || 0);
         const name = document.getElementById('extract-name-input')?.value || `Extract_${Date.now()}`;
         const mode = document.getElementById('extract-mode-input')?.value.trim() || "";
-
-        this.app.showGlobalLoader(true);
+        this.app.ui.showGlobalLoader(true);
         try {
             if (this.currentType === 'VEGETATION') {
                 await RasterAPI.extractVegetation(bandIds, name, threshold , mode );
             } else if (this.currentType === 'WATER') {
                 await RasterAPI.extractWater(bandIds, name, threshold, mode );
             } else if (this.currentType === 'BUILDING') {
-                await RasterAPI.extractBuildings(bandIds, name, redId);
+                await RasterAPI.extractBuildings(bandIds, name, mode);
             } else if (this.currentType === 'CLOUD') {
-                await RasterAPI.extractClouds(bandIds, name, swirId);
+                await RasterAPI.extractClouds(bandIds, name, mode);
             }
             else {
                 console.log("执行多波段提取:", bandIds);
                 await RasterAPI.extractBuildings(bandIds, name, mode);
             }
-
             this.closeModal();
-            await this.app.refreshData();
+            await this.app.raster.refreshData();
         } catch (e) {
             console.error(e);
             alert(`要素提取任务失败: ${e.message}`);
         } finally {
-            this.app.showGlobalLoader(false);
+            this.app.ui.showGlobalLoader(false);
         }
     }
 }

@@ -10,7 +10,6 @@ export class AnalysisModule {
         this.app = app;
         this.currentType = null;
     }
-
     /**
      * 打开计算弹窗并动态生成波段选择器
      */
@@ -19,14 +18,10 @@ export class AnalysisModule {
             alert("工作站暂无影像，请先上传数据");
             return;
         }
-
         this.currentType = type;
         const content = document.getElementById('index-content');
         const bar = document.getElementById('index-modal-bar');
-
-        // 调用 UI 组件生成 HTML 内容
         content.innerHTML = ModalComponent.renderIndexConfig(type, Store.state.rasters);
-
         const themeColors = {
             'NDVI': '#10b981', // emerald
             'NDWI': '#3b82f6', // blue
@@ -37,19 +32,15 @@ export class AnalysisModule {
         if (bar) bar.style.backgroundColor = themeColors[type] || '#6366f1';
         document.getElementById('index-modal').classList.remove('hidden');
     }
-
     closeModal() {
         document.getElementById('index-modal').classList.add('hidden');
     }
-
     async execute() {
         const b1 = document.getElementById('index-b1-select').value;
         const b2 = document.getElementById('index-b2-select').value;
         const name = document.getElementById('index-name-input').value;
-
         if (!name) return alert("请输入结果图层名称");
-
-        this.app.showGlobalLoader(true);
+        this.app.ui.showGlobalLoader(true);
         try {
             let result;
             switch (this.currentType) {
@@ -59,11 +50,11 @@ export class AnalysisModule {
                 case 'MNDWI': result = await RasterAPI.calculateMNDWI(b1, b2, name); break;
             }
             this.closeModal();
-            await this.app.refreshData(); // 刷新列表
+            await this.app.raster.refreshData();
         } catch (e) {
             alert(`空间运算失败: ${e.message}`);
         } finally {
-            this.app.showGlobalLoader(false);
+            this.app.ui.showGlobalLoader(false);
         }
     }
 }

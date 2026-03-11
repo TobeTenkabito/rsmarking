@@ -138,9 +138,7 @@ export const SidebarComponent = {
         `;
     },
 
-    // ==========================================
-    // 矢量部分专用渲染 (不混合进栅格逻辑)
-    // ==========================================
+
     renderVectorSection(projects, activeProject, layers, activeLayerId, visibleIds) {
     if (!projects || projects.length === 0) return this.renderEmpty('暂无标注项目');
 

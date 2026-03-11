@@ -1,0 +1,53 @@
+import { Store } from '../store/index.js';
+
+export class GlobalBridge {
+    constructor(app) {
+        this.app = app;
+    }
+
+    mount() {
+        window.RS = {
+            // --- 基础操作 ---
+            fetchRasters: () => this.app.raster.refreshData(),
+            clearDatabase: () => this.app.raster.handleClearDatabase(),
+
+            // --- 指数分析 ---
+            openIndexModal: (type) => this.app.analysis?.openModal(type),
+            closeIndexModal: () => this.app.analysis?.closeModal(),
+            executeIndexCalculation: () => this.app.analysis?.execute(),
+
+            // --- 要素提取 ---
+            openExtractionModal: (type) => this.app.extraction?.openModal(type),
+            closeExtractionModal: () => this.app.extraction?.closeModal(),
+            runExtraction: () => this.app.extraction?.run(),
+
+            // --- 波段合成 ---
+            openMergeModal: () => this.app.raster.handleOpenMergeModal(),
+            closeMergeModal: () => document.getElementById('merge-modal')?.classList.add('hidden'),
+            executeMerge: () => this.app.raster.handleExecuteMerge(),
+            toggleMergeItem: (id) => this.app.raster.handleToggleMergeSelection(id),
+
+            // --- UI 辅助 ---
+            hideDetail: () => this.app.ui.hideDetail(),
+
+            // --- 矢量项目系统 ---
+            createProject: () => this.app.project.handleCreateProject(),
+            selectProject: (id) => this.app.project.handleSelectProject(id),
+            createLayer: () => this.app.project.handleCreateLayer(),
+            toggleVectorLayer: (id) => this.app.project.handleToggleVectorLayer(id),
+
+            // --- 标注工具控制 ---
+            toggleEditMode: (enabled) => this.app.annotation?.toggleEditMode?.(enabled),
+            toggleVectorVisibility: (layerId) => Store.toggleVectorVisibility(layerId),
+            setActiveVectorLayer: (layerId) => Store.setActiveVectorLayer(layerId),
+            setDrawMode: (mode) => this.app.project.handleSetDrawMode(mode),
+            cancelDraw: () => this.app.project.handleCancelDraw(),
+            exitEditMode: () => this.app.project.handleExitEditMode(),
+            setDrawColor: (color) => Store.setDrawColor(color),
+            deleteSelectedFeature: () => this.app.project.handleDeleteSelectedFeature(),
+
+            // 兼容性接口
+            refreshData: () => this.app.raster.refreshData(),
+        };
+    }
+}
