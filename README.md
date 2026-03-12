@@ -72,9 +72,17 @@ alembic upgrade head
 #### Step 3: Start Backend Services
 
 ```bash
+conda env create -f environment.yml
+conda activate your env
+
 cd services/tile_service
-pip install -r requirements.txt
-python main.py   # Starts on port 8005
+python main.py
+
+cd services/data_service  # main app
+python main.py
+
+cd services/annotation_service
+python main.py
 ```
 
 ---
@@ -160,9 +168,17 @@ alembic upgrade head
 #### 第三步：启动后端服务
 
 ```bash
+conda env create -f environment.yml
+conda activate your env
+
 cd services/tile_service
-pip install -r requirements.txt
-python main.py   # 默认在 8005 端口启动
+python main.py
+
+cd services/data_service  # main app 
+python main.py
+
+cd services/annotation_service
+python main.py
 ```
 
 ---
