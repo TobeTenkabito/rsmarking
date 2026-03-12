@@ -13,7 +13,7 @@ export const SidebarComponent = {
         } = data;
 
         return `
-            <!-- 1. 栅格影像区域 (保留原始逻辑) -->
+            <!-- 1. 栅格影像区域 -->
             <div class="mb-6">
                 <div class="px-4 py-2 flex justify-between items-center mb-1">
                     <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">影像资源 (Raster)</h3>
@@ -27,7 +27,7 @@ export const SidebarComponent = {
             <!-- 分割线 -->
             <div class="mx-4 border-t border-slate-100 my-4"></div>
 
-            <!-- 2. 矢量标注区域 (新增逻辑) -->
+            <!-- 2. 矢量标注区域 -->
             <div class="mb-6">
                 <div class="px-4 py-2 flex justify-between items-center mb-1">
                     <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">标注项目 (Vector)</h3>

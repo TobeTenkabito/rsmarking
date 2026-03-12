@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class RasterMetadata(Base):
-    """遥感影像元数据表"""
+    """栅格元数据表"""
     __tablename__ = "raster_metadata"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

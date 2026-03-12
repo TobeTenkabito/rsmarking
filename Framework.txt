@@ -15,7 +15,7 @@
 │   │   ├── /core/
 │   │   │   ├── UIManager.js      # 负责所有 DOM 注入和显隐状态
 │   │   │   ├── GlobalBridge.js   # 负责挂载 window.RS
-│   │   ├── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
+│   │   │   ├── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
 │   │   ├── /store
 │   │   │   ├──index.js     # 核心状态管理中心
 │   │   ├── main.js         # 接口
@@ -61,10 +61,10 @@
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   ├── main.py  # 服务接口
-│   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡
+│   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡 "未实现"
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
-│   ├── /implement          # 核心函数
+│   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
 │   │   ├── /extraction     # 提取算法(已实现部分，这里略过)
 │   │   ├── __init__.py
 │   │   ├── io_ops.py            # cog转换，构建金字塔
@@ -87,6 +87,6 @@
 ├── /storage               # 本地磁盘/云磁盘(可修改)
 │   ├──/cog                # 可服务对象
 │   ├──/raw                # 原始对象
-└── /tests                 # 自动化测试
+└── /tests                 # 自动化测试  "未实现"
     ├── /e2e               # Playwright 端到端测试
     └── /benchmark         # 性能压测脚本 (针对瓦片加载和空间查询)
