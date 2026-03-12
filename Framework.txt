@@ -29,7 +29,7 @@
 │   │   │   ├── Modals.js    # 存放所有大型 HTML 骨架片段
 │   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
 ├── /services               # 后端微服务化 (或高内聚模块)
-│   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限
+│   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限 "未实现"
 │   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
 │   │   ├── __init__.py
 │   │   ├── control.py      # 后端路由层
@@ -57,7 +57,7 @@
 │   │   ├── __init__.py
 │   │   ├── /crud/feature.py  # 数据库增删查改
 │   │   ├── /models/feature.py  # project,layer,feature等模型定义
-│   │   ├── control.py   # features 的路由层
+│   │   ├── layers.py   # features 的路由层
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   ├── main.py  # 服务接口
