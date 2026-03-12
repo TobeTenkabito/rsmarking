@@ -65,6 +65,15 @@ export const VectorAPI = {
     },
 
     /**
+     * 【危险/调试专用】删除所有项目及其关联的图层和要素
+     */
+    async deleteAllProjects() {
+        return await apiRequest(`${ANNO_BASE_URL}/projects`, {
+            method: 'DELETE'
+        });
+    },
+
+    /**
      * 创建标注图层 (可关联影像 index_id)
      */
     async createLayer(projectId, name, sourceRasterIndexId = null) {

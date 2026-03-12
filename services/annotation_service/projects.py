@@ -26,3 +26,9 @@ async def create_layer(project_id: UUID, layer_in: LayerCreate, db: AsyncSession
 @router.get("/projects/{project_id}/layers")
 async def list_layers(project_id: UUID, db: AsyncSession = Depends(get_db)):
     return await LayerCRUD(db).get_layers_by_project(project_id)
+
+
+@router.delete("/projects", status_code=204)
+async def clear_all_projects(db: AsyncSession = Depends(get_db)):
+    count = await LayerCRUD(db).delete_all_projects()
+    return {"deleted_count": count}

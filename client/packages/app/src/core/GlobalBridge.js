@@ -9,7 +9,9 @@ export class GlobalBridge {
         window.RS = {
             // --- 基础操作 ---
             fetchRasters: () => this.app.raster.refreshData(),
-            clearDatabase: () => this.app.raster.handleClearDatabase(),
+            clearDatabase: async () => {
+            await this.app.raster.handleClearDatabase();
+            await this.app.project.handleDeleteAllProjects();},
 
             // --- 指数分析 ---
             openIndexModal: (type) => this.app.analysis?.openModal(type),

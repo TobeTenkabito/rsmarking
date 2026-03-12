@@ -199,3 +199,14 @@ class LayerCRUD:
     async def get_layer(self, layer_id: UUID) -> Optional[Layer]:
         result = await self.db.execute(select(Layer).where(Layer.id == layer_id))
         return result.scalar_one_or_none()
+
+    async def delete_all_projects(self):
+        """
+        清空所有项目及其关联数据
+        由于模型中定义了 ForeignKey(ondelete="CASCADE")，
+        数据库会自动清理 layers 和 features 表。
+        """
+        stmt = delete(Project)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.rowcount  # 返回删除的记录数

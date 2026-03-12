@@ -106,7 +106,6 @@ export class ProjectModule {
     async handleDeleteSelectedFeature() {
         const targetId = Store.state.selectedFeatureId;
         if (!targetId) return;
-
         if (confirm('确认删除该标注？')) {
             try {
                 await VectorAPI.deleteFeature(targetId);
@@ -121,6 +120,28 @@ export class ProjectModule {
                 console.error('删除失败', err);
                 alert('删除失败，请检查网络或控制台');
             }
+        }
+    }
+
+    /**
+     * 【调试/管理】删除所有项目并重置 UI 状态
+     */
+    async handleDeleteAllProjects() {
+        const isConfirmed = confirm("确定要删除所有项目及其关联的所有图层、要素吗？此操作不可撤销！");
+        if (!isConfirmed) return;
+        this.app.ui.showGlobalLoader(true);
+        try {
+            await VectorAPI.deleteAllProjects();
+            Store.setActiveProject(null);
+            Store.setVectorLayers([]);
+            Store.setProjects([]);
+            await this.refreshProjects();
+            alert("所有矢量项目已清空");
+        } catch (e) {
+            console.error("[ProjectModule] 清空项目失败:", e);
+            alert(`清空项目失败: ${e.message}`);
+        } finally {
+            this.app.ui.showGlobalLoader(false);
         }
     }
 }
