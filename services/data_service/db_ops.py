@@ -118,6 +118,42 @@ async def process_extraction_task(db: AsyncSession, band_ids: List[int], new_nam
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_calculator_task(
+        db: AsyncSession,
+        var_mapping: dict[str, int],
+        expression: str,
+        new_name: str,
+        prefix: str
+):
+    try:
+        # 获取所有相关 raster_id 的路径
+        raster_ids = list(var_mapping.values())
+        paths = await _get_band_paths(db, raster_ids)
+
+        # 将 var_name -> raster_id 转换为 var_name -> file_path
+        path_mapping = {
+            var_name: paths[raster_ids.index(r_id)]
+            for var_name, r_id in var_mapping.items()
+        }
+
+        task_id = str(uuid.uuid4())
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        RasterProcessor.run_raster_calculator(path_mapping, expression, tmp_path)
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
+
+    except Exception as e:
+        logger.error(f"栅格计算器任务失败: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def get_dynamic_band_ids(request: Request) -> List[int]:
     form_data = await request.form()
     id_keys = [

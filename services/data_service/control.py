@@ -187,3 +187,31 @@ async def delete_raster(raster_id: int, db: AsyncSession = Depends(get_db)):
 async def clear_database(db: AsyncSession = Depends(get_db)):
     await RasterCRUD.clear_all_rasters(db)
     return {"message": "Database cleared"}
+
+
+@router.post("/raster-calculator")
+async def raster_calculator_api(
+        request: Request,
+        expression: str = Form(...),
+        new_name: str = Form(...),
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    接收参数示例:
+    expression: "(A - B) / (A + B)"
+    var_A: 101 (raster_id)
+    var_B: 102 (raster_id)
+    """
+    form_data = await request.form()
+    var_mapping = {}
+    for key, value in form_data.items():
+        if key.startswith("var_"):
+            var_name = key[4:]
+            var_mapping[var_name] = int(value)
+
+    if not var_mapping:
+        raise HTTPException(status_code=400, detail="未提供参与计算的变量与图层映射")
+
+    return await db_ops.process_calculator_task(
+        db, var_mapping, expression, new_name, "calc"
+    )

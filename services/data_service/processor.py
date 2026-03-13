@@ -3,6 +3,7 @@ import logging
 from typing import TypedDict, TypeAlias, ParamSpec
 from collections.abc import Callable
 import numpy as np
+import numexpr as ne
 import rasterio
 
 from functions.implement.spatial_ops import (
@@ -106,6 +107,40 @@ class RasterProcessor:
             result: BandArray = index_func(band1, band2)
             with rasterio.open(output_path, "w", **meta) as dest:
                 dest.write(result, 1)
+        build_raster_overviews(output_path)
+
+    @staticmethod
+    def run_raster_calculator(path_mapping: dict[str, str], expression: str, output_path: str) -> None:
+        """
+        执行自定义栅格代数运算
+        :param path_mapping: 变量名到文件路径的映射，如 {"A": "path_to_a.tif", "B": "path_to_b.tif"}
+        :param expression: 数学表达式，如 "(A - B) / (A + B)"
+        :param output_path: 结果保存路径
+        """
+        if not path_mapping:
+            raise ValueError("No input variables provided.")
+        arrays_dict = {}
+        meta = None
+        height, width = None, None
+        for var_name, path in path_mapping.items():
+            with rasterio.open(path) as src:
+                if meta is None:
+                    meta = src.meta.copy()
+                    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff"})
+                    height, width = src.height, src.width
+                elif src.height != height or src.width != width:
+                    raise ValueError(f"波段 {var_name} 的维度与其他波段不一致！")
+                arrays_dict[var_name] = src.read(1).astype("float32")
+        try:
+            with np.errstate(divide="ignore", invalid="ignore"):
+                result = ne.evaluate(expression, local_dict=arrays_dict)
+            result = np.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
+
+        except Exception as e:
+            raise ValueError(f"表达式解析或计算失败: {str(e)}")
+        with rasterio.open(output_path, "w", **meta) as dest:
+            dest.write(result, 1)
+
         build_raster_overviews(output_path)
 
     @staticmethod
