@@ -23,6 +23,12 @@ export class GlobalBridge {
             closeExtractionModal: () => this.app.extraction?.closeModal(),
             runExtraction: () => this.app.extraction?.run(),
 
+            // --- 栅格计算器 ---
+            openCalculatorModal: () => this.app.calculator?.openModal(),
+            closeCalculatorModal: () => this.app.calculator?.closeModal(),
+            updateCalculatorVariables: () => this.app.calculator?.handleExpressionChange(),
+            executeCalculator: () => this.app.calculator?.execute(),
+
             // --- 波段合成 ---
             openMergeModal: () => this.app.raster.handleOpenMergeModal(),
             closeMergeModal: () => document.getElementById('merge-modal')?.classList.add('hidden'),

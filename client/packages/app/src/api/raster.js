@@ -111,7 +111,7 @@ export const RasterAPI = {
         return fetch(`${BASE_URL}/calculate-mndwi`, { method: 'POST', body: formData });
     },
 
-    // --- 掩膜提取接口 (已优化为支持动态参数数量) ---
+    // --- 掩膜提取接口---
 
     async extractVegetation(bandIds, newName, threshold = 0.3, ...extraIds) {
         const formData = new FormData();
@@ -155,6 +155,27 @@ export const RasterAPI = {
         formData.append('new_name', newName);
         if (swirId) formData.append('swir_id', swirId);
         return fetch(`${BASE_URL}/extract-clouds`, { method: 'POST', body: formData });
+    },
+
+    /**
+     * 调用后端栅格计算器
+     */
+    async runCalculator(expression, varMapping, newName) {
+        const formData = new FormData();
+        formData.append('expression', expression);
+        formData.append('new_name', newName);
+
+        // 动态追加 var_A=id, var_B=id 等参数
+        for (const [key, value] of Object.entries(varMapping)) {
+            formData.append(key, value);
+        }
+
+        const response = await fetch(`${BASE_URL}/raster-calculator`, {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) throw new Error("计算器执行失败");
+        return await response.json();
     },
 
     // --- 调试接口 ---

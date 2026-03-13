@@ -59,7 +59,7 @@ export const ModalComponent = {
     },
 
     /**
-     * 新增：渲染通用的指数计算配置（NDVI, NDWI, NDBI, MNDWI）
+     * 渲染通用的指数计算配置（NDVI, NDWI, NDBI, MNDWI）
      * @param {string} type - 指数类型
      */
     renderIndexConfig(type, rasters) {
@@ -192,6 +192,28 @@ export const ModalComponent = {
                 </div>
             </div>
         `;
+    },
+
+    /**
+     * 动态渲染计算器变量绑定列表
+     */
+    renderCalculatorVariables(variables, rasters) {
+        if (!variables || variables.length === 0) {
+            return `<div class="text-xs text-slate-400 py-2 italic">输入表达式后，系统将自动识别变量...</div>`;
+        }
+
+        const optionsHtml = rasters.map(r => `<option value="${r.index_id}">${r.file_name || r.name || r.index_id}</option>`).join('');
+
+        return variables.map(v => `
+            <div class="flex items-center space-x-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                <span class="font-mono font-bold text-purple-600 w-8 text-center bg-purple-100 rounded py-1">${v}</span>
+                <span class="text-xs text-slate-400">=</span>
+                <select id="calc-var-${v}" class="flex-1 bg-white border border-slate-200 rounded-md p-1.5 text-xs outline-none">
+                    <option value="" disabled selected>选择映射图层...</option>
+                    ${optionsHtml}
+                </select>
+            </div>
+        `).join('');
     },
 
     /**

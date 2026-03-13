@@ -9,6 +9,7 @@ import { ExtractionModule } from './modules/ExtractionModule.js';
 import { AnnotationModule } from './modules/AnnotationModule.js';
 import { RasterModule } from './modules/RasterModule.js';
 import { ProjectModule } from './modules/ProjectModule.js';
+import {CalculatorModule} from "./modules/CalculatorModule.js" ;
 
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
@@ -39,6 +40,7 @@ class App {
             // 3. 实例化子模块
             this.mapController = new MapController(this.mapEngine);
             this.analysis = new AnalysisModule(this);
+            this.calculator = new CalculatorModule(this);
             this.extraction = new ExtractionModule(this);
             this.annotation = new AnnotationModule(this);
             this.raster = new RasterModule(this);

@@ -48,6 +48,37 @@ export const ModalTemplates = {
         </div>
     `,
 
+    // 栅格计算器骨架
+    calculatorModal: `
+        <div id="calculator-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+            <div class="bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-1.5 bg-purple-500"></div>
+                <h2 class="text-xl font-black text-slate-800 mb-6 tracking-tight">栅格计算器 (Raster Calculator)</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">数学表达式</label>
+                        <input type="text" id="calc-expression-input" placeholder="例如: (A + B - C) / (A - B + C * D)" 
+                               onkeyup="RS.updateCalculatorVariables()"
+                               class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-purple-500/20">
+                    </div>
+
+                    <div id="calc-variables-container" class="space-y-2 max-h-[200px] overflow-y-auto"></div>
+
+                    <div>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block mt-4">结果图层名称</label>
+                        <input type="text" id="calc-name-input" value="Calc_Result" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-purple-500/20">
+                    </div>
+                </div>
+
+                <div class="pt-6 flex flex-col space-y-3">
+                    <button onclick="RS.executeCalculator()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-2xl font-bold text-sm shadow-xl transition-all">执行运算</button>
+                    <button onclick="RS.closeCalculatorModal()" class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">取消</button>
+                </div>
+            </div>
+        </div>
+    `,
+
     // 4. 右下角详情面板
     detailPanel: `
         <div id="detail-panel" class="hidden fixed right-6 bottom-10 w-80 bg-white/95 backdrop-blur-md shadow-2xl rounded-2xl p-5 z-[1002] border border-slate-100 custom-shadow">
