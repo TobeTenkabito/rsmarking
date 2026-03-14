@@ -34,10 +34,10 @@
 │   ├── /executor_service   #
 │   │   ├── main.py            # 执行服务的 API 入口 (FastAPI)
 │   │   ├── runner.py          # Docker 管理逻辑 (容器启动、监控、销毁)
+│   │   ├── config.py          # 存储路径配置 (共享 /storage)
 │   │   └── /runtime           # 运行环境定义
 │   │       ├── python_base.Dockerfile  # 预装常用库的镜像
 │   │       └── sandbox_entry.py        # 容器内的引导程序，负责加载用户代码
-│   └── config.py          # 存储路径配置 (共享 /storage)
 │   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
 │   │   ├── __init__.py
 │   │   ├── control.py      # 后端路由层
@@ -68,8 +68,13 @@
 │   │   ├── layers.py   # features,layers 的路由层
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
-│   │   ├── main.py  # 服务接口
+│   │   └── main.py  # 服务接口
 │   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡 "未实现"
+│   │   ├── main.py
+│   │   ├── prompt_engine.py
+│   │   ├── workflow_builder.py
+│   │   ├── permissions.py
+│   │   └── prompts/workflow_prompt.txt
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
 │   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
@@ -78,7 +83,7 @@
 │   │   ├── io_ops.py            # cog转换，构建金字塔
 │   │   ├── manipulation.py      # 栅格合成
 │   │   ├── spatial_ops.py       # 坐标系转换为wgs84
-│   │   ├── spectral_indices.py  # 遥感常见指数计算
+│   │   └── spectral_indices.py  # 遥感常见指数计算
 │   ├── /ml                # "暂无"
 ├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)"暂无"
 │   ├── /tasks/preprocess  # 影像金字塔构建、统计计算、重投影

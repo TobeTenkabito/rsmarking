@@ -195,8 +195,8 @@ npm run dev
 
 ## 4. Program Construction / 项目结构说明
 
-Please check **start.txt**  
-详情查看 **start.txt**
+Please check **Framework.txt**  
+详情查看 **Framework.txt**
 
 ```text
 .
