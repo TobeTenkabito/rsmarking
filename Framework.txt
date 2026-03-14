@@ -5,14 +5,15 @@
 │   │   ├── /api/
 │   │   │   ├── raster.js  # 栅格api
 │   │   │   ├── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
-│   │   ├── /modules/
+│   │   ├── /modules/  # 功能模块
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
+│   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
 │   │   │   ├── AnnotationModule.js  # 负责矢量标注的模块
 │   │   │   ├── RasterModule.js   # 负责栅格的加载、删除、波段合成
 │   │   │   ├── ProjectModule.js  # 负责矢量项目/图层的增删改查
-│   │   ├── /core/
+│   │   ├── /core/  # 全局模块
 │   │   │   ├── UIManager.js      # 负责所有 DOM 注入和显隐状态
 │   │   │   ├── GlobalBridge.js   # 负责挂载 window.RS
 │   │   │   ├── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
@@ -57,7 +58,7 @@
 │   │   ├── __init__.py
 │   │   ├── /crud/feature.py  # 数据库增删查改
 │   │   ├── /models/feature.py  # project,layer,feature等模型定义
-│   │   ├── layers.py   # features 的路由层
+│   │   ├── layers.py   # features,layers 的路由层
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   ├── main.py  # 服务接口
@@ -71,8 +72,8 @@
 │   │   ├── manipulation.py      # 栅格合成
 │   │   ├── spatial_ops.py       # 坐标系转换为wgs84
 │   │   ├── spectral_indices.py  # 遥感常见指数计算
-│   ├── /ml                # 机器学习(未实现)
-├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)(未实现)
+│   ├── /ml                # "暂无"
+├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)"暂无"
 │   ├── /tasks/preprocess  # 影像金字塔构建、统计计算、重投影
 │   └── /tasks/export      # 异步导出 COCO/GeoJSON/TFRecord
 ├── /core_lib              # [Cython/C++] 高性能底层库(未实现)
@@ -89,4 +90,6 @@
 │   ├──/raw                # 原始对象
 └── /tests                 # 自动化测试  "未实现"
     ├── /e2e               # Playwright 端到端测试
-    └── /benchmark         # 性能压测脚本 (针对瓦片加载和空间查询)
+    ├── /unit              # 单元测试
+    ├── /integration       # 通讯测试
+    └── /benchmark         # 性能压测脚本
