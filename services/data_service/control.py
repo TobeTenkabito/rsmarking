@@ -13,6 +13,7 @@ import services.data_service.models as models
 from services.data_service.processor import RasterProcessor
 from services.data_service.crud import RasterCRUD
 import services.data_service.db_ops as db_ops
+from services.data_service.executor_bridge import dispatch_user_script
 
 # Constants
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -215,3 +216,21 @@ async def raster_calculator_api(
     return await db_ops.process_calculator_task(
         db, var_mapping, expression, new_name, "calc"
     )
+
+
+@router.post("/execute-script")
+async def execute_custom_script(
+        request: Request,
+        script: str = Form(...),
+        output_name: str = Form(...),
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    暴露给前端的自定义脚本执行接口
+    接收表单中的 id_1, id_2... 等动态影像 ID
+    """
+    raster_ids = await db_ops.get_dynamic_band_ids(request)
+    if not raster_ids:
+        raise HTTPException(status_code=400, detail="未选择任何输入影像")
+
+    return await dispatch_user_script(db, script, raster_ids, output_name)

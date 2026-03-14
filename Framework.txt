@@ -29,8 +29,15 @@
 │   │   ├── /templates
 │   │   │   ├── Modals.js    # 存放所有大型 HTML 骨架片段
 │   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
-├── /services               # 后端微服务化 (或高内聚模块)
+├── /services               # 后端微服务化
 │   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限 "未实现"
+│   ├── /executor_service   #
+│   │   ├── main.py            # 执行服务的 API 入口 (FastAPI)
+│   │   ├── runner.py          # Docker 管理逻辑 (容器启动、监控、销毁)
+│   │   └── /runtime           # 运行环境定义
+│   │       ├── python_base.Dockerfile  # 预装常用库的镜像
+│   │       └── sandbox_entry.py        # 容器内的引导程序，负责加载用户代码
+│   └── config.py          # 存储路径配置 (共享 /storage)
 │   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
 │   │   ├── __init__.py
 │   │   ├── control.py      # 后端路由层

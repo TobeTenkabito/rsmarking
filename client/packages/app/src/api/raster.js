@@ -178,8 +178,33 @@ export const RasterAPI = {
         return await response.json();
     },
 
-    // --- 调试接口 ---
 
+    /**
+     * 执行用户自定义 Python 脚本
+     * @param {string} script - Python 代码字符串
+     * @param {Array<number>} rasterIds - 需要参与计算的影像数据库 ID 列表
+     * @param {string} outputName - 结果图层的名称
+     */
+    async executeCustomScript(script, rasterIds, outputName) {
+        const formData = new FormData();
+        formData.append('script', script);
+        formData.append('output_name', outputName);
+        rasterIds.forEach((id, index) => {
+            formData.append(`id_${index + 1}`, id);
+        });
+        const response = await fetch(`${BASE_URL}/execute-script`, {
+            method: 'POST',
+            body: formData
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || "脚本执行失败");
+        }
+        return await response.json();
+    },
+
+
+    // --- 调试接口 ---
     async clearDB() {
         return fetch(`${BASE_URL}/debug/clear-db`);
     }

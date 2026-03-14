@@ -3,7 +3,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete
-from typing import List
+from typing import List, Optional
 from .models import RasterMetadata
 
 logger = logging.getLogger("data_service.crud")
@@ -49,6 +49,13 @@ class RasterCRUD:
         stmt = select(RasterMetadata).order_by(RasterMetadata.created_at.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def get_raster_by_index_id(db: AsyncSession, raster_id: int) -> Optional[RasterMetadata]:
+        """根据数据库主键ID获取单个影像记录"""
+        stmt = select(RasterMetadata).where(RasterMetadata.index_id == raster_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def get_rasters_by_bundle(db: AsyncSession, bundle_id: str) -> List[RasterMetadata]:
