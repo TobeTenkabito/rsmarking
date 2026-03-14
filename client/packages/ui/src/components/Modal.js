@@ -195,27 +195,35 @@ export const ModalComponent = {
     },
 
     /**
-     * 动态渲染计算器变量绑定列表
+     * 渲染计算器变量映射列表
+     * @param {Array} variables 提取出的变量 ['A', 'B']
+     * @param {Array} rasters Store中的影像列表
      */
     renderCalculatorVariables(variables, rasters) {
         if (!variables || variables.length === 0) {
-            return `<div class="text-xs text-slate-400 py-2 italic">输入表达式后，系统将自动识别变量...</div>`;
+            return `
+                <div class="py-6 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+                    <p class="text-[10px] text-slate-300 font-bold uppercase tracking-widest">请在上方输入公式</p>
+                </div>
+            `;
         }
 
-        const optionsHtml = rasters.map(r => `<option value="${r.index_id}">${r.file_name || r.name || r.index_id}</option>`).join('');
-
         return variables.map(v => `
-            <div class="flex items-center space-x-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                <span class="font-mono font-bold text-purple-600 w-8 text-center bg-purple-100 rounded py-1">${v}</span>
-                <span class="text-xs text-slate-400">=</span>
-                <select id="calc-var-${v}" class="flex-1 bg-white border border-slate-200 rounded-md p-1.5 text-xs outline-none">
-                    <option value="" disabled selected>选择映射图层...</option>
-                    ${optionsHtml}
-                </select>
+            <div class="flex items-center space-x-3 p-3 bg-slate-50 border border-slate-100 rounded-xl hover:border-purple-200 transition-all">
+                <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center font-mono font-bold text-xs shadow-sm">
+                    ${v}
+                </div>
+                <div class="flex-1">
+                    <select data-var="${v}" class="calc-var-select w-full bg-transparent text-[11px] font-bold text-slate-600 outline-none cursor-pointer">
+                        <option value="">绑定影像图层...</option>
+                        ${rasters.map(r => `
+                            <option value="${r.index_id}">${r.file_name || r.name || r.index_id}</option>
+                        `).join('')}
+                    </select>
+                </div>
             </div>
         `).join('');
     },
-
     /**
      * 动作等待状态
      */

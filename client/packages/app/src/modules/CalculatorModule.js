@@ -27,18 +27,28 @@ export class CalculatorModule {
     // 监听输入框，利用正则动态提取 A, B, C 等变量并生成下拉框
     handleExpressionChange() {
         const expression = document.getElementById('calc-expression-input').value;
-        // 提取所有连续的英文字母作为变量名，并去重
-        const matches = expression.match(/[a-zA-Z]+/g) || [];
-        const uniqueVars = [...new Set(matches)].filter(v => v.toUpperCase() !== 'NAN');
-
-        this.currentVariables = uniqueVars;
-        this.renderVariableMappers();
-    }
+        const reservedKeywords = [
+        'sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'arctan2',
+        'sinh', 'cosh', 'tanh', 'exp', 'log', 'log10', 'sqrt', 'abs',
+        'where', 'pi', 'e', 'expm1', 'log1p'
+        ];
+        const words = expression.match(/[a-zA-Z]+/g) || [];
+        const variables = [...new Set(
+            words
+                .filter(word => !reservedKeywords.includes(word.toLowerCase())) // 核心修复：排除函数名
+                .map(word => word.toUpperCase())
+        )].sort();
+        this.currentVariables = variables;
+        this.renderVariableMappers();}
 
     renderVariableMappers() {
         const container = document.getElementById('calc-variables-container');
-        container.innerHTML = ModalComponent.renderCalculatorVariables(this.currentVariables, Store.state.rasters);
-    }
+        if (!container) return;
+
+        // 使用组件进行渲染，传入当前变量和 Store 里的数据
+        container.innerHTML = ModalComponent.renderCalculatorVariables(
+            this.currentVariables,
+            Store.state.rasters);}
 
     async execute() {
         const expression = document.getElementById('calc-expression-input').value.trim();
@@ -65,5 +75,28 @@ export class CalculatorModule {
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
+    }
+
+    /**
+    * 在输入框光标处插入函数名，并自动聚焦
+    */
+    insertFunction(funcName) {
+        const input = document.getElementById('calc-expression-input');
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const text = input.value;
+        const insertText = funcName === 'where' ? 'where(,,)' : `${funcName}()`;
+        input.value = text.substring(0, start) + insertText + text.substring(end);
+        const newCursorPos = start + (funcName === 'where' ? 6 : funcName.length + 1);
+        input.setSelectionRange(newCursorPos, newCursorPos);
+        input.focus();
+        this.handleExpressionChange();}
+
+    /**
+    * 切换帮助面板的显示状态
+    */
+    toggleHelp() {
+        const panel = document.getElementById('calc-help-panel');
+        panel.classList.toggle('hidden');
     }
 }

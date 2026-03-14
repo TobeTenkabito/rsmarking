@@ -28,6 +28,8 @@ export class GlobalBridge {
             closeCalculatorModal: () => this.app.calculator?.closeModal(),
             updateCalculatorVariables: () => this.app.calculator?.handleExpressionChange(),
             executeCalculator: () => this.app.calculator?.execute(),
+            insertCalcFunction: (fn) => this.app.calculator?.insertFunction(fn),
+            toggleCalcHelp: () => this.app.calculator?.toggleHelp(),
 
             // --- 波段合成 ---
             openMergeModal: () => this.app.raster.handleOpenMergeModal(),
