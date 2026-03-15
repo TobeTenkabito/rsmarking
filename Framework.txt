@@ -71,11 +71,11 @@
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
 │   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡 "未实现"
-│   │   ├── main.py
-│   │   ├── prompt_engine.py
-│   │   ├── workflow_builder.py
-│   │   ├── permissions.py
-│   │   └── prompts/workflow_prompt.txt
+│       ├── main.py
+│       ├── prompt_engine.py
+│       ├── workflow_builder.py
+│       ├── permissions.py
+│       └── prompts/workflow_prompt.txt
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
 │   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
