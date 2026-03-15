@@ -50,7 +50,7 @@ export class CalculatorModule {
             this.currentVariables,
             Store.state.rasters);}
 
-    async execute() {
+        async execute() {
         const expression = document.getElementById('calc-expression-input').value.trim();
         const newName = document.getElementById('calc-name-input').value.trim();
 
@@ -60,9 +60,13 @@ export class CalculatorModule {
         // 组装动态映射参数
         const varMapping = {};
         for (const varName of this.currentVariables) {
-            const selectVal = document.getElementById(`calc-var-${varName}`).value;
-            if (!selectVal) return alert(`请为变量 ${varName} 选择对应的栅格图层`);
-            varMapping[`var_${varName}`] = selectVal;
+            // 修改点：使用 querySelector 结合属性选择器来获取 DOM 节点
+            const selectEl = document.querySelector(`select[data-var="${varName}"]`);
+
+            if (!selectEl || !selectEl.value) {
+                return alert(`请为变量 ${varName} 选择对应的栅格图层`);
+            }
+            varMapping[`var_${varName}`] = selectEl.value;
         }
 
         this.app.ui.showGlobalLoader(true);
