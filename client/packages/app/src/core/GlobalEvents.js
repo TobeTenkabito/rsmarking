@@ -62,6 +62,22 @@ export class GlobalEvents {
                 this.app.mapController.renderVectorData(Store.state.currentFeatures);
             }
         });
+        // 脚本编辑器快捷键
+        document.addEventListener('keydown', (e) => {
+            // Ctrl/Cmd + E 打开脚本编辑器
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+                e.preventDefault();
+                this.app.script?.openScriptEditor();
+            }
+            // 在脚本编辑器中，Ctrl/Cmd + Enter 执行脚本
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                const modal = document.getElementById('script-modal');
+                if (modal && !modal.classList.contains('hidden')) {
+                    e.preventDefault();
+                    this.app.script?.executeScript();
+                }
+            }
+        });
     }
 
     bindMapEvents() {

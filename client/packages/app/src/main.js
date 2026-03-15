@@ -10,6 +10,7 @@ import { AnnotationModule } from './modules/AnnotationModule.js';
 import { RasterModule } from './modules/RasterModule.js';
 import { ProjectModule } from './modules/ProjectModule.js';
 import {CalculatorModule} from "./modules/CalculatorModule.js" ;
+import { ScriptModule } from './modules/ScriptModule.js';
 
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
@@ -25,6 +26,7 @@ class App {
         this.analysis = null;
         this.extraction = null;
         this.annotation = null;
+        this.script = null;
         this.raster = null;
         this.project = null;
     }
@@ -43,6 +45,7 @@ class App {
             this.calculator = new CalculatorModule(this);
             this.extraction = new ExtractionModule(this);
             this.annotation = new AnnotationModule(this);
+            this.script = new ScriptModule(this);
             this.raster = new RasterModule(this);
             this.project = new ProjectModule(this);
 

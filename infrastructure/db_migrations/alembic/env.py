@@ -67,6 +67,7 @@ def include_object(object, name, type_, reflected, compare_to):
 
     return True
 
+
 def run_migrations_offline() -> None:
     """脱机模式迁移"""
     url = config.get_main_option("sqlalchemy.url")
@@ -81,6 +82,7 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
+
 def do_run_migrations(connection):
     context.configure(
         connection=connection,
@@ -89,6 +91,7 @@ def do_run_migrations(connection):
     )
     with context.begin_transaction():
         context.run_migrations()
+
 
 async def run_migrations_online() -> None:
     """联机模式迁移（处理异步引擎）"""

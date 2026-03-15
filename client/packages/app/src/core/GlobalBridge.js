@@ -56,6 +56,14 @@ export class GlobalBridge {
             setDrawColor: (color) => Store.setDrawColor(color),
             deleteSelectedFeature: () => this.app.project.handleDeleteSelectedFeature(),
 
+            // 脚本编辑器
+            openScriptEditor: () => this.app.script?.openScriptEditor(),
+            closeScriptEditor: () => this.app.script?.closeScriptEditor(),
+            executeScript: () => this.app.script?.executeScript(),
+            clearScriptEditor: () => this.app.script?.clearEditor(),
+            showScriptHistory: () => this.app.script?.showHistory(),
+            loadScriptFromHistory: (id) => this.app.script?.loadFromHistory(id),
+
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
         };

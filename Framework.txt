@@ -31,7 +31,7 @@
 │   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
 ├── /services               # 后端微服务化
 │   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限 "未实现"
-│   ├── /executor_service   #
+│   ├── /executor_service   # 用户自定义脚本支持python3，容器隔离模块
 │   │   ├── main.py            # 执行服务的 API 入口 (FastAPI)
 │   │   ├── runner.py          # Docker 管理逻辑 (容器启动、监控、销毁)
 │   │   ├── config.py          # 存储路径配置 (共享 /storage)
@@ -70,8 +70,10 @@
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
-│   └── /ai_gateway         # AI 模型调度：支持多节点推理负载均衡 "未实现"
+│   └── /ai_gateway  "未实现"
 │       ├── main.py
+│       ├── schema_validator.py  # 使用 pydantic 校验 AI 返回的格式
+│       ├── translator.py        # 负责将后端复杂 Data 转换为 AI 易读的“语义化 JSON”
 │       ├── prompt_engine.py
 │       ├── workflow_builder.py
 │       ├── permissions.py
