@@ -44,6 +44,7 @@
 │   │   ├── crud.py         # 解析和删除元数据
 │   │   ├── database.py     # 创建url获取异步数据库依赖
 │   │   ├── db_ops.py       # 后端数据库操作，存入
+│   │   ├── executor_bridge.py  # 脚本服务中转
 │   │   ├── main.py         # 启动
 │   │   ├── models.py       # 定义元数据
 │   │   ├── processor.py    # 调用算法
