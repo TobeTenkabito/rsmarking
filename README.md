@@ -1,12 +1,12 @@
-# RSMarking: High-Performance Remote Sensing Annotation System
+# Agent RSMarking: High-Performance Remote Sensing Annotation System
 
-遥感影像高性能标注系统
+智能遥感影像高性能标注系统
 
 [English](#english-documentation) | [中文](#中文文档)
 
 ---
 
-
+[Agent](#71-overview--概述)
 
 ##  English Documentation
 
@@ -33,6 +33,11 @@ Compared to traditional GIS servers (e.g., GeoServer, MapServer) or standard web
 - **Distributed Microservices Architecture**
 
   Decoupled **Tile Service** and **Annotation Service** with robust **FastAPI** backends, easily scalable via **Kubernetes**.
+
+- **AI-Powered Spatial Data Gateway**
+
+  An integrated **AI Gateway** service that accepts natural language instructions to analyze or modify raster/vector GIS data.  
+  Powered by a pluggable LLM backend (via **LiteLLM**), with a strict **Pydantic contract layer** to prevent AI from tampering with read-only spatial statistics.
 
 ---
 
@@ -83,11 +88,29 @@ python main.py
 
 cd services/annotation_service
 python main.py
+
+cd services/ai_gateway     # AI Gateway Service (New)
+python main.py
 ```
 
 ---
 
-#### Step 4: Start Frontend
+#### Step 4: Configure AI Gateway Environment
+
+Create a `.env` file in the project root and set the following variables:
+
+```env
+AI_MODEL=deepseek/deepseek-chat   # LiteLLM-compatible model identifier
+AI_NAME=deepseek/deepseek-chat    # Runtime model override (optional)
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx  # Your LLM provider API Key
+```
+
+> The AI Gateway uses [LiteLLM](https://github.com/BerriAI/litellm) as its unified LLM adapter,  
+> supporting any compatible provider (DeepSeek, OpenAI, Azure, etc.) by simply changing `AI_MODEL`.
+
+---
+
+#### Step 5: Start Frontend
 
 ```bash
 cd client
@@ -113,7 +136,7 @@ npm run dev
 
 - **Cython 加速的即时渲染 (On-the-Fly Rendering)**
 
-  内置的 **TileEngine** 抛弃了传统的“提前切片生成金字塔”方案。  
+  内置的 **TileEngine** 抛弃了传统的"提前切片生成金字塔"方案。  
   通过 `rasterio` 窗口读取结合 **C/Cython 底层扩展 (`fast_stretch_and_stack`)**，直接在内存中动态生成瓦片。  
 
   **零预处理开销，极大节省磁盘空间与数据准备时间。**
@@ -127,6 +150,11 @@ npm run dev
 
   **瓦片服务 (Tile Service)** 与 **标注服务 (Annotation Service)** 完全解耦。  
   通过 **FastAPI** 提供高并发支持，并可通过 **Kubernetes** 实现无缝横向扩展。
+
+- **AI 空间数据智能网关 (AI Gateway)**
+
+  集成 **AI 网关微服务**，接受自然语言指令，对栅格或矢量 GIS 数据执行**智能分析**或**结构化修改**。  
+  通过 **LiteLLM** 适配多种主流大语言模型，并采用严格的 **Pydantic 契约层**防止 AI 篡改只读空间统计数据。
 
 ---
 
@@ -179,11 +207,29 @@ python main.py
 
 cd services/annotation_service
 python main.py
+
+cd services/ai_gateway     # AI 网关服务（新增）
+python main.py
 ```
 
 ---
 
-#### 第四步：启动前端应用
+#### 第四步：配置 AI 网关环境变量
+
+在项目根目录创建 `.env` 文件，并配置以下参数：
+
+```env
+AI_MODEL=deepseek/deepseek-chat   # LiteLLM 兼容的模型标识符
+AI_NAME=deepseek/deepseek-chat    # 运行时模型覆盖（可选）
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx  # 你的大模型服务商 API Key
+```
+
+> AI 网关通过 [LiteLLM](https://github.com/BerriAI/litellm) 统一适配多种大模型服务商。  
+> 仅需修改 `AI_MODEL` 即可切换至 DeepSeek、OpenAI、Azure OpenAI 等任意兼容提供商。
+
+---
+
+#### 第五步：启动前端应用
 
 ```bash
 cd client
@@ -203,7 +249,13 @@ Please check **Framework.txt**
 ├── client                # 前端交互与状态管理 (Vue/React + Leaflet)
 ├── services              # 后端微服务集群 (FastAPI)
 │   ├── tile_service      # 瓦片渲染引擎 (Cython 加速)
-│   └── ...
+│   ├── data_service      # 栅格元数据管理服务
+│   ├── annotation_service# 矢量标注服务
+│   └── ai_gateway        # AI 空间数据智能网关 (新增)
+│       ├── main.py           # 服务启动入口
+│       ├── router.py         # 路由层 (POST /ai/process)
+│       ├── schema_validator.py # Pydantic 契约层 (防篡改校验)
+│       └── translator.py     # 数据提取、Prompt 引擎与 LLM 调度
 ├── infrastructure        # 基础设施即代码 (IaC)
 │   ├── docker            # 各模块 Dockerfile 及 Compose
 │   ├── kubernetes        # K8s 部署配置文件
@@ -241,7 +293,27 @@ Real-time status of **tile service** and **annotation engine**.
 
 ---
 
-### 5.4 Automated Test Suite / 自动化测试套件
+### 5.4 AI Gateway — Natural Language GIS Processing / AI 网关 — 自然语言 GIS 处理
+
+#### Analyze Mode / 分析模式
+
+Submit a natural language query to receive a professional spatial data analysis report.  
+提交自然语言问题，获取专业的空间数据分析报告。
+
+![Figure 5-4-1 AI Analyze Mode](resources/5_4_1.png)
+
+---
+
+#### Modify Mode / 修改模式
+
+Issue a natural language instruction to modify GIS layer metadata; the AI returns a strictly validated JSON diff for frontend confirmation before committing.  
+通过自然语言指令修改 GIS 图层元数据，AI 返回经严格校验的 JSON 差异供前端确认后落库。
+
+![Figure 5-4-2 AI Modify Mode](resources/5_4_2.png)
+
+---
+
+### 5.5 Automated Test Suite / 自动化测试套件
 
 High coverage reports from **Vitest** and **Pytest**.  
 来自 **Vitest** 和 **Pytest** 的高覆盖率测试报告。
@@ -268,4 +340,81 @@ High coverage reports from **Vitest** and **Pytest**.
 
 *渲染延迟随 tile 大小增加的趋势(3 波段，128–4096 像素)*
 
-[Come Back to the Top](#rsmarking-high-performance-remote-sensing-annotation-system)
+
+---
+[Come Back to the Top](#agent-rsmarking-high-performance-remote-sensing-annotation-system)
+
+## 7. 🤖 AI Gateway — Architecture Deep Dive / AI 网关架构详解
+
+### 7.1 Overview / 概述
+
+The **AI Gateway** (`services/ai_gateway`) is a dedicated microservice that bridges natural language instructions with structured GIS data operations.  
+**AI 网关**（`services/ai_gateway`）是一个独立微服务，负责将自然语言指令桥接至结构化的 GIS 数据操作。
+
+### 7.2 Request Flow / 请求流程
+
+```
+Frontend / 前端
+    │
+    │  POST /ai/process
+    │  { target_id, data_type, mode, language, user_prompt, overwrite }
+    ▼
+router.py  ──►  translator.py
+                    │
+                    ├─ 1. Extract Context (DB → Pydantic ContextData)
+                    │      ├── RasterContextData  (rasterio stats + metadata)
+                    │      └── VectorContextData  (PostGIS ST_Extent + JSONB agg)
+                    │
+                    ├─ 2. Build Prompt  (_build_system_prompt)
+                    │      ├── ANALYZE: free-form professional report
+                    │      └── MODIFY:  strict JSON Schema constraint
+                    │
+                    ├─ 3. Call LLM  (LiteLLM acompletion + auto-retry)
+                    │
+                    └─ 4. Validate & Write
+                           ├── ANALYZE → return plain text report
+                           └── MODIFY  → schema_validator.py (Pydantic anti-tamper)
+                                             ├── overwrite=true  → UPDATE DB
+                                             └── overwrite=false → CREATE new record
+```
+
+### 7.3 Task Modes / 任务模式
+
+| Mode / 模式 | Description / 说明 | Output / 输出 |
+|---|---|---|
+| `analyze` | Professional spatial data analysis report | Plain text / 纯文本报告 |
+| `modify` | AI-driven metadata modification with anti-tamper validation | Validated JSON + DB write |
+
+### 7.4 Anti-Tamper Contract Layer / 防篡改契约层
+
+A core security design: the AI is **only permitted to output fields defined in `RasterModifiable` / `VectorModifiable`**.  
+核心安全设计：AI **只允许输出 `RasterModifiable` / `VectorModifiable` 中定义的字段**。
+
+All read-only spatial statistics (`bounds`, `stats`, `crs`, `resolution`, etc.) are **physically blocked** by Pydantic — even if the LLM attempts to overwrite them, the values are silently discarded.  
+所有只读空间统计字段（`bounds`、`stats`、`crs`、`resolution` 等）均由 Pydantic **物理拦截** —— 即使大模型尝试篡改，这些值也会被静默丢弃。
+
+### 7.5 Multi-language Support / 多语言支持
+
+The AI response language is controlled by the `language` field in the request payload:  
+AI 响应语言由请求体中的 `language` 字段控制：
+
+| Value | Language |
+|---|---|
+| `zh` | 简体中文 (default) |
+| `en` | English |
+| `ja` | 日本語 |
+
+### 7.6 API Reference / 接口说明
+
+**`POST /ai/process`**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `target_id` | `int` \| `str` | ✅ | Raster `index_id` or Vector Layer UUID |
+| `data_type` | `raster` \| `vector` | ✅ | Data type |
+| `mode` | `analyze` \| `modify` | ✅ | Task mode |
+| `language` | `zh` \| `en` \| `ja` | — | Response language (default: `zh`) |
+| `user_prompt` | `string` | ✅ | Natural language instruction (2–2000 chars) |
+| `overwrite` | `bool` | — | Overwrite original record (default: `false`, creates new) |
+
+![Figure 7-1 AI Gateway Architecture](resources/7_1.png)

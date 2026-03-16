@@ -70,7 +70,7 @@
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
-│   └── /ai_gateway  "未实现"
+│   └── /ai_gateway  "新更新"
 │       ├── main.py
 │       ├── router.py  # 路由层
 │       ├── schema_validator.py  # 使用 pydantic 校验 AI 返回的格式
