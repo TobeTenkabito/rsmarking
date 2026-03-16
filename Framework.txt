@@ -72,12 +72,9 @@
 │   │   └── main.py  # 服务接口
 │   └── /ai_gateway  "未实现"
 │       ├── main.py
+│       ├── router.py  # 路由层
 │       ├── schema_validator.py  # 使用 pydantic 校验 AI 返回的格式
-│       ├── translator.py        # 负责将后端复杂 Data 转换为 AI 易读的“语义化 JSON”
-│       ├── prompt_engine.py
-│       ├── workflow_builder.py
-│       ├── permissions.py
-│       └── prompts/workflow_prompt.txt
+│       └── translator.py        # 负责将后端复杂 Data 转换为 AI 易读的“语义化 JSON”
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
 │   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
