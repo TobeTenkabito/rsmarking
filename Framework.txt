@@ -70,11 +70,13 @@
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
-│   └── /ai_gateway  "新更新"
+│   └── /ai_gateway
 │       ├── main.py
-│       ├── router.py  # 路由层
-│       ├── schema_validator.py  # 使用 pydantic 校验 AI 返回的格式
-│       └── translator.py        # 负责将后端复杂 Data 转换为 AI 易读的“语义化 JSON”
+│       ├── data_extractor.py
+│       ├── llm_engine.py
+│       ├── router.py
+│       ├── schema_validator.py
+│       └── translator.py
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
 │   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
