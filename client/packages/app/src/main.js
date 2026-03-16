@@ -11,6 +11,7 @@ import { RasterModule } from './modules/RasterModule.js';
 import { ProjectModule } from './modules/ProjectModule.js';
 import {CalculatorModule} from "./modules/CalculatorModule.js" ;
 import { ScriptModule } from './modules/ScriptModule.js';
+import {AIModule} from "./modules/AIModule.js";
 
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
@@ -29,6 +30,7 @@ class App {
         this.script = null;
         this.raster = null;
         this.project = null;
+        this.ai = null;
     }
 
     async init() {
@@ -48,6 +50,7 @@ class App {
             this.script = new ScriptModule(this);
             this.raster = new RasterModule(this);
             this.project = new ProjectModule(this);
+            this.ai = new AIModule(this);
 
             // 4. 挂载全局方法与绑定事件
             new GlobalBridge(this).mount();

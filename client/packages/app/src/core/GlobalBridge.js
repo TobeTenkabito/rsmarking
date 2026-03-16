@@ -64,6 +64,13 @@ export class GlobalBridge {
             showScriptHistory: () => this.app.script?.showHistory(),
             loadScriptFromHistory: (id) => this.app.script?.loadFromHistory(id),
 
+            // --- AI 智能助手 ---
+            openAIModal:        ()  => this.app.ai?.openModal(),
+            closeAIModal:       ()  => this.app.ai?.closeModal(),
+            aiExecute:          ()  => this.app.ai?.execute(),
+            aiConfirmCreate:    ()  => this.app.ai?.confirmCreate(),
+            aiConfirmOverwrite: ()  => this.app.ai?.confirmOverwrite(),
+
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
         };

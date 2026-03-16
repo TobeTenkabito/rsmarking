@@ -334,6 +334,39 @@ export const ModalComponent = {
     },
 
     /**
+     * 渲染 AI 目标数据下拉框选项
+     * 同时展示栅格和矢量图层，供用户选择
+     * @param {Array} rasters  - Store 中的栅格列表
+     * @param {Array} layers   - Store 中的矢量图层列表
+     */
+    renderAITargetOptions(rasters = [], layers = []) {
+        const rasterOptions = rasters.length
+            ? rasters.map(r =>
+                `<option value="${r.index_id}" data-type="raster">
+                    [栅格] ${r.file_name}
+                </option>`
+              ).join('')
+            : '';
+
+        const layerOptions = layers.length
+            ? layers.map(l =>
+                `<option value="${l.id}" data-type="vector">
+                    [矢量] ${l.name}
+                </option>`
+              ).join('')
+            : '';
+
+        if (!rasterOptions && !layerOptions) {
+            return '<option value="">暂无可用数据</option>';
+        }
+
+        return `
+            ${rasterOptions ? `<optgroup label="栅格影像">${rasterOptions}</optgroup>` : ''}
+            ${layerOptions  ? `<optgroup label="矢量图层">${layerOptions}</optgroup>`  : ''}
+        `;
+    },
+
+    /**
      * 动作等待状态
      */
     renderActionLoading(message = "正在执行算法...") {
@@ -344,5 +377,6 @@ export const ModalComponent = {
                 <p class="text-[9px] text-slate-400 mt-2 tracking-widest uppercase">请稍候，服务器正在处理数据</p>
             </div>
         `;
-    }
+    },
+
 };

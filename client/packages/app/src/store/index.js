@@ -158,4 +158,31 @@ export const Store = {
         }
         this.notifyVectorChange();
     },
-};
+    /**
+    * 重新从后端拉取最新栅格列表，并通知 UI 刷新
+    * @param {Function} fetchFn  外部传入的 API 请求函数，返回 raster 数组
+    *                            例：() => RasterAPI.getList()
+    */
+    async refreshRasters(fetchFn) {
+        try {
+            const data = await fetchFn();
+            this.setRasters(data);
+        } catch (err) {
+            console.error('[Store] refreshRasters 失败:', err);
+        }
+    },
+
+    /**
+    * 重新从后端拉取最新矢量项目列表，并通知 UI 刷新
+    * @param {Function} fetchFn  外部传入的 API 请求函数，返回 projects 数组
+    *                            例：() => ProjectAPI.getList()
+    */
+    async refreshProjects(fetchFn) {
+        try {
+            const data = await fetchFn();
+            this.setProjects(data);
+        } catch (err) {
+            console.error('[Store] refreshProjects 失败:', err);
+        }
+    },
+    };
