@@ -117,3 +117,25 @@ class RasterCRUD:
             cog_dir = os.path.dirname(raster.file_path).replace(os.sep + "raw", os.sep + "cog")
             full_cog_path = os.path.join(cog_dir, cog_filename)
             RasterCRUD._delete_file(full_cog_path)
+
+    @staticmethod
+    async def update_raster(db: AsyncSession, raster_id: int, update_dict: dict) -> Optional[RasterMetadata]:
+        """
+        根据 index_id 更新栅格元数据（仅更新传入的字段）
+        用于 AI Modify 模式的"覆盖"分支
+        """
+        stmt = select(RasterMetadata).where(RasterMetadata.index_id == raster_id)
+        result = await db.execute(stmt)
+        raster = result.scalar_one_or_none()
+
+        if not raster:
+            return None
+
+        # 只更新 update_dict 中存在的字段，防止意外清空其他字段
+        for key, value in update_dict.items():
+            if hasattr(raster, key):
+                setattr(raster, key, value)
+
+        await db.commit()
+        await db.refresh(raster)
+        return raster

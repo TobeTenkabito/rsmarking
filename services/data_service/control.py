@@ -219,18 +219,180 @@ async def raster_calculator_api(
 
 
 @router.post("/execute-script")
-async def execute_custom_script(
-        request: Request,
+async def execute_user_script(
         script: str = Form(...),
+        raster_ids: str = Form(...),  # 逗号分隔的ID列表
         output_name: str = Form(...),
         db: AsyncSession = Depends(get_db)
 ):
     """
-    暴露给前端的自定义脚本执行接口
-    接收表单中的 id_1, id_2... 等动态影像 ID
+    执行用户自定义Python脚本
+    :param script: Python脚本内容
+    :param raster_ids: 输入栅格ID列表(逗号分隔)
+    :param output_name: 输出文件名
     """
-    raster_ids = await db_ops.get_dynamic_band_ids(request)
-    if not raster_ids:
-        raise HTTPException(status_code=400, detail="未选择任何输入影像")
+    try:
+        # 解析栅格ID列表
+        ids = [int(id.strip()) for id in raster_ids.split(',') if id.strip()]
 
-    return await dispatch_user_script(db, script, raster_ids, output_name)
+        # 验证脚本基本安全性（禁止危险关键字）
+        dangerous_keywords = ['__import__', 'exec', 'eval', 'compile', 'open(', 'file(',
+                              'input(', 'raw_input', '__builtins__', 'globals(', 'locals(']
+        script_lower = script.lower()
+        for keyword in dangerous_keywords:
+            if keyword in script_lower:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"脚本包含禁止的关键字: {keyword}"
+                )
+
+        # 调用执行器服务
+        result = await dispatch_user_script(db, script, ids, output_name)
+
+        return {
+            "status": "success",
+            "message": "脚本执行完成",
+            "result": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"脚本执行失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"脚本执行失败: {str(e)}")
+
+
+@router.get("/script-templates")
+async def get_script_templates():
+    """获取预设的脚本模板"""
+    templates = [
+        {
+            "name": "NDVI计算",
+            "description": "使用红光和近红外波段计算NDVI",
+            "code": """import rasterio
+import numpy as np
+
+# Read input images
+with rasterio.open('/input/red.tif') as red_src:
+    red = red_src.read(1).astype(float)
+    profile = red_src.profile
+
+with rasterio.open('/input/nir.tif') as nir_src:
+    nir = nir_src.read(1).astype(float)
+
+# Calculate NDVI
+ndvi = (nir - red) / (nir + red + 1e-8)
+ndvi = np.nan_to_num(ndvi, nan=-1)
+
+# Save result
+profile.update(dtype=rasterio.float32, count=1)
+with rasterio.open('/output/result.tif', 'w', **profile) as dst:
+    dst.write(ndvi.astype(np.float32), 1)
+
+print(f"NDVI calculation completed, range: [{ndvi.min():.3f}, {ndvi.max():.3f}]")"""
+        },
+        {
+            "name": "波段统计",
+            "description": "计算影像的基本统计信息",
+            "code": """import rasterio
+import numpy as np
+
+# Read image
+with rasterio.open('/input/image.tif') as src:
+    data = src.read()
+
+    print(f"Image shape: {data.shape}")
+    print(f"Number of bands: {src.count}")
+    print(f"Data type: {src.dtypes[0]}")
+
+    for i in range(src.count):
+        band = data[i]
+        print(f"\\nBand {i+1} statistics:")
+        print(f"  Min: {band.min():.3f}")
+        print(f"  Max: {band.max():.3f}")
+        print(f"  Mean: {band.mean():.3f}")
+        print(f"  Std: {band.std():.3f}")"""
+        },
+        {
+            "name": "自定义滤波",
+            "description": "应用自定义卷积核进行空间滤波",
+            "code": """import rasterio
+import numpy as np
+from scipy import ndimage
+
+# Read image
+with rasterio.open('/input/image.tif') as src:
+    data = src.read(1)
+    profile = src.profile
+
+# Apply Gaussian filter
+filtered = ndimage.gaussian_filter(data, sigma=2)
+
+# Or use custom kernel
+# kernel = np.array([[1,2,1],[2,4,2],[1,2,1]]) / 16
+# filtered = ndimage.convolve(data, kernel)
+
+# Save result
+with rasterio.open('/output/result.tif', 'w', **profile) as dst:
+    dst.write(filtered.astype(profile['dtype']), 1)
+
+print("Filtering completed")"""
+        },
+        {
+            "name": "波段合成",
+            "description": "多波段影像合成",
+            "code": """import rasterio
+import numpy as np
+
+# Read multiple bands
+bands = []
+profile = None
+
+for i in range(1, 4):  # Read 3 bands
+    with rasterio.open(f'/input/band{i}.tif') as src:
+        bands.append(src.read(1))
+        if profile is None:
+            profile = src.profile
+
+# Stack bands
+composite = np.stack(bands)
+
+# Update profile for multi-band
+profile.update(count=len(bands))
+
+# Save composite
+with rasterio.open('/output/composite.tif', 'w', **profile) as dst:
+    for i, band in enumerate(bands, 1):
+        dst.write(band, i)
+
+print(f"Created {len(bands)}-band composite image")"""
+        },
+        {
+            "name": "阈值分割",
+            "description": "基于阈值的二值化分割",
+            "code": """import rasterio
+import numpy as np
+
+# Read image
+with rasterio.open('/input/image.tif') as src:
+    data = src.read(1)
+    profile = src.profile
+
+# Calculate threshold (using Otsu's method)
+from skimage.filters import threshold_otsu
+threshold = threshold_otsu(data)
+
+# Apply threshold
+binary = (data > threshold).astype(np.uint8) * 255
+
+# Update profile for binary output
+profile.update(dtype=rasterio.uint8, count=1)
+
+# Save binary result
+with rasterio.open('/output/binary.tif', 'w', **profile) as dst:
+    dst.write(binary, 1)
+
+print(f"Threshold segmentation completed (threshold={threshold:.2f})")"""
+        }
+    ]
+    return templates

@@ -210,3 +210,23 @@ class LayerCRUD:
         result = await self.db.execute(stmt)
         await self.db.commit()
         return result.rowcount  # 返回删除的记录数
+
+    async def update_layer(self, layer_id: UUID, update_dict: dict) -> Optional[Layer]:
+        """
+        更新矢量图层元数据（仅更新传入的字段）
+        用于 AI Modify 模式的"覆盖"分支
+        """
+        result = await self.db.execute(select(Layer).where(Layer.id == layer_id))
+        layer = result.scalar_one_or_none()
+
+        if not layer:
+            return None
+
+        for key, value in update_dict.items():
+            if hasattr(layer, key):
+                setattr(layer, key, value)
+
+        await self.db.commit()
+        await self.db.refresh(layer)
+        return layer
+
