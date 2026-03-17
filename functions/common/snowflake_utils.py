@@ -4,7 +4,7 @@ import threading
 
 class SnowflakeGenerator:
     def __init__(self, machine_id: int):
-        self.twepoch = 1770429600000
+        self.twepoch = 1770681600000  # created version 0.1.0
 
         self.machine_id = machine_id
         self.machine_id_bits = 4
