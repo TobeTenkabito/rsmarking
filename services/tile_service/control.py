@@ -54,6 +54,7 @@ async def get_tile(
         logger.error(traceback.format_exc())
         return Response(status_code=500)
 
+
 @router.get("/debug/render-first.png")
 async def debug_render_first(db: AsyncSession = Depends(get_db)):
     query = text("SELECT index_id, file_path FROM raster_metadata ORDER BY id DESC LIMIT 1")
