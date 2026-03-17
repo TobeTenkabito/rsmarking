@@ -11,7 +11,6 @@ logger = logging.getLogger("ai_gateway.analyze_handler")
 
 
 async def handle_analyze(payload: AIRequestPayload, db: AsyncSession, model_name: str) -> Dict[str, Any]:
-    # 1. 提取原始上下文数据
     if payload.data_type == DataType.RASTER:
         context_data = await _extract_raster_data(db, int(payload.target_id))
         modifiable_schema = RasterModifiable.model_json_schema()
@@ -21,7 +20,6 @@ async def handle_analyze(payload: AIRequestPayload, db: AsyncSession, model_name
 
     original_json_str = context_data.model_dump_json(indent=2)
 
-    # 2. 构建 Prompt
     system_prompt = _build_system_prompt(
         TaskMode.ANALYZE, payload.data_type, payload.language, json.dumps(modifiable_schema, ensure_ascii=False)
     )
@@ -36,10 +34,7 @@ async def handle_analyze(payload: AIRequestPayload, db: AsyncSession, model_name
         {"role": "user", "content": user_prompt}
     ]
 
-    # 3. 调用 AI (分析模式返回字符串)
     result = await call_llm_with_retry(messages, model_name, TaskMode.ANALYZE, payload.data_type)
-
-    # 4. 组装返回结果
     return {
         "status": "success",
         "mode": "analyze",

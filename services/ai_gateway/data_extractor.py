@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 
 from services.data_service.crud import RasterCRUD
-from services.annotation_service.crud.feature import LayerCRUD
+from services.annotation_service.crud.layer import LayerCRUD
 from services.annotation_service.models.feature import Feature
 
 from services.ai_gateway.schema_validator import (
@@ -20,7 +20,6 @@ logger = logging.getLogger("ai_gateway.data_extractor")
 
 
 def _compute_raster_stats(file_path: str) -> NumericStats | None:
-    # 保持原有逻辑不变
     if not file_path or not os.path.exists(file_path):
         return None
     try:
@@ -46,7 +45,6 @@ def _compute_raster_stats(file_path: str) -> NumericStats | None:
 
 
 async def _extract_raster_data(db: AsyncSession, raster_id: int) -> RasterContextData:
-    # 保持原有逻辑不变
     raster = await RasterCRUD.get_raster_by_index_id(db, raster_id)
     if not raster:
         raise ValueError(f"未找到 index_id 为 {raster_id} 的栅格数据")
@@ -77,7 +75,6 @@ async def _extract_raster_data(db: AsyncSession, raster_id: int) -> RasterContex
 
 
 async def _extract_vector_data(db: AsyncSession, layer_id: str) -> VectorContextData:
-    # 保持原有逻辑不变
     layer_crud = LayerCRUD(db)
     layer = await layer_crud.get_layer(layer_id)
     if not layer:

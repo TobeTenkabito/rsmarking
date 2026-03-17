@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from functions.common.snowflake_utils import get_next_index_id
 from services.data_service.crud import RasterCRUD
-from services.annotation_service.crud.feature import LayerCRUD
+from services.annotation_service.crud.layer import LayerCRUD
 from services.ai_gateway.schema_validator import AIRequestPayload, TaskMode, DataType, RasterModifiable, \
     VectorModifiable
 from services.ai_gateway.data_extractor import _extract_raster_data, _extract_vector_data
@@ -16,7 +16,6 @@ logger = logging.getLogger("ai_gateway.modify_handler")
 
 
 async def handle_modify(payload: AIRequestPayload, db: AsyncSession, model_name: str) -> Dict[str, Any]:
-    # 1. 提取原始上下文数据
     if payload.data_type == DataType.RASTER:
         context_data = await _extract_raster_data(db, int(payload.target_id))
         modifiable_schema = RasterModifiable.model_json_schema()
@@ -26,7 +25,6 @@ async def handle_modify(payload: AIRequestPayload, db: AsyncSession, model_name:
 
     original_json_str = context_data.model_dump_json(indent=2)
 
-    # 2. 构建 Prompt
     system_prompt = _build_system_prompt(
         TaskMode.MODIFY, payload.data_type, payload.language, json.dumps(modifiable_schema, ensure_ascii=False)
     )
@@ -41,7 +39,6 @@ async def handle_modify(payload: AIRequestPayload, db: AsyncSession, model_name:
         {"role": "user", "content": user_prompt}
     ]
 
-    # 3. 调用 AI (修改模式返回 Pydantic 对象)
     validated_data = await call_llm_with_retry(messages, model_name, TaskMode.MODIFY, payload.data_type)
     modified_dict = validated_data.model_dump(exclude_none=True)
 
@@ -51,7 +48,6 @@ async def handle_modify(payload: AIRequestPayload, db: AsyncSession, model_name:
 
     logger.info(f"[handle_modify] AI 修改内容: {modified_dict}")
 
-    # 4. 数据库落地处理
     if payload.overwrite:
         if payload.data_type == DataType.RASTER:
             updated = await RasterCRUD.update_raster(db, int(payload.target_id), modified_dict)

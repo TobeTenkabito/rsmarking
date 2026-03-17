@@ -13,7 +13,6 @@ logger = logging.getLogger("ai_gateway.llm_engine")
 
 
 def _build_system_prompt(mode: TaskMode, data_type: DataType, language: AILanguage, modifiable_schema_json: str) -> str:
-    # 保持原有逻辑不变
     LANGUAGE_MAP = {
         AILanguage.ZH: "你必须使用【简体中文】回答，所有输出内容包括分析报告、字段说明、错误信息均使用中文。",
         AILanguage.EN: "You MUST respond in【English】. All output including analysis, field descriptions, and error messages must be in English.",
@@ -41,7 +40,7 @@ async def call_llm_with_retry(messages: list, model_name: str, mode: TaskMode, e
     current_model = os.getenv("AI_NAME", model_name)
 
     for attempt in range(max_retries + 1):
-        ai_content = None  # 修复：提前声明，防止未赋值引发异常
+        ai_content = None
         try:
             logger.info(f"正在调用大模型 {current_model} (尝试 {attempt + 1}/{max_retries + 1})...")
             response = await acompletion(
@@ -64,7 +63,6 @@ async def call_llm_with_retry(messages: list, model_name: str, mode: TaskMode, e
                 raise RuntimeError(f"AI 处理失败，已达到最大重试次数。最后一次错误: {str(e)}")
 
             if mode == TaskMode.MODIFY and ai_content is not None:
-                # 修复：确保解析失败才拼接历史对话，若是网络异常(ai_content无值)则不破坏会话结构
                 error_feedback = f"你刚才输出的 JSON 格式有误，导致了解析失败。错误信息如下：\n{str(e)}\n请严格按照 Schema 重新输出合法的 JSON，并且只能包含允许修改的字段。"
                 messages.append({"role": "assistant", "content": ai_content})
                 messages.append({"role": "user", "content": error_feedback})
