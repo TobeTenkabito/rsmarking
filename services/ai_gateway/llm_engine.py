@@ -26,12 +26,11 @@ def _build_system_prompt(mode: TaskMode, data_type: DataType, language: AILangua
     elif mode == TaskMode.MODIFY:
         return base_prompt + f"""你现在的任务是：根据用户的指令，修改提供的 GIS 数据，并返回修改后的完整 JSON。
 【极其重要的规则】
-1. 提供的原始数据中包含了大量只读的统计特征（如极值、均值、边界等），这些是客观物理数据，**绝对不可修改**。
+1. 提供的原始数据中包含了大量只读的统计特征，这些是客观物理数据，**绝对不可修改**。
 2. 你必须且只能输出合法的 JSON 字符串，不要包含任何 Markdown 标记（如 ```json），不要包含任何解释性文本！
 3. 你的输出必须严格符合以下 JSON Schema，**只能包含允许修改的字段**：
 {modifiable_schema_json}
 4. 你的输出必须包含一个顶层键 "modified_data"，里面存放你修改后的数据。
-5. 你可以增加一个顶层键 "explanation"，简短说明你修改了什么。
 """
 
 
