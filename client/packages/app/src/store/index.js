@@ -185,4 +185,9 @@ export const Store = {
             console.error('[Store] refreshProjects 失败:', err);
         }
     },
+
+
+    getVectorLayers() {return this.state.vectorLayers;},
+    getProjects() {return this.state.projects;},
+    getActiveProject() {return this.state.activeProject;}
     };

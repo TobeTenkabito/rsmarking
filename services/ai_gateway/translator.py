@@ -18,14 +18,14 @@ logger.info(f"[AI] 当前使用模型: {MODEL}, Key前缀: {os.getenv('DEEPSEEK_
 async def process_ai_task(
         payload: AIRequestPayload,
         db: AsyncSession,
+        vector_db: AsyncSession,        # ← 新增
         model_name: str = MODEL
 ) -> Dict[str, Any]:
-    """AI 网关的路由层，负责将任务分发给具体的 Handler"""
     logger.info(f"开始路由 AI 任务: Target={payload.target_id}, Mode={payload.mode}, Type={payload.data_type}")
 
     if payload.mode == TaskMode.ANALYZE:
-        return await handle_analyze(payload, db, model_name)
+        return await handle_analyze(payload, db, vector_db, model_name)   # ← 透传
     elif payload.mode == TaskMode.MODIFY:
-        return await handle_modify(payload, db, model_name)
+        return await handle_modify(payload, db, vector_db, model_name)    # ← 透传
     else:
         raise ValueError(f"未知的任务模式: {payload.mode}")

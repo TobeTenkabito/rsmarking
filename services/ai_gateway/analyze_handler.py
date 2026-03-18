@@ -10,13 +10,18 @@ from services.ai_gateway.llm_engine import _build_system_prompt, call_llm_with_r
 logger = logging.getLogger("ai_gateway.analyze_handler")
 
 
-async def handle_analyze(payload: AIRequestPayload, db: AsyncSession, model_name: str) -> Dict[str, Any]:
+async def handle_analyze(
+    payload: AIRequestPayload,
+    db: AsyncSession,
+    vector_db: AsyncSession,        # ← 新增
+    model_name: str
+) -> Dict[str, Any]:
     if payload.data_type == DataType.RASTER:
-        context_data = await _extract_raster_data(db, int(payload.target_id))
+        context_data = await _extract_raster_data(db, int(payload.target_id))       # ← 栅格用 db
         modifiable_schema = RasterModifiable.model_json_schema()
         valid_schema = None
     else:
-        context_data = await _extract_vector_data(db, str(payload.target_id))
+        context_data = await _extract_vector_data(vector_db, str(payload.target_id))  # ← 矢量用 vector_db
         modifiable_schema = VectorModifiable.model_json_schema()
         valid_schema = context_data.properties_schema
     original_json_str = context_data.model_dump_json(indent=2)

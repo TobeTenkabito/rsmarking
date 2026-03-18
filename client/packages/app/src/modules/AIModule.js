@@ -23,8 +23,9 @@ export class AIModule {
 
         // 用 Store 中的栅格/矢量数据填充目标选择下拉框
         const rasters = Store.getRasters();
+        const Layers = Store.getVectorLayers();
         document.getElementById('ai-target-select').innerHTML =
-            ModalComponent.renderAITargetOptions(rasters);
+            ModalComponent.renderAITargetOptions(rasters, Layers);
 
         modal.classList.remove('hidden');
     }
