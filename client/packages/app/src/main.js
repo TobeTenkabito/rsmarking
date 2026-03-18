@@ -12,12 +12,15 @@ import { ProjectModule } from './modules/ProjectModule.js';
 import {CalculatorModule} from "./modules/CalculatorModule.js" ;
 import { ScriptModule } from './modules/ScriptModule.js';
 import {AIModule} from "./modules/AIModule.js";
+import { WelcomeModule } from './modules/WelcomeModule.js';
 
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
  */
 class App {
     constructor() {
+        WelcomeModule.init();
+
         // 核心支持层
         this.ui = new UIManager(this);
         this.mapEngine = null;
