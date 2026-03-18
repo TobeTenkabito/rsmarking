@@ -81,10 +81,7 @@ class VectorModifiable(BaseModel):
 # ==========================================
 
 class RasterContextData(RasterModifiable):
-    """
-    栅格完整上下文 (提取自 models.py 中的 RasterMetadata)
-    发给 AI 进行分析的完整 JSON 实体。
-    """
+    """栅格完整上下文"""
     crs: str = Field(..., description="坐标参考系统，例如 EPSG:4326")
     bounds: SpatialBounds = Field(..., description="空间边界")
     center: Dict[str, float] = Field(..., description="中心点坐标，包含 x 和 y")
@@ -92,26 +89,32 @@ class RasterContextData(RasterModifiable):
     bands_count: int = Field(..., description="波段数量", ge=1)
     data_type: str = Field(..., description="数据类型，如 Float32, UInt8")
 
-    # 深度统计特征
+    # [新增] 暴露更多底层元数据供 AI 参考（只读）
+    file_path: Optional[str] = Field(None, description="原始文件路径 (可用于推断数据来源或格式)")
+    cog_path: Optional[str] = Field(None, description="云优化 GeoTIFF 路径状态")
+    bundle_id: Optional[int] = Field(None, description="关联的切片包ID")
+
     stats: Optional[NumericStats] = Field(None, description="栅格像素值的统计特征")
+    grid_sampling: Optional[Dict[str, Any]] = Field(
+        None,
+        description="空间网格采样数据，包含采样点分布及对应的像素值"
+    )
 
 
 class VectorContextData(VectorModifiable):
-    """
-    矢量完整上下文 (提取自 feature.py 中的 Layer/Feature)
-    发给 AI 进行分析的完整 JSON 实体。
-    """
+    """矢量完整上下文"""
     crs: str = Field(..., description="坐标参考系统，例如 EPSG:4326")
     bounds: SpatialBounds = Field(..., description="空间边界")
     feature_count: int = Field(..., description="要素总数", ge=0)
+
+    # [新增] 暴露几何类型和数据抽样，帮助 AI 了解具体内容
+    primary_geometry_type: str = Field(default="Unknown", description="图层的主要几何类型 (如 ST_Polygon, ST_Point)")
+    sample_features: list[Dict[str, Any]] = Field(default_factory=list,
+                                                  description="随机抽取的最多3个要素属性样本，用于参考数据真实形态")
+
     category_distribution: Dict[str, int] = Field(default_factory=dict, description="各类别要素的数量统计")
     properties_schema: Dict[str, str] = Field(default_factory=dict, description="属性表字段及其数据类型")
-
-    # 深度统计特征
-    numeric_stats: Dict[str, NumericStats] = Field(
-        default_factory=dict,
-        description="属性表中数值型字段的深度统计特征 (极值、均值等)"
-    )
+    numeric_stats: Dict[str, NumericStats] = Field(default_factory=dict, description="属性表中数值型字段的深度统计特征")
 
 
 # ==========================================
