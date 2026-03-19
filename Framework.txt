@@ -70,7 +70,7 @@
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
-│   └── /ai_gateway
+│   └── /ai_gateway   # AI网关
 │       ├── main.py
 │       ├── data_extractor.py
 │       ├── llm_engine.py

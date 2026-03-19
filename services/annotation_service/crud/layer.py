@@ -74,3 +74,8 @@ class LayerCRUD:
         await self.db.commit()
         await self.db.refresh(layer)
         return layer
+
+    async def delete_layer(self, layer_id: UUID):
+        result = await self.db.execute(delete(Layer).where(Layer.id == layer_id))
+        await self.db.commit()
+        return result.rowcount > 0

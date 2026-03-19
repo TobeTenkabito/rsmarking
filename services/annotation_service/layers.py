@@ -5,11 +5,19 @@ from typing import List
 
 from services.annotation_service.database import get_db
 from services.annotation_service.crud.feature import FeatureCRUD
+from services.annotation_service.crud.layer import LayerCRUD
+from services.annotation_service.crud.layer_field import LayerFieldCRUD
 from services.annotation_service.schemas.geojson import (
     FeatureCreate,
     FeatureUpdate,
     FeatureResponse,
     FeatureCollectionResponse
+)
+
+from services.annotation_service.schemas.layer_field import (
+    LayerFieldCreate,
+    LayerFieldUpdate,
+    LayerFieldOut,
 )
 
 router = APIRouter(prefix="", tags=["Features"])
@@ -89,3 +97,78 @@ async def bulk_create_features(layer_id: UUID, features_in: List[FeatureCreate],
         return {"message": f"Successfully ingested {len(features_in)} features"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Bulk ingestion failed: {str(e)}")
+
+
+@router.delete("/layers/{layer_id}", tags=["CRUD"])
+async def delete_layer(layer_id: UUID, db: AsyncSession = Depends(get_db)):
+    crud = LayerCRUD(db)
+    if not await crud.delete_layer(layer_id):
+        raise HTTPException(status_code=404, detail="Layer not found")
+
+
+@router.get(
+    "/{layer_id}/fields",
+    response_model=List[LayerFieldOut],
+    summary="获取图层字段定义（属性表表头）"
+)
+async def list_fields(
+    layer_id: UUID,
+    db      : AsyncSession = Depends(get_db)
+):
+    """
+    前端打开属性表时第一个调用的接口。
+    返回该图层所有列的定义：名称、类型、顺序。
+    """
+    return await LayerFieldCRUD(db).get_by_layer(layer_id)
+
+
+@router.post(
+    "/{layer_id}/fields",
+    response_model=LayerFieldOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="新增字段（用户手动加列）"
+)
+async def create_field(
+    layer_id: UUID,
+    payload : LayerFieldCreate,
+    db      : AsyncSession = Depends(get_db)
+):
+    try:
+        return await LayerFieldCRUD(db).create(layer_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch(
+    "/{layer_id}/fields/{field_id}",
+    response_model=LayerFieldOut,
+    summary="修改字段定义（改别名、顺序等）"
+)
+async def update_field(
+    layer_id: UUID,
+    field_id: UUID,
+    payload : LayerFieldUpdate,
+    db      : AsyncSession = Depends(get_db)
+):
+    field = await LayerFieldCRUD(db).update(field_id, payload)
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    return field
+
+
+@router.delete(
+    "/{layer_id}/fields/{field_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="删除字段（仅限用户自定义字段）"
+)
+async def delete_field(
+    layer_id: UUID,
+    field_id: UUID,
+    db      : AsyncSession = Depends(get_db)
+):
+    try:
+        deleted = await LayerFieldCRUD(db).delete(field_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Field not found")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))

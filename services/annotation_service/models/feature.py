@@ -1,9 +1,11 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, func, BigInteger, Index, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from geoalchemy2 import Geometry
-
+from sqlalchemy import (
+    Column, String, DateTime, ForeignKey, func,
+    BigInteger, Index, text, Integer, Boolean
+)
 Base = declarative_base()
 
 
@@ -31,6 +33,28 @@ class Layer(Base):
 
     project = relationship("Project", back_populates="layers")
     features = relationship("Feature", back_populates="layer", cascade="all, delete-orphan")
+
+
+class LayerField(Base):
+    """
+    新增模型，独立存在，不影响任何现有模型。
+    单向持有 layer_id 外键即可，无需在 Layer 上加反向关联。
+    """
+    __tablename__ = "layer_fields"
+    __table_args__ = (
+        Index("ix_layer_fields_layer_id", "layer_id"),
+    )
+
+    id          = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    layer_id    = Column(PG_UUID(as_uuid=True), ForeignKey("layers.id", ondelete="CASCADE"), nullable=False)
+    field_name  = Column(String, nullable=False)   # JSONB key
+    field_alias = Column(String)                   # 前端显示名
+    field_type  = Column(String, nullable=False)   # string / number / boolean / date
+    field_order = Column(Integer, default=0)
+    is_required = Column(Boolean, default=False)
+    is_system   = Column(Boolean, default=False)   # True = 文件导入，不可删除
+    default_val = Column(String)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Feature(Base):
