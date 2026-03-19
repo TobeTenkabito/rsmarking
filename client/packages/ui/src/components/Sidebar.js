@@ -168,22 +168,63 @@ export const SidebarComponent = {
 
     // 接收 isVisible 参数
     renderVectorItem(layer, isActive, isVisible) {
-    return `
-        <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${isActive ? 'border-l-4 border-emerald-500 bg-emerald-50/20' : 'border-l-4 border-transparent'}" data-vector-id="${layer.id}">
-            <div class="mr-3">
-                <input type="checkbox" ${isVisible ? 'checked' : ''} 
-                       onclick="event.stopPropagation(); RS.toggleVectorVisibility('${layer.id}')"
-                       class="vector-layer-checkbox w-4 h-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 transition-all cursor-pointer">
-            </div>
-            <div class="flex-1 min-w-0 cursor-pointer" onclick="RS.setActiveVectorLayer('${layer.id}')">
-                <div class="text-sm font-bold ${isActive ? 'text-emerald-700' : 'text-slate-700'} truncate">${layer.name}</div>
-                <div class="text-[9px] text-slate-400 mt-0.5 tracking-tight font-mono">
-                    ${isActive ? '<span class="text-emerald-600 font-bold">● 当前编辑图层</span>' : '点击激活编辑'}
+        const rowCls  = isActive
+            ? 'border-l-4 border-emerald-500 bg-emerald-50/20'
+            : 'border-l-4 border-transparent';
+        const nameCls = isActive ? 'text-emerald-700' : 'text-slate-700';
+
+        return `
+            <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${rowCls}"
+                 data-vector-id="${layer.id}">
+
+                <!-- 显隐 checkbox -->
+                <div class="mr-3 shrink-0">
+                    <input type="checkbox"
+                           ${isVisible ? 'checked' : ''}
+                           onclick="event.stopPropagation(); RS.toggleVectorVisibility('${layer.id}')"
+                           class="vector-layer-checkbox w-4 h-4 rounded border-emerald-300
+                                  text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                </div>
+
+                <!-- 图层名 + 状态（点击激活） -->
+                <div class="flex-1 min-w-0 cursor-pointer"
+                     onclick="RS.setActiveVectorLayer('${layer.id}')">
+                    <div class="text-sm font-bold ${nameCls} truncate">${layer.name}</div>
+                    <div class="text-[9px] text-slate-400 mt-0.5 tracking-tight font-mono">
+                        ${isActive
+                            ? '<span class="text-emerald-600 font-bold">● 当前编辑图层</span>'
+                            : '点击激活编辑'}
+                    </div>
+                </div>
+
+                <!-- 右侧操作区（hover 显示） -->
+                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+
+                    <!-- 📊 属性表入口 -->
+                    <button onclick="event.stopPropagation(); RS.openAttributeTable('${layer.id}', '${layer.name}')"
+                            class="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50
+                                   rounded-lg transition-colors"
+                            title="打开属性表">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
+                        </svg>
+                    </button>
+
+                    <!-- 🗑 删除图层 -->
+                    <button onclick="event.stopPropagation(); RS.deleteLayer('${layer.id}')"
+                            class="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50
+                                   rounded-lg transition-colors"
+                            title="删除图层">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
-        </div>
-    `;
-},
+        `;
+    },
 
     renderEmpty(text) {
         return `<div class="text-center py-10 text-[10px] text-slate-300 italic tracking-widest uppercase">${text}</div>`;

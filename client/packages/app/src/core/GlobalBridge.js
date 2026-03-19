@@ -55,6 +55,7 @@ export class GlobalBridge {
             exitEditMode: () => this.app.project.handleExitEditMode(),
             setDrawColor: (color) => Store.setDrawColor(color),
             deleteSelectedFeature: () => this.app.project.handleDeleteSelectedFeature(),
+            deleteLayer: (layerId) => this.app.project.handleDeleteSelectedLayer(layerId),
 
             // 脚本编辑器
             openScriptEditor: () => this.app.script?.openScriptEditor(),
@@ -70,6 +71,18 @@ export class GlobalBridge {
             aiExecute:          ()  => this.app.ai?.execute(),
             aiConfirmCreate:    ()  => this.app.ai?.confirmCreate(),
             aiConfirmOverwrite: ()  => this.app.ai?.confirmOverwrite(),
+
+            // --- 属性表 ---
+            openAttributeTable  : (layerId, layerName) => this.app.attributeTable?.open(layerId, layerName),
+            attrClose           : ()                   => this.app.attributeTable?.close(),
+            attrRefresh         : ()                   => this.app.attributeTable?.refresh(),
+            attrToggleExpand    : ()                   => this.app.attributeTable?.toggleExpand(),
+            attrAddColumn       : ()                   => this.app.attributeTable?.addColumn(),
+            attrRenameColumn    : (fid, alias)         => this.app.attributeTable?.renameColumn(fid, alias),
+            attrDeleteColumn    : (fid, name)          => this.app.attributeTable?.deleteColumn(fid, name),
+            attrColumnMenu      : (e, fid, fname, sys) => this.app.attributeTable?.showColumnMenu(e, fid, fname, sys),
+            attrEditCell        : (td)                 => this.app.attributeTable?.editCell(td),
+            attrDeleteFeature   : (featureId)          => this.app.attributeTable?.deleteFeature(featureId),
 
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),

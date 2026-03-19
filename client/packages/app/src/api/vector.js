@@ -140,6 +140,15 @@ export const VectorAPI = {
     },
 
     /**
+     * 删除图层
+     */
+    async deleteLayer(layerID){
+        return await apiRequest(`${ANNO_BASE_URL}/layers/${layerID}`,{
+        method: 'DELETE'
+        });
+    },
+
+    /**
      * 批量导入要素 (用于对接 AI 提取模块 ExtractionModule)
      * @param {string} layerId
      * @param {Array} features - [{geometry: {...}, properties: {...}}, ...]
@@ -150,6 +159,24 @@ export const VectorAPI = {
             body: JSON.stringify(features)
         });
     },
+
+    fetchFields: (layerId) =>
+        apiRequest(`${ANNO_BASE_URL}/${layerId}/fields`),
+
+    createField: (layerId, payload) =>
+        apiRequest(`${ANNO_BASE_URL}/${layerId}/fields`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+        }),
+
+    updateField: (layerId, fieldId, payload) =>
+        apiRequest(`${ANNO_BASE_URL}/${layerId}/fields/${fieldId}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+        }),
+
+    deleteField: (layerId, fieldId) =>
+        apiRequest(`${ANNO_BASE_URL}/${layerId}/fields/${fieldId}`, { method: "DELETE" }),
 
     /**
      * 获取 MVT 矢量瓦片服务的 URL 模板

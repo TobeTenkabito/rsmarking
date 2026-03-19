@@ -367,6 +367,138 @@ export const ModalComponent = {
     },
 
     /**
+     * 渲染属性表表头行
+     * @param {LayerFieldOut[]} fields
+     */
+    renderAttrTableHead(fields) {
+        const ths = [
+            `<th class="attr-th w-12 text-center">#</th>`,
+            ...fields.map(f => `
+                <th class="attr-th"
+                    data-field-id="${f.id}"
+                    ondblclick="RS.attrRenameColumn('${this._esc(f.id)}','${this._esc(f.field_alias || f.field_name)}')"
+                    oncontextmenu="RS.attrColumnMenu(event,'${this._esc(f.id)}','${this._esc(f.field_alias || f.field_name)}',${!!f.is_system})">
+                    <div class="flex items-center gap-1 select-none">
+                        <span class="type-badge ${this._attrBadgeCls(f.field_type)}"
+                              title="${f.field_type}">
+                            ${this._attrTypeIcon(f.field_type)}
+                        </span>
+                        <span class="truncate max-w-[140px]"
+                              title="${this._esc(f.field_alias || f.field_name)}">
+                            ${f.field_alias || f.field_name}
+                        </span>
+                        ${f.is_system
+                            ? '<span class="ml-1 text-[9px] text-slate-300" title="文件导入字段，不可删除">系统</span>'
+                            : ''}
+                    </div>
+                </th>`),
+            `<th class="attr-th w-8 text-center" title="删除要素">🗑</th>`,
+        ];
+        return `<tr>${ths.join('')}</tr>`;
+    },
+
+    /**
+     * 渲染属性表数据行
+     * @param {FeatureResponse[]} features
+     * @param {LayerFieldOut[]}   fields
+     * @param {string|null}       selectedFeatureId  当前选中要素 id
+     */
+    renderAttrTableBody(features, fields, selectedFeatureId = null) {
+        if (!features.length) {
+            return `
+                <tr>
+                    <td colspan="${fields.length + 2}"
+                        class="py-10 text-center text-xs text-slate-400">
+                        暂无要素数据
+                    </td>
+                </tr>`;
+        }
+
+        return features.map((feat, i) => {
+            const isSelected = feat.id === selectedFeatureId;
+            const rowCls = isSelected
+                ? 'bg-indigo-50 ring-1 ring-inset ring-indigo-200'
+                : 'hover:bg-slate-50';
+
+            const tds = [
+                // 序号列
+                `<td class="attr-td text-center text-slate-400 font-mono text-[11px]">${i + 1}</td>`,
+
+                // 数据列
+                ...fields.map(f => {
+                    const raw     = feat.properties?.[f.field_name] ?? '';
+                    const display = this._attrFmtVal(raw, f.field_type);
+                    return `
+                        <td class="attr-td cursor-text"
+                            data-feature-id="${feat.id}"
+                            data-field-name="${this._esc(f.field_name)}"
+                            data-field-type="${f.field_type}"
+                            data-raw="${this._esc(String(raw))}"
+                            ondblclick="RS.attrEditCell(this)">
+                            <span class="cell-val">${display}</span>
+                        </td>`;
+                }),
+
+                // 删除列
+                `<td class="attr-td text-center">
+                    <button onclick="RS.attrDeleteFeature('${feat.id}')"
+                            class="text-slate-300 hover:text-red-500 transition-colors leading-none text-xs"
+                            title="删除该要素">✕</button>
+                </td>`,
+            ];
+
+            return `
+                <tr class="group transition-colors ${rowCls}"
+                    data-feature-id="${feat.id}">
+                    ${tds.join('')}
+                </tr>`;
+        }).join('');
+    },
+
+    /**
+     * 渲染属性表空状态（加载中）
+     */
+    renderAttrTableLoading() {
+        return `
+            <tr>
+                <td colspan="99" class="py-10 text-center text-xs text-indigo-400 animate-pulse">
+                    正在加载属性数据…
+                </td>
+            </tr>`;
+    },
+
+    // ── 属性表私有工具方法 ──────────────────────────────────────────────
+
+    _attrBadgeCls(type) {
+        return { string: 'badge-str', number: 'badge-num',
+                 boolean: 'badge-bool', date: 'badge-date' }[type] ?? 'badge-str';
+    },
+
+    _attrTypeIcon(type) {
+        return { string: 'T', number: '#', boolean: '⊙', date: '▦' }[type] ?? '?';
+    },
+
+    _attrFmtVal(val, type) {
+        if (val === null || val === undefined || val === '')
+            return '<span class="text-slate-300 select-none">—</span>';
+        if (type === 'boolean') return val ? '✅' : '❌';
+        if (type === 'date') {
+            try { return new Date(val).toLocaleDateString('zh-CN'); } catch { return String(val); }
+        }
+        return String(val);
+    },
+
+    /** HTML 属性值转义 */
+    _esc(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/'/g, '&#39;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    },
+
+    /**
      * 动作等待状态
      */
     renderActionLoading(message = "正在执行算法...") {

@@ -21,6 +21,11 @@ export class UIManager {
         const detailDiv = document.createElement('div');
         detailDiv.innerHTML = ModalTemplates.detailPanel;
         detailContainer.appendChild(detailDiv);
+
+        //  属性表抽屉注入到 body 底部
+        const attrDiv = document.createElement('div');
+        attrDiv.innerHTML = ModalTemplates.attributeTablePanel;
+        document.body.appendChild(attrDiv);
     }
 
     showGlobalLoader(show) {

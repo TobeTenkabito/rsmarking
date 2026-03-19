@@ -15,6 +15,7 @@ export const Store = {
         activeProject: null,   // 当前选中的项目对象
         vectorLayers: [],      // 当前项目下的所有矢量图层
         activeVectorLayerId: null, // 当前正在编辑/查看的矢量图层 ID
+        selectedVectorLayerId: null, // 选中的矢量图层 ID
         visibleVectorLayerIds: new Set(), // 存储当前所有需要在地图上渲染的图层 ID
         currentFeatures: {     // 当前地图视口内加载的 GeoJSON 要素
             type: "FeatureCollection",
@@ -99,6 +100,21 @@ export const Store = {
         }
         this.state.currentFeatures = { type: "FeatureCollection", features: [] };
         this.notifyVectorChange();
+    },
+
+    setSelectedVectorLayerId(layerId) {
+    this.state.selectedVectorLayerId = layerId;  // 正确写入 state
+    this.notifyVectorChange();
+    },
+
+    removeVectorLayer(layerId) {
+        this.state.vectorLayers = this.state.vectorLayers.filter(l => l.id !== layerId);
+        this.state.visibleVectorLayerIds.delete(layerId);
+        // 如果删的正好是当前激活图层，清空激活状态
+        if (this.state.activeVectorLayerId === layerId) {
+            this.state.activeVectorLayerId = null;
+        }
+        this.notifyVectorChange();  // ✅ 触发 onVectorStateChange → updateUI()
     },
 
 

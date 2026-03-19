@@ -9,10 +9,11 @@ import { ExtractionModule } from './modules/ExtractionModule.js';
 import { AnnotationModule } from './modules/AnnotationModule.js';
 import { RasterModule } from './modules/RasterModule.js';
 import { ProjectModule } from './modules/ProjectModule.js';
-import {CalculatorModule} from "./modules/CalculatorModule.js" ;
+import { CalculatorModule } from "./modules/CalculatorModule.js" ;
 import { ScriptModule } from './modules/ScriptModule.js';
-import {AIModule} from "./modules/AIModule.js";
+import { AIModule } from "./modules/AIModule.js";
 import { WelcomeModule } from './modules/WelcomeModule.js';
+import { AttributeTable }   from './modules/AttributeTable.js';
 
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
@@ -34,6 +35,7 @@ class App {
         this.raster = null;
         this.project = null;
         this.ai = null;
+        this.attributeTable = null;
     }
 
     async init() {
@@ -54,6 +56,7 @@ class App {
             this.raster = new RasterModule(this);
             this.project = new ProjectModule(this);
             this.ai = new AIModule(this);
+            this.attributeTable = new AttributeTable(this);
 
             // 4. 挂载全局方法与绑定事件
             new GlobalBridge(this).mount();

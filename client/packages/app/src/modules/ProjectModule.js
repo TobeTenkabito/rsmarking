@@ -123,6 +123,28 @@ export class ProjectModule {
         }
     }
 
+    async handleDeleteSelectedLayer(layerId) {
+        const targetId = layerId ?? Store.state.selectedVectorLayerId;
+        if (!targetId) return;
+        if (confirm("确认删除图层?")) {
+            try {
+                await VectorAPI.deleteLayer(targetId);
+                Store.removeVectorLayer(targetId);
+                if (this.app.mapController) {
+                    this.app.mapController.renderVectorData(targetId, {
+                        type: 'FeatureCollection',
+                        features: []
+                });
+            }
+                const delBtn = document.getElementById('btn-delete-feature');
+                if (delBtn) delBtn.classList.add('hidden');
+            } catch (err) {
+                console.error('删除失败', err);
+                alert('删除失败，请检查网络或控制台');
+            }
+        }
+    }
+
     /**
      * 【调试/管理】删除所有项目并重置 UI 状态
      */
