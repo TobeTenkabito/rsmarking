@@ -4,6 +4,7 @@
  */
 import { VectorAPI } from '../api/vector.js';
 import { Store } from '../store/index.js';
+import { AreaAutoFill } from '../glue/AreaAutoFill.js';
 
 export class AnnotationModule {
     constructor(app) {
@@ -44,6 +45,9 @@ export class AnnotationModule {
                     }
                 );
                 console.log("[Annotation] 要素保存成功:", newFeature);
+                // 计算面积并写入
+                AreaAutoFill.run(activeLayerId, newFeature.id, geojson.geometry);
+
                 this.map.removeLayer(layer);
                 if (this.app.mapController && this.app.mapController.refreshVectorLayer) {
                     await this.app.mapController.refreshVectorLayer(activeLayerId);
