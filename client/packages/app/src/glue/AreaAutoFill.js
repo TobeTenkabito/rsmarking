@@ -13,33 +13,41 @@
  * 不依赖任何第三方库，面积计算使用球面过剩公式（Spherical Excess）。
  */
 
-import { VectorAPI } from '../api/vector.js';
-
-/** WGS84 椭球体平均半径，单位：千米 */
-const EARTH_RADIUS_KM = 6371.0;
-
-/** 自动创建的面积字段名（与后端 field_name 对应） */
-const AREA_FIELD_NAME = 'area';
-
+/** WGS84 椭球体参数 */
+const WGS84_A = 6378.137;             // 长半轴，单位：千米
+const WGS84_B = 6356.752314245;       // 短半轴，单位：千米
+const E2 = 1 - (WGS84_B * WGS84_B) / (WGS84_A * WGS84_A); // 偏心率平方
+const E = Math.sqrt(E2);              // 第一偏心率
 
 /**
- * 将角度转换为弧度
- * @param {number} deg
+ * 计算 WGS84 等面积积分 q(phi)
+ * @param {number} sinPhi 纬度的正弦值
  * @returns {number}
  */
-function toRad(deg) {
-    return deg * Math.PI / 180;
+function qFunc(sinPhi) {
+    const eSinPhi = E * sinPhi;
+    const term1 = sinPhi / (1 - eSinPhi * eSinPhi);
+    const term2 = (1 / (2 * E)) * Math.log((1 - eSinPhi) / (1 + eSinPhi));
+    return (1 - E2) * (term1 - term2);
+}
+
+// 极点处的 q 值及等面积球半径
+const Q_P = qFunc(1.0);
+const R_Q = WGS84_A * Math.sqrt(Q_P / 2); // 约 6371.00718 km
+
+/**
+ * 将几何纬度转换为等面积纬度的正弦值 (sin(beta))
+ * @param {number} latDeg 纬度（度）
+ * @returns {number}
+ */
+function getAuthalicSinLat(latDeg) {
+    const latRad = toRad(latDeg);
+    return qFunc(Math.sin(latRad)) / Q_P;
 }
 
 /**
- * 计算 WGS84 球面多边形面积（球面过剩公式）
- *
- * 算法：对多边形每条边，累加球面梯形面积（Girard 定理的离散近似）。
- * 参考：Robert G. Chamberlain & William H. Duquette (2007)
- *       "Some Algorithms for Polygons on a Sphere"
- *
- * @param {Array<[number, number]>} ring  - 坐标环，格式 [[lng, lat], ...]，首尾可以相同
- * @returns {number} 面积，单位：平方千米（始终为正值）
+ * 计算 WGS84 椭球面多边形面积（基于等面积球的球面过剩公式）
+ * 复杂度：O(N)
  */
 function computeRingAreaKm2(ring) {
     const n = ring.length;
@@ -51,12 +59,15 @@ function computeRingAreaKm2(ring) {
         const [lng1, lat1] = ring[i];
         const [lng2, lat2] = ring[i + 1];
 
-        // Chamberlain-Duquette 球面梯形公式
-        area += toRad(lng2 - lng1) * (2 + Math.sin(toRad(lat1)) + Math.sin(toRad(lat2)));
+        // 核心修改：使用等面积纬度的正弦值替代原有理想球体的正弦值
+        const sinBeta1 = getAuthalicSinLat(lat1);
+        const sinBeta2 = getAuthalicSinLat(lat2);
+
+        area += toRad(lng2 - lng1) * (2 + sinBeta1 + sinBeta2);
     }
 
-    // 绝对值 / 2，再乘以 R²
-    return Math.abs(area * EARTH_RADIUS_KM * EARTH_RADIUS_KM / 2);
+    // 使用严密等效半径 R_Q 计算最终面积
+    return Math.abs(area * R_Q * R_Q / 2);
 }
 
 /**

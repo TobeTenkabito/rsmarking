@@ -40,7 +40,7 @@ Compared to traditional GIS servers (e.g., GeoServer, MapServer) or standard web
   Powered by a pluggable LLM backend (via **LiteLLM**), with a strict **Pydantic contract layer** to prevent AI from tampering with read-only spatial statistics.
 
   > **Competitive Landscape:**
-  > - **QGIS** (including the latest 4.0 release) does **not** include a built-in AI Agent, making RSMarking a more forward-looking choice for AI-assisted geospatial workflows.
+  > - **QGIS** (including the latest 4.0 release on March 06, 2026) does **not** include a built-in AI Agent, making RSMarking a more forward-looking choice for AI-assisted geospatial workflows.
   > - **ArcGIS Pro** with *ArcGIS Assistant (Beta) 3.6* offers geospatial analysis capabilities that may exceed RSMarking in certain analytical depth — however, it remains a **commercial, paid product**, whereas RSMarking is **open and free**.
   > - RSMarking's AI Gateway is purpose-built for **remote sensing annotation workflows**, offering native raster/vector context injection, multi-language support, and a strict anti-tamper contract layer — features not available in general-purpose GIS AI assistants.
 
@@ -162,7 +162,7 @@ npm run dev
   通过 **LiteLLM** 适配多种主流大语言模型，并采用严格的 **Pydantic 契约层**防止 AI 篡改只读空间统计数据。
 
   > **横向对比主流 GIS 软件：**
-  > - **QGIS**（含最新发布的 4.0 版本）**尚未内置 AI Agent 功能**，而 RSMarking 已于 2026 年 3 月 16 日正式集成，在 AI 辅助遥感工作流方面具备先发优势。
+  > - **QGIS**（含 2026 年 3 月 6 日发布的 4.0 版本）**尚未内置 AI Agent 功能**，而 RSMarking 已于 2026 年 3 月 16 日正式集成，在 AI 辅助遥感工作流方面具备先发优势。
   > - **ArcGIS Pro** 的 *ArcGIS Assistant (Beta) 3.6* 在部分地理空间分析深度上优于本项目，但其属于**商业付费软件**；RSMarking 作为**开源免费**平台，在可访问性与部署灵活性上更具优势。
   > - RSMarking 的 AI 网关专为**遥感影像标注工作流**深度定制，原生支持栅格/矢量上下文注入、多语言响应及防篡改契约层，是通用 GIS AI 助手所不具备的核心能力。
 
