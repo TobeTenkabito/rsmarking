@@ -34,10 +34,15 @@ Compared to traditional GIS servers (e.g., GeoServer, MapServer) or standard web
 
   Decoupled **Tile Service** and **Annotation Service** with robust **FastAPI** backends, easily scalable via **Kubernetes**.
 
-- **AI-Powered Spatial Data Gateway**
+- **AI-Powered Spatial Data Gateway** *(Updated: March 16, 2026)*
 
   An integrated **AI Gateway** service that accepts natural language instructions to analyze or modify raster/vector GIS data.  
   Powered by a pluggable LLM backend (via **LiteLLM**), with a strict **Pydantic contract layer** to prevent AI from tampering with read-only spatial statistics.
+
+  > **Competitive Landscape:**
+  > - **QGIS** (including the latest 4.0 release) does **not** include a built-in AI Agent, making RSMarking a more forward-looking choice for AI-assisted geospatial workflows.
+  > - **ArcGIS Pro** with *ArcGIS Assistant (Beta) 3.6* offers geospatial analysis capabilities that may exceed RSMarking in certain analytical depth — however, it remains a **commercial, paid product**, whereas RSMarking is **open and free**.
+  > - RSMarking's AI Gateway is purpose-built for **remote sensing annotation workflows**, offering native raster/vector context injection, multi-language support, and a strict anti-tamper contract layer — features not available in general-purpose GIS AI assistants.
 
 ---
 
@@ -151,10 +156,15 @@ npm run dev
   **瓦片服务 (Tile Service)** 与 **标注服务 (Annotation Service)** 完全解耦。  
   通过 **FastAPI** 提供高并发支持，并可通过 **Kubernetes** 实现无缝横向扩展。
 
-- **AI 空间数据智能网关 (AI Gateway)**
+- **AI 空间数据智能网关 (AI Gateway)** *(2026 年 3 月 16 日更新)*
 
   集成 **AI 网关微服务**，接受自然语言指令，对栅格或矢量 GIS 数据执行**智能分析**或**结构化修改**。  
   通过 **LiteLLM** 适配多种主流大语言模型，并采用严格的 **Pydantic 契约层**防止 AI 篡改只读空间统计数据。
+
+  > **横向对比主流 GIS 软件：**
+  > - **QGIS**（含最新发布的 4.0 版本）**尚未内置 AI Agent 功能**，而 RSMarking 已于 2026 年 3 月 16 日正式集成，在 AI 辅助遥感工作流方面具备先发优势。
+  > - **ArcGIS Pro** 的 *ArcGIS Assistant (Beta) 3.6* 在部分地理空间分析深度上优于本项目，但其属于**商业付费软件**；RSMarking 作为**开源免费**平台，在可访问性与部署灵活性上更具优势。
+  > - RSMarking 的 AI 网关专为**遥感影像标注工作流**深度定制，原生支持栅格/矢量上下文注入、多语言响应及防篡改契约层，是通用 GIS AI 助手所不具备的核心能力。
 
 ---
 
