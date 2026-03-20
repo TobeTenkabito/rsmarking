@@ -3,31 +3,39 @@
 │   ├── index.html         # 前端入口，仅包含必要功能
 │   ├── /packages/app/src
 │   │   ├── /api/
+│   │   │   ├── ai.js      # ai分析专属api
 │   │   │   ├── raster.js  # 栅格api
-│   │   │   ├── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
+│   │   │   └── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
+│   │   ├── /glue/  # 胶水层，负责整合已有组件实现微功能
+│   │   │   └── AreaAutoFill.js  # 自动填写面积
 │   │   ├── /modules/  # 功能模块
+│   │   │   ├── AIModule.js  # ai模块
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
+│   │   │   ├── AttributeModule.js  # 矢量业务表逻辑
 │   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
 │   │   │   ├── AnnotationModule.js  # 负责矢量标注的模块
 │   │   │   ├── RasterModule.js   # 负责栅格的加载、删除、波段合成
 │   │   │   ├── ProjectModule.js  # 负责矢量项目/图层的增删改查
+│   │   │   ├── ScriptModule.js  # 脚本逻辑
+│   │   │   └── WelcomeModule.js  # 初始页面
 │   │   ├── /core/  # 全局模块
 │   │   │   ├── UIManager.js      # 负责所有 DOM 注入和显隐状态
 │   │   │   ├── GlobalBridge.js   # 负责挂载 window.RS
-│   │   │   ├── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
+│   │   │   └── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
 │   │   ├── /store
-│   │   │   ├──index.js     # 核心状态管理中心
-│   │   ├── main.js         # 接口
+│   │   │   └── index.js     # 核心状态管理中心
+│   │   └── main.js         # 全局方法暴露
 │   ├── /packages/core/src  # 地图核心渲染接口
-│   │   ├── map.js
+│   │   └── map.js
 │   ├── /packages/ui/src    # 业务组件 (属性编辑器、任务看板)
 │   │   ├── /components
 │   │   │   ├── Modal.js    # 负责所有弹出层内容的 HTML 模板渲染
 │   │   │   ├── Sidebar.js  # 处理左侧影像资源列表的渲染
-│   │   ├── /templates
-│   │   │   ├── Modals.js    # 存放所有大型 HTML 骨架片段
+│   │   └── /templates
+│   │       ├── Welcome.js  # 初始化页面渲染
+│   │       └── Modals.js    # 存放所有大型 HTML 骨架片段
 │   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
 ├── /services               # 后端微服务化
 │   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限 "未实现"
@@ -47,7 +55,7 @@
 │   │   ├── executor_bridge.py  # 脚本服务中转
 │   │   ├── main.py         # 启动
 │   │   ├── models.py       # 定义元数据
-│   │   ├── processor.py    # 调用算法
+│   │   └── processor.py    # 调用算法
 │   ├── /tile_service       # [Cython] 前端渲染逻辑, 动态瓦片分发，支持多级 LRU 缓存
 │   │   ├── __init__.py
 │   │   ├── control.py      # 渲染路由层
@@ -56,26 +64,32 @@
 │   │   ├── setup.py        # cython 配置
 │   │   ├── /core
 │   │   │   ├── cache.py
-│   │   │   ├── config.py
-│   │   ├── /engine
-│   │   │   ├── stats.py
-│   │   │   ├── tiler.py    # 核心渲染引擎,其余模块为解耦
-│   │   │   ├── rendering.pyx
-│   │   │   ├── translator.pyx
+│   │   │   └── config.py
+│   │   └── /engine
+│   │       ├── stats.py
+│   │       ├── tiler.py    # 核心渲染引擎,其余模块为解耦
+│   │       ├── rendering.pyx
+│   │       └── translator.pyx
 │   ├── /annotation_service # 矢量要素增删改查、空间索引 (PostGIS 交互)
 │   │   ├── __init__.py
-│   │   ├── /crud/feature.py  # 数据库增删查改
+│   │   ├── /crud/  # 矢量数据库增删查改
+│   │   │   ├── feature.py  # 要素
+│   │   │   ├── layer.py   # 图层
+│   │   │   └── layer_field.py  # 业务表
 │   │   ├── /models/feature.py  # project,layer,feature等模型定义
 │   │   ├── layers.py   # features,layers 的路由层
 │   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
 │   └── /ai_gateway   # AI网关
-│       ├── main.py
+│       ├── main.py  # 端口
+│       ├── analyze_handler.py
+│       ├── modify_handler.py
 │       ├── data_extractor.py
 │       ├── llm_engine.py
-│       ├── router.py
+│       ├── router.py  # 路由
 │       ├── schema_validator.py
+│       ├── tool_executor.py
 │       └── translator.py
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
@@ -86,8 +100,8 @@
 │   │   ├── manipulation.py      # 栅格合成
 │   │   ├── spatial_ops.py       # 坐标系转换为wgs84
 │   │   └── spectral_indices.py  # 遥感常见指数计算
-│   ├── /ml                # "暂无"
-├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)"暂无"
+│   └── /ml                # "暂无"
+├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)"暂未实现"
 │   ├── /tasks/preprocess  # 影像金字塔构建、统计计算、重投影
 │   └── /tasks/export      # 异步导出 COCO/GeoJSON/TFRecord
 ├── /core_lib              # [Cython/C++] 高性能底层库(未实现)
