@@ -16,24 +16,29 @@ logger = logging.getLogger("ai_gateway.llm_engine")
 
 def _build_system_prompt(mode: TaskMode, data_type: DataType, language: AILanguage, modifiable_schema_json: str) -> str:
     LANGUAGE_MAP = {
-        AILanguage.ZH: "你必须使用【简体中文】回答，所有输出内容包括分析报告、字段说明、错误信息均使用中文。",
-        AILanguage.EN: "You MUST respond in【English】. All output including analysis, field descriptions, and error messages must be in English.",
-        AILanguage.JA: "必ず【日本語】で回答してください。分析レポート、フィールドの説明、エラーメッセージを含むすべての出力は日本語で記述してください。",
+        AILanguage.ZH: "使用简体中文回答，不受用户输入语言影响。",
+        AILanguage.EN: "Respond in English,regardless of the user's input language.",
+        AILanguage.JA: "ユーザーの入力言語に関係なく、日本語で回答。",
     }
-    language_instruction = LANGUAGE_MAP[language]
-    base_prompt = f"{language_instruction},你是一个专业的 GIS 空间数据分析与处理 AI 助手。\n"
-
+    base_prompt = f"{LANGUAGE_MAP[language]} 你是GIS空间数据分析助手。\n"
     if mode == TaskMode.ANALYZE:
-        return base_prompt + "请根据用户的自然语言提问，对这些数据进行专业的分析，并输出纯文本的分析报告。\n要求：专业、客观、条理清晰。不得编造数据中不存在的信息。不要输出任何 JSON 代码。"
+        return base_prompt + (
+            "任务：根据用户问题分析数据，输出文本报告。\n"
+            "要求：\n"
+            "- 专业、客观、结构清晰\n"
+            "- 不编造数据\n"
+            "- 不输出JSON"
+        )
     elif mode == TaskMode.MODIFY:
-        return base_prompt + f"""你现在的任务是：根据用户的指令，修改提供的 GIS 数据，并返回修改后的完整 JSON。
-【极其重要的规则】
-1. 提供的原始数据中包含了大量只读的统计特征，这些是客观物理数据，**绝对不可修改**。
-2. 你必须且只能输出合法的 JSON 字符串，不要包含任何 Markdown 标记（如 ```json），不要包含任何解释性文本！
-3. 你的输出必须严格符合以下 JSON Schema，**只能包含允许修改的字段**：
-{modifiable_schema_json}
-4. 你的输出必须包含一个顶层键 "modified_data"，里面存放你修改后的数据。
-"""
+        return base_prompt + (
+            "任务：根据用户指令修改GIS数据并返回JSON。\n"
+            "规则：\n"
+            "1. 不修改只读字段\n"
+            "2. 仅输出合法JSON（无Markdown、无解释）\n"
+            "3. 仅包含允许修改字段（见Schema）\n"
+            "4. 顶层必须包含 \"modified_data\"\n"
+            f"Schema:\n{modifiable_schema_json}"
+        )
 
 
 async def call_llm_with_retry(

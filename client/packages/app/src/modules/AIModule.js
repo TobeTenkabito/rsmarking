@@ -13,10 +13,6 @@ export class AIModule {
         this._pendingResult  = null;
     }
 
-    // ==========================================
-    // 1. 打开 AI 面板
-    // ==========================================
-
     openModal() {
         const modal = document.getElementById('ai-modal');
         if (!modal) return;
@@ -34,10 +30,6 @@ export class AIModule {
         document.getElementById('ai-modal')?.classList.add('hidden');
         this._resetState();
     }
-
-    // ==========================================
-    // 2. 执行 AI 任务（分析 / 修改）
-    // ==========================================
 
     async execute() {
         const targetId  = document.getElementById('ai-target-select')?.value;
@@ -69,10 +61,6 @@ export class AIModule {
         }
     }
 
-    // ==========================================
-    // 3. 分析模式：渲染报告 + 提供下载
-    // ==========================================
-
     async _runAnalyze(payload) {
         const result = await AIAPI.analyze(payload);
 
@@ -89,10 +77,6 @@ export class AIModule {
 
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
-
-    // ==========================================
-    // 4. 修改模式：预览结果 + 等待用户确认
-    // ==========================================
 
     async _runModify(payload) {
         const result = await AIAPI.modify(payload);
@@ -111,10 +95,6 @@ export class AIModule {
         document.getElementById('ai-confirm-section')?.classList.remove('hidden');
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
-
-    // ==========================================
-    // 5. 用户确认：新建
-    // ==========================================
 
     async confirmCreate() {
         if (!this._pendingPayload || !this._pendingResult) return;
@@ -139,10 +119,6 @@ export class AIModule {
         }
     }
 
-    // ==========================================
-    // 6. 用户确认：覆盖（需二次弹窗确认）
-    // ==========================================
-
     async confirmOverwrite() {
         if (!this._pendingPayload) return;
 
@@ -166,10 +142,6 @@ export class AIModule {
             this._setLoading(false);
         }
     }
-
-    // ==========================================
-    // 7. 内部辅助方法
-    // ==========================================
 
     _setLoading(isLoading) {
         const btn = document.getElementById('ai-execute-btn');
