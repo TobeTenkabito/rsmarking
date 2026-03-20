@@ -34,10 +34,6 @@ export class AttributeTable {
         this._bindDragResize();
     }
 
-    // ─────────────────────────────────────────────
-    //  Public API
-    // ─────────────────────────────────────────────
-
     async open(layerId, layerName = '') {
         this._initDom();
         this.layerId   = layerId;
@@ -84,10 +80,6 @@ export class AttributeTable {
         }
     }
 
-    // ─────────────────────────────────────────────
-    //  展开 / 收起
-    // ─────────────────────────────────────────────
-
     toggleExpand() {
         this._initDom();
         this._setExpanded(!this._expanded);
@@ -101,10 +93,6 @@ export class AttributeTable {
             this._expandBtn.textContent = expanded ? '⬇ 收起' : '⬆ 展开';
         }
     }
-
-    // ─────────────────────────────────────────────
-    //  列操作
-    // ─────────────────────────────────────────────
 
     async addColumn() {
         const name = prompt('字段名（建议英文 + 下划线）：');
@@ -176,10 +164,6 @@ export class AttributeTable {
             document.addEventListener('click', () => this._hideCtxMenu(), { once: true }), 0);
     }
 
-    // ─────────────────────────────────────────────
-    //  单元格编辑 —— 核心修复区域
-    // ─────────────────────────────────────────────
-
     editCell(td) {
         if (td.querySelector('input,select')) return;
 
@@ -250,10 +234,6 @@ export class AttributeTable {
         });
     }
 
-    // ─────────────────────────────────────────────
-    //  要素操作
-    // ─────────────────────────────────────────────
-
     async deleteFeature(featureId) {
         if (!confirm('确定删除该要素？此操作不可撤销。')) return;
         try {
@@ -270,10 +250,6 @@ export class AttributeTable {
         }
     }
 
-    // ─────────────────────────────────────────────
-    //  私有：渲染
-    // ─────────────────────────────────────────────
-
     _render() {
         if (this._thead) {
             this._thead.innerHTML = ModalComponent.renderAttrTableHead(this.fields);
@@ -289,10 +265,6 @@ export class AttributeTable {
             this._count.textContent = `${this.features.length} 条要素`;
         }
     }
-
-    // ─────────────────────────────────────────────
-    //  私有：拖拽调整高度
-    // ─────────────────────────────────────────────
 
     _bindDragResize() {
         const handle = document.getElementById('attr-drag-handle');
@@ -326,10 +298,6 @@ export class AttributeTable {
         });
     }
 
-    // ─────────────────────────────────────────────
-    //  私有：工具
-    // ─────────────────────────────────────────────
-
     _makeEditor(fieldType, rawValue) {
         if (fieldType === 'boolean') {
             const sel = document.createElement('select');
@@ -349,7 +317,6 @@ export class AttributeTable {
     _parseVal(val, type) {
         if (type === 'number')  return val === '' ? null : Number(val);
         if (type === 'boolean') return val === 'true';
-        // ✅ Fix2: string/date 类型不做任何 trim/toLowerCase，完整保留用户输入
         return val;
     }
 
