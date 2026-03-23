@@ -36,6 +36,15 @@ const Q_P = qFunc(1.0);
 const R_Q = WGS84_A * Math.sqrt(Q_P / 2); // 约 6371.00718 km
 
 /**
+ * 将角度转换为弧度
+ * @param {number} deg
+ * @returns {number}
+ */
+function toRad(deg) {
+    return deg * Math.PI / 180;
+}
+
+/**
  * 将几何纬度转换为等面积纬度的正弦值 (sin(beta))
  * @param {number} latDeg 纬度（度）
  * @returns {number}
