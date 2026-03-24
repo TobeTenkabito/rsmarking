@@ -10,7 +10,7 @@ from sqlalchemy.future import select
 from functions.common.snowflake_utils import get_next_index_id
 import services.data_service.models as models
 from services.data_service.processor import RasterProcessor
-from services.data_service.crud import RasterCRUD
+from services.data_service.crud.raster_crud import RasterCRUD
 
 logger = logging.getLogger("data_service.db_ops")
 

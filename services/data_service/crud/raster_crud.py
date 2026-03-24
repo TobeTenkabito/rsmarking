@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete
 from typing import List, Optional
-from .models import RasterMetadata
+from services.data_service.models import RasterMetadata
 
 logger = logging.getLogger("data_service.crud")
 

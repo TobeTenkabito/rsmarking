@@ -2,12 +2,11 @@ import os
 import logging
 import numpy as np
 import rasterio
-from typing import Any, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 
-from services.data_service.crud import RasterCRUD
-from services.annotation_service.crud.layer import LayerCRUD
+from services.data_service.crud.raster_crud import RasterCRUD
+from services.annotation_service.crud.layer_crud import LayerCRUD
 from services.annotation_service.models.feature import Feature
 
 from services.ai_gateway.schema_validator import (

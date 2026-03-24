@@ -4,7 +4,7 @@ import uuid
 import logging
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.data_service.crud import RasterCRUD
+from services.data_service.crud.raster_crud import RasterCRUD
 from services.data_service.db_ops import save_to_db, UPLOAD_DIR, COG_DIR
 from services.data_service.processor import RasterProcessor
 

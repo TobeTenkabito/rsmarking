@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from services.annotation_service.database import get_db
-from services.annotation_service.crud.layer import LayerCRUD
+from services.annotation_service.crud.layer_crud import LayerCRUD
 from services.annotation_service.schemas.geojson import ProjectCreate, LayerCreate
 
 router = APIRouter(tags=["Management"])

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, JSON, DateTime, BigInteger
+from sqlalchemy import Column, Integer, String, Float, JSON, DateTime, BigInteger, Boolean, ForeignKey, Index
 from services.data_service.database import Base
 from datetime import datetime
 
@@ -35,3 +35,27 @@ class RasterMetadata(Base):
     resolution_y = Column(Float)
 
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RasterField(Base):
+    """栅格业务属性字段表"""
+    __tablename__ = "raster_fields"
+    __table_args__ = (
+        Index("ix_raster_fields_raster_index_id", "raster_index_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # 关联 RasterMetadata.index_id（雪花ID），级联删除
+    raster_index_id = Column(
+        BigInteger,
+        ForeignKey("raster_metadata.index_id", ondelete="CASCADE"),
+        nullable=False
+    )
+    field_name  = Column(String, nullable=False)   # 字段键名
+    field_alias = Column(String, nullable=True)    # 前端显示名
+    field_type  = Column(String, nullable=False)   # string / number / boolean / date
+    field_order = Column(Integer, default=0)
+    is_required = Column(Boolean, default=False)
+    is_system   = Column(Boolean, default=False)   # True 时前端不可删除
+    default_val = Column(String, nullable=True)
+    created_at  = Column(DateTime, default=datetime.utcnow)

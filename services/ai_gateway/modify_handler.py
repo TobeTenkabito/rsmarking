@@ -5,8 +5,8 @@ from typing import Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from functions.common.snowflake_utils import get_next_index_id
-from services.data_service.crud import RasterCRUD
-from services.annotation_service.crud.layer import LayerCRUD
+from services.data_service.crud.raster_crud import RasterCRUD
+from services.annotation_service.crud.layer_crud import LayerCRUD
 from services.ai_gateway.schema_validator import AIRequestPayload, TaskMode, DataType, RasterModifiable, \
     VectorModifiable
 from services.ai_gateway.data_extractor import _extract_raster_data, _extract_vector_data

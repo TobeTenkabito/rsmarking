@@ -4,9 +4,9 @@ from uuid import UUID
 from typing import List
 
 from services.annotation_service.database import get_db
-from services.annotation_service.crud.feature import FeatureCRUD
-from services.annotation_service.crud.layer import LayerCRUD
-from services.annotation_service.crud.layer_field import LayerFieldCRUD
+from services.annotation_service.crud.feature_crud import FeatureCRUD
+from services.annotation_service.crud.layer_crud import LayerCRUD
+from services.annotation_service.crud.layer_field_crud import LayerFieldCRUD
 from services.annotation_service.schemas.geojson import (
     FeatureCreate,
     FeatureUpdate,
