@@ -76,6 +76,9 @@
 │   │   │   ├── feature.py  # 要素
 │   │   │   ├── layer.py   # 图层
 │   │   │   └── layer_field.py  # 业务表
+│   │   ├── schemes/
+│   │   │   ├── geojson.py
+│   │   │   └── layer_field.py  # 业务表属性
 │   │   ├── /models/feature.py  # project,layer,feature等模型定义
 │   │   ├── layers.py   # features,layers 的路由层
 │   │   ├── projects.py  # projects 的路由层

@@ -10,7 +10,7 @@ from services.ai_gateway.modify_handler import handle_modify
 
 load_dotenv()
 
-MODEL = os.getenv("AI_MODEL", "Unknown")
+MODEL = os.getenv("AI_MODEL")
 logger = logging.getLogger("ai_gateway.translator")
 logger.info(f"[AI] 当前使用模型: {MODEL}, Key前缀: {os.getenv('DEEPSEEK_API_KEY', 'NOT FOUND')[:8]}")
 
