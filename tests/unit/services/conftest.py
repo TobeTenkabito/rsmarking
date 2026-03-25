@@ -34,7 +34,7 @@ def client():
     # Example: Mounting Tile Service router
     try:
         # Import the router from your specific service structure
-        from services.tile_service.control import router as tile_router
+        from services.tile_service.router import router as tile_router
         master_app.include_router(tile_router, prefix="/tile")
     except ImportError as e:
         print(f"[Warning] Tile Service not found or import error: {e}")

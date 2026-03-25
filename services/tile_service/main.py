@@ -11,7 +11,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from services.tile_service.core.config import settings
-from services.tile_service.control import router as tile_router
+from services.tile_service.router import router as tile_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tile_service_init")

@@ -16,7 +16,7 @@ from sqlalchemy import text
 
 
 from services.data_service.database import engine, Base
-from services.data_service.control import router as data_router
+from services.data_service.router import router as data_router
 
 
 logging.basicConfig(level=logging.INFO)

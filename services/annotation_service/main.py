@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 
 from services.annotation_service.database import engine
-from services.annotation_service import layers, projects
+from services.annotation_service.router import layers_router, projects_router
 
 
 @asynccontextmanager
@@ -35,8 +35,8 @@ app.add_middleware(
 )
 
 
-app.include_router(layers.router)
-app.include_router(projects.router)
+app.include_router(layers_router.router)
+app.include_router(projects_router.router)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
