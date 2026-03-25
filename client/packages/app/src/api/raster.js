@@ -112,17 +112,14 @@ export const RasterAPI = {
     },
 
     // --- 掩膜提取接口---
-
-    async extractVegetation(bandIds, newName, threshold = 0.3, ...extraIds) {
+    async extractVegetation(bandIds, newName, threshold = 0.3, mode = "") {
         const formData = new FormData();
         bandIds.forEach((id, index) => {
             formData.append(`id_${index + 1}`, id);
         });
         formData.append('new_name', newName);
         formData.append('threshold', threshold);
-        if (mode) {
-            formData.append('mode', mode);
-        }
+        if (mode) formData.append('mode', mode);
         return fetch(`${BASE_URL}/extract-vegetation`, { method: 'POST', body: formData });
     },
 
@@ -202,6 +199,89 @@ export const RasterAPI = {
         }
     },
 
+    // --- 业务字段接口 ---
+    /**
+     * 获取某栅格的全部业务字段
+     * @param {number} rasterId - 栅格 index_id
+     */
+    async getFields(rasterId) {
+        try {
+            const response = await fetch(`${BASE_URL}/raster/${rasterId}/fields`);
+            if (!response.ok) throw new Error("获取字段列表失败");
+            return await response.json();
+        } catch (error) {
+            console.error("[RasterAPI] getFields Error:", error);
+            return [];
+        }
+    },
+
+    /**
+     * 新增业务字段
+     * @param {number} rasterId - 栅格 index_id
+     * @param {{ field_name, field_alias?, field_type, field_order?, is_required?, default_val? }} fieldData
+     */
+    async createField(rasterId, fieldData) {
+        try {
+            const response = await fetch(`${BASE_URL}/raster/${rasterId}/fields`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(fieldData)
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail ?? "新增字段失败");
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("[RasterAPI] createField Error:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * 修改业务字段（别名、类型、排序等）
+     * @param {number} rasterId  - 栅格 index_id
+     * @param {number} fieldId   - 字段 id
+     * @param {{ field_alias?, field_type?, field_order?, is_required?, default_val? }} updates
+     */
+    async updateField(rasterId, fieldId, updates) {
+        try {
+            const response = await fetch(`${BASE_URL}/raster/${rasterId}/fields/${fieldId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail ?? "更新字段失败");
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("[RasterAPI] updateField Error:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * 删除业务字段（系统字段不可删除）
+     * @param {number} rasterId - 栅格 index_id
+     * @param {number} fieldId  - 字段 id
+     */
+    async deleteField(rasterId, fieldId) {
+        try {
+            const response = await fetch(`${BASE_URL}/raster/${rasterId}/fields/${fieldId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail ?? "删除字段失败");
+            }
+            return true;
+        } catch (error) {
+            console.error("[RasterAPI] deleteField Error:", error);
+            throw error;
+        }
+    },
 
     // --- 调试接口 ---
     async clearDB() {

@@ -11,6 +11,7 @@ from functions.common.snowflake_utils import get_next_index_id
 import services.data_service.models as models
 from services.data_service.processor import RasterProcessor
 from services.data_service.crud.raster_crud import RasterCRUD
+from services.data_service.crud.raster_field_crud import RasterFieldCRUD
 
 logger = logging.getLogger("data_service.db_ops")
 
@@ -60,7 +61,7 @@ async def save_to_db(
 
     new_record = await RasterCRUD.create_raster(db, db_data)
     await db.commit()
-
+    await RasterFieldCRUD(db).ingest_from_metadata(new_record.index_id, db_data)
     return {"status": "success", "id": new_record.id, "cog_url": db_data["cog_path"]}
 
 

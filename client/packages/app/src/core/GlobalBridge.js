@@ -73,16 +73,24 @@ export class GlobalBridge {
             aiConfirmOverwrite: ()  => this.app.ai?.confirmOverwrite(),
 
             // --- 属性表 ---
-            openAttributeTable  : (layerId, layerName) => this.app.attributeTable?.open(layerId, layerName),
-            attrClose           : ()                   => this.app.attributeTable?.close(),
-            attrRefresh         : ()                   => this.app.attributeTable?.refresh(),
-            attrToggleExpand    : ()                   => this.app.attributeTable?.toggleExpand(),
-            attrAddColumn       : ()                   => this.app.attributeTable?.addColumn(),
-            attrRenameColumn    : (fid, alias)         => this.app.attributeTable?.renameColumn(fid, alias),
-            attrDeleteColumn    : (fid, name)          => this.app.attributeTable?.deleteColumn(fid, name),
-            attrColumnMenu      : (e, fid, fname, sys) => this.app.attributeTable?.showColumnMenu(e, fid, fname, sys),
-            attrEditCell        : (td)                 => this.app.attributeTable?.editCell(td),
-            attrDeleteFeature   : (featureId)          => this.app.attributeTable?.deleteFeature(featureId),
+            openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),
+            attrClose           : ()                    => this.app.attributeTable?.close(),
+            attrRefresh         : ()                    => this.app.attributeTable?.refresh(),
+            attrToggleExpand    : ()                    => this.app.attributeTable?.toggleExpand(),
+            attrAddColumn       : ()                    => this.app.attributeTable?.addColumn(),
+            attrRenameColumn    : (fid, alias)          => this.app.attributeTable?.renameColumn(fid, alias),
+            attrDeleteColumn    : (fid, name)           => this.app.attributeTable?.deleteColumn(fid, name),
+            attrColumnMenu      : (e, fid, fname, sys)  => this.app.attributeTable?.showColumnMenu(e, fid, fname, sys),
+            attrEditCell        : (td)                  => this.app.attributeTable?.editCell(td),
+            attrDeleteFeature   : (featureId)           => this.app.attributeTable?.deleteFeature(featureId),
+            attrrenameRasterField: (fieldId, alias)     => this.app.attributeTable?.renameRasterField(fieldId, alias),
+            attrdeleteRasterField: (fieldId, fieldName) => this.app.attributeTable?.deleteRasterField(fieldId, fieldName),
+            attreditRasterDefault: (td)                 => this.app.attributeTable?.editRasterDefault(td),
+
+            openAttriRaster     : (rasterId, rasterName)=> {
+                const rasters = Store.state?.rasters ?? [];
+                const raster  = rasters.find(r => String(r.index_id) === String(rasterId));
+                void this.app.attributeTable?.openRaster(rasterId, rasterName, raster ?? null);},
 
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
