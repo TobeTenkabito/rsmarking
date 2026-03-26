@@ -47,9 +47,11 @@
 │   │       ├── python_base.Dockerfile  # 预装常用库的镜像
 │   │       └── sandbox_entry.py        # 容器内的引导程序，负责加载用户代码
 │   ├── /data_service       # 影像元数据管理、波段管理、多源数据对齐
+│   │   ├── /crud  # 增删查改
+│   │   │   ├── raster_crud.py
+│   │   │   └── raster_field_crud.py
 │   │   ├── __init__.py
 │   │   ├── control.py      # 后端路由层
-│   │   ├── crud.py         # 解析和删除元数据
 │   │   ├── database.py     # 创建url获取异步数据库依赖
 │   │   ├── db_ops.py       # 后端数据库操作，存入
 │   │   ├── executor_bridge.py  # 脚本服务中转
@@ -58,7 +60,7 @@
 │   │   └── processor.py    # 调用算法
 │   ├── /tile_service       # [Cython] 前端渲染逻辑, 动态瓦片分发，支持多级 LRU 缓存
 │   │   ├── __init__.py
-│   │   ├── control.py      # 渲染路由层
+│   │   ├── router.py      # 渲染路由层
 │   │   ├── logic.py        # 索引和切片处理
 │   │   ├── main.py         # 启动
 │   │   ├── setup.py        # cython 配置
@@ -79,9 +81,10 @@
 │   │   ├── schemes/
 │   │   │   ├── geojson.py
 │   │   │   └── layer_field.py  # 业务表属性
+│   │   ├── router/
+│   │   │   ├── layers_router.py   # features,layers 的路由层
+│   │   │   └── projects_router.py  # projects 的路由层
 │   │   ├── /models/feature.py  # project,layer,feature等模型定义
-│   │   ├── layers.py   # features,layers 的路由层
-│   │   ├── projects.py  # projects 的路由层
 │   │   ├── database.py  # 数据库连接
 │   │   └── main.py  # 服务接口
 │   └── /ai_gateway   # AI网关

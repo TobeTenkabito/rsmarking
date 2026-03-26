@@ -11,7 +11,10 @@ const VTILE_BASE_URL = import.meta.env?.VITE_VTILE_SERVICE_URL || "http://localh
  * 处理 Content-Type、异常拦截及 API 错误详情解析
  */
 async function apiRequest(url, options = {}) {
-    const defaultHeaders = { 'Content-Type': 'application/json' };
+    // FormData 时不设置 Content-Type，让浏览器自动附加 boundary
+    const isFormData = options.body instanceof FormData;
+    const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
+
     const config = {
         ...options,
         headers: { ...defaultHeaders, ...options.headers }
@@ -34,7 +37,7 @@ async function apiRequest(url, options = {}) {
         return data;
     } catch (error) {
         console.error(`[VectorAPI Error] Endpoint: ${url}`, error);
-        throw error; // 向上抛出供 UI 层捕获
+        throw error;
     }
 }
 
@@ -177,6 +180,24 @@ export const VectorAPI = {
 
     deleteField: (layerId, fieldId) =>
         apiRequest(`${ANNO_BASE_URL}/${layerId}/fields/${fieldId}`, { method: "DELETE" }),
+
+    /**
+    * 导入 Shapefile 文件包
+    * @param {string} layerId - 目标图层 ID
+    * @param {FileList | File[]} files - 同时上传 .shp/.shx/.dbf（必须）+ .prj/.cpg（推荐）
+    * @returns {{ imported: number, fields_registered: number, layer_id: string }}
+    */
+    async importShapefile(layerId, files) {
+        const formData = new FormData();
+        for (const file of files) {
+            formData.append("files", file);  // 与后端 files: List[UploadFile] 对应
+        }
+        return await apiRequest(`${ANNO_BASE_URL}/layers/${layerId}/import/shapefile`, {
+            method: "POST",
+            headers: {},        // 覆盖掉 apiRequest 默认的 application/json
+            body: formData,
+        });
+    },
 
     /**
      * 获取 MVT 矢量瓦片服务的 URL 模板

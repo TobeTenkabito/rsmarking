@@ -467,8 +467,6 @@ export const ModalComponent = {
             </tr>`;
     },
 
-    // ── 属性表私有工具方法 ──────────────────────────────────────────────
-
     _attrBadgeCls(type) {
         return { string: 'badge-str', number: 'badge-num',
                  boolean: 'badge-bool', date: 'badge-date' }[type] ?? 'badge-str';

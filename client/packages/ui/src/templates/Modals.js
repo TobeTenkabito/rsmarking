@@ -49,7 +49,7 @@ export const ModalTemplates = {
     `,
 
     // 栅格计算器骨架
-calculatorModal: `
+    calculatorModal: `
     <div id="calculator-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
         <div class="bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
             <div class="absolute top-0 left-0 w-full h-1.5 bg-purple-500"></div>
@@ -106,6 +106,7 @@ calculatorModal: `
         </div>
     </div>
 `,
+
     // 脚本编辑器弹窗骨架
     scriptModal: `
         <div id="script-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">

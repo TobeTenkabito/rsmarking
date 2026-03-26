@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from datetime import datetime
 
@@ -113,14 +113,3 @@ class MVTConfig(BaseModel):
     enable_clipping: bool = True
     simplification_tolerance: float = 0.1
     max_features_per_tile: int = 5000
-
-
-class BBoxQuery(BaseModel):
-    """
-    Spatial Query parameters for standard BBOX search
-    """
-    minx: float
-    miny: float
-    maxx: float
-    maxy: float
-    limit: Optional[int] = 1000

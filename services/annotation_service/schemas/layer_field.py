@@ -21,7 +21,7 @@ class LayerFieldCreate(BaseModel):
         """field_name 作为 JSONB key，不允许空格"""
         if " " in v:
             raise ValueError("field_name 不能包含空格，请使用下划线")
-        return v.lower()
+        return v
 
 
 class LayerFieldUpdate(BaseModel):

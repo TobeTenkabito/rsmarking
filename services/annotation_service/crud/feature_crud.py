@@ -139,24 +139,28 @@ class FeatureCRUD:
         await self.db.commit()
         return result.rowcount > 0
 
-    async def bulk_create(self, layer_id: UUID, schemas: List[FeatureCreate]):
-        """
-        Batch insert features. Crucial for AI-assisted extraction results.
-        """
+    async def bulk_create(self, layer_id: UUID, schemas: List[FeatureCreate]) -> int:
         if not schemas:
-            return
+            return 0
 
         data_to_insert = []
         for s in schemas:
-            geom_wkt = dumps(shape(s.geometry.model_dump()))
+            geom_obj = shape(s.geometry.model_dump())
+            if not geom_obj.is_valid:
+                continue
             data_to_insert.append({
                 "id": uuid.uuid4(),
                 "layer_id": layer_id,
-                "geom": f"SRID=4326;{geom_wkt}",
+                "geom": f"SRID=4326;{dumps(geom_obj)}",
                 "category": s.category or s.properties.get("category"),
                 "properties": s.properties,
+                "meta": {"source_srid": s.srid},
             })
+
+        if not data_to_insert:
+            return 0
 
         await self.db.execute(insert(Feature).values(data_to_insert))
         await self.db.commit()
+        return len(data_to_insert)
 

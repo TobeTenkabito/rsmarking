@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import List
-
+from fastapi import UploadFile, File
 from services.annotation_service.database import get_db
 from services.annotation_service.crud.feature_crud import FeatureCRUD
 from services.annotation_service.crud.layer_crud import LayerCRUD
 from services.annotation_service.crud.layer_field_crud import LayerFieldCRUD
+from services.annotation_service.utils.shapefile_importer import parse_shapefile_bytes
 from services.annotation_service.schemas.geojson import (
     FeatureCreate,
     FeatureUpdate,
@@ -172,3 +173,50 @@ async def delete_field(
             raise HTTPException(status_code=404, detail="Field not found")
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.post(
+    "/layers/{layer_id}/import/shapefile",
+    status_code=status.HTTP_201_CREATED,
+    tags=["Import"],
+    summary="导入 Shapefile",
+    description="上传 .shp/.shx/.dbf/.prj/.cpg 文件，批量导入矢量要素并自动注册字段定义。"
+)
+async def import_shapefile(
+    layer_id: UUID,
+    files: List[UploadFile] = File(..., description="同时上传 .shp/.shx/.dbf（必须）+ .prj/.cpg（推荐）"),
+    db: AsyncSession = Depends(get_db)
+):
+    file_bytes: dict[str, bytes] = {}
+    for f in files:
+        content = await f.read()
+        file_bytes[f.filename] = content
+    try:
+        feature_list, field_defs = parse_shapefile_bytes(file_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    if not feature_list:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shapefile 中没有有效要素")
+    field_crud = LayerFieldCRUD(db)
+    existing_fields = await field_crud.get_by_layer(layer_id)
+    existing_names = {f.field_name for f in existing_fields}
+
+    for fd in field_defs:
+        if fd["field_name"] not in existing_names:
+            await field_crud.create(
+                layer_id,
+                LayerFieldCreate(
+                    field_name=fd["field_name"],
+                    field_alias=fd["field_alias"],
+                    field_type=fd["field_type"],
+                    is_system=False,
+                )
+            )
+    feature_crud = FeatureCRUD(db)
+    imported_count = await feature_crud.bulk_create(layer_id, feature_list)
+    return {
+        "imported": imported_count,
+        "fields_registered": len(field_defs),
+        "layer_id": str(layer_id),
+    }

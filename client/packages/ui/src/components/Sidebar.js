@@ -173,12 +173,29 @@ export const SidebarComponent = {
                 <div class="bg-emerald-50/30 rounded-xl border border-emerald-100 overflow-hidden shadow-sm">
                     <div class="px-3 py-2 bg-emerald-100/50 border-b border-emerald-100 flex justify-between items-center">
                         <span class="text-[9px] font-black text-emerald-700 uppercase tracking-wider">📂 项目: ${activeProject.name}</span>
-                        <button onclick="RS.createLayer()" class="w-5 h-5 flex items-center justify-center bg-white rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors" title="新建图层">＋</button>
+                        <div class="flex items-center gap-1">
+                            <!-- 导入 Shapefile（自动建图层） -->
+                            <button onclick="event.stopPropagation();
+                                             document.getElementById('shapefile-upload-input').dataset.layerId='${activeProject.id}';
+                                             document.getElementById('shapefile-upload-input').click()"
+                                    class="w-5 h-5 flex items-center justify-center bg-white rounded border border-amber-200 text-amber-500 hover:bg-amber-50 transition-colors"
+                                    title="导入 Shapefile（自动建图层）">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586
+                                             a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </button>
+                            <!-- 新建空白图层 -->
+                            <button onclick="RS.createLayer()"
+                                    class="w-5 h-5 flex items-center justify-center bg-white rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                    title="新建空白图层">＋</button>
+                        </div>
                     </div>
                     <div class="divide-y divide-emerald-50 bg-white" id="vector-list">
-                        ${layers.length === 0 ? '<div class="p-6 text-center text-[10px] text-slate-400 italic">尚未创建标注图层</div>' : 
-                          // 传入第三个参数：判断当前图层 ID 是否存在于可见集合中
-                          layers.map(l => this.renderVectorItem(l, activeLayerId === l.id, visibleIds?.has(l.id))).join('')}
+                        ${layers.length === 0
+                            ? '<div class="p-6 text-center text-[10px] text-slate-400 italic">尚未创建标注图层</div>'
+                            : layers.map(l => this.renderVectorItem(l, activeLayerId === l.id, visibleIds?.has(l.id))).join('')}
                     </div>
                 </div>
             ` : '<div class="text-center py-6 text-[10px] text-slate-300 italic">请先从下拉菜单选择项目</div>'}
