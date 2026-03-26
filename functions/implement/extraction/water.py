@@ -23,6 +23,8 @@ def extract_water(bands: list[np.ndarray], threshold: float, mode: str = "mndwi"
         return (ndwi > threshold).astype('uint8')
 
     elif mode.startswith("jrc"):
+        for i, b in enumerate(bands):
+            print(f"bands[{i}] max={np.nanmax(b):.0f}  mean={np.nanmean(b):.0f}")
         return jrc_water(bands, threshold, mode.replace("jrc_", ""))
 
     elif mode == "otsu":
