@@ -8,7 +8,7 @@
 
 [Agent](#71-overview--概述)
 
-##  English Documentation
+## English Documentation
 
 ### 1. Introduction
 
@@ -43,6 +43,19 @@ Compared to traditional GIS servers (e.g., GeoServer, MapServer) or standard web
   > - **QGIS** (including the latest 4.0 release on March 06, 2026) does **not** include a built-in AI Agent, making RSMarking a more forward-looking choice for AI-assisted geospatial workflows.
   > - **ArcGIS Pro** with *ArcGIS Assistant (Beta) 3.6* offers geospatial analysis capabilities that may exceed RSMarking in certain analytical depth — however, it remains a **commercial, paid product**, whereas RSMarking is **open and free**.
   > - RSMarking's AI Gateway is purpose-built for **remote sensing annotation workflows**, offering native raster/vector context injection, multi-language support, and a strict anti-tamper contract layer — features not available in general-purpose GIS AI assistants.
+
+- **Professional Map Export Module** *(Updated: March 26, 2026)*
+
+  A fully client-side map view export pipeline with real-time preview, supporting multiple formats and advanced cartographic decorations.
+
+  > **Key capabilities:**
+  > - **Multi-format export**: PNG (lossless), JPEG (adjustable quality), SVG (vector)
+  > - **Resolution scaling**: 1x / 2x / 3x / **4x ultra-high-definition**
+  > - **Layer-selective export**: independently toggle basemap tiles, raster imagery, vector annotations, and decoration elements
+  > - **Graticule overlay**: full-coverage lat/lon grid lines with **solid or dashed** style options
+  > - **Frame coordinate labels**: cartographic-style lat/lon tick marks and degree labels rendered outside the map boundary, independently toggleable from the graticule grid
+  > - **Built-in decorations**: scale bar (auto-calculated), north arrow, and timestamp watermark
+  > - **Live thumbnail preview** before export
 
 ---
 
@@ -166,6 +179,19 @@ npm run dev
   > - **ArcGIS Pro** 的 *ArcGIS Assistant (Beta) 3.6* 在部分地理空间分析深度上优于本项目，但其属于**商业付费软件**；RSMarking 作为**开源免费**平台，在可访问性与部署灵活性上更具优势。
   > - RSMarking 的 AI 网关专为**遥感影像标注工作流**深度定制，原生支持栅格/矢量上下文注入、多语言响应及防篡改契约层，是通用 GIS AI 助手所不具备的核心能力。
 
+- **专业地图视图导出模块 (Map Export Module)** *(2026 年 3 月 26 日更新)*
+
+  全客户端地图视图导出管线，支持实时预览、多格式输出与专业制图装饰元素。
+
+  > **核心能力：**
+  > - **多格式导出**：PNG（无损透明）、JPEG（可调质量）、SVG（矢量图形）
+  > - **分辨率缩放**：标准 1x / 高清 2x / 超清 3x / **极清 4x 超高清**
+  > - **图层独立控制**：底图瓦片、栅格影像、矢量标注、装饰元素均可独立开关
+  > - **经纬网格叠加**：全图覆盖的经纬网线，支持**实线 / 虚线**两种样式独立选择
+  > - **外框经纬度标注**：在图像边缘外侧绘制专业制图风格的经纬度刻度与标注（与经纬网格独立控制，可单独启用）
+  > - **内置装饰元素**：自动计算的比例尺、指北针、时间戳水印
+  > - **导出前实时缩略图预览**
+
 ---
 
 ### 3. 开发环境快速开始（当前开发阶段）
@@ -257,6 +283,8 @@ Please check **Framework.txt**
 ```text
 .
 ├── client                # 前端交互与状态管理 (Vue/React + Leaflet)
+│   └── src/modules
+│       └── ExportModule.js   # 地图视图导出模块（新增）
 ├── services              # 后端微服务集群 (FastAPI)
 │   ├── tile_service      # 瓦片渲染引擎 (Cython 加速)
 │   ├── data_service      # 栅格元数据管理服务
@@ -323,7 +351,18 @@ Issue a natural language instruction to modify GIS layer metadata; the AI return
 
 ---
 
-### 5.5 Automated Test Suite / 自动化测试套件
+### 5.5 Map Export / 地图视图导出 *(New / 新增)*
+
+Export the current map view as a high-resolution image with professional cartographic decorations.  
+将当前地图视图导出为高分辨率图像，支持专业制图装饰元素。
+
+> Supports PNG / JPEG / SVG · Up to 4x resolution · Graticule grid · Frame coordinate labels · Scale bar · North arrow
+
+> 支持 PNG / JPEG / SVG · 最高 4x 分辨率 · 经纬网格 · 外框经纬度标注 · 比例尺 · 指北针
+
+---
+
+### 5.6 Automated Test Suite / 自动化测试套件
 
 High coverage reports from **Vitest** and **Pytest**.  
 来自 **Vitest** 和 **Pytest** 的高覆盖率测试报告。
@@ -350,8 +389,8 @@ High coverage reports from **Vitest** and **Pytest**.
 
 *渲染延迟随 tile 大小增加的趋势(3 波段，128–4096 像素)*
 
-
 ---
+
 [Come Back to the Top](#agent-rsmarking-high-performance-remote-sensing-annotation-system)
 
 ## 7. 🤖 AI Gateway — Architecture Deep Dive / AI 网关架构详解
@@ -428,3 +467,82 @@ AI 响应语言由请求体中的 `language` 字段控制：
 | `overwrite` | `bool` | — | Overwrite original record (default: `false`, creates new) |
 
 ![Figure 7-1 AI Gateway Architecture](resources/7_1.png)
+
+---
+
+## 8. 🗺️ Map Export Module — Design Notes / 地图导出模块设计说明
+
+### 8.1 Overview / 概述
+
+The **Export Module** (`client/src/modules/ExportModule.js`) is a fully client-side, zero-dependency map export pipeline built on the **Canvas 2D API**.  
+**导出模块**（`client/src/modules/ExportModule.js`）是一个完全运行于客户端、基于 **Canvas 2D API** 的零后端依赖地图导出管线。
+
+It captures the live Leaflet map view and composites multiple layers into a single high-resolution image without any server round-trip.  
+它直接捕获 Leaflet 地图的实时视图，在客户端将多个图层合成为单张高分辨率图像，无需任何服务端请求。
+
+![Figure 8-1 Preview ](resources/8_1.png)
+
+### 8.2 Rendering Pipeline / 渲染管线
+
+```
+openModal()
+    │
+    ▼
+_collectOptions()          ← 收集用户选项（格式 / 分辨率 / 图层开关 / 经纬网配置）
+    │
+    ▼
+_renderToCanvas(opts)
+    │
+    ├─ 1. 计算留白 MARGIN   ← 仅在启用外框经纬度标注时扩展画布
+    │
+    ├─ 2. _captureBasemap()
+    │      ├── 优先：直接读取 Leaflet tile <img>（无跨域限制）
+    │      └── 降级：html2canvas（动态按需加载）
+    │
+    ├─ 3. _drawRasterLayers()   ← Canvas / ImageLayer 叠加
+    │
+    ├─ 4. _drawVectorLayers()   ← SVG 序列化 → Blob → Image 绘制
+    │
+    ├─ 5. _drawGraticuleLines() ← 经纬网线（实线 / 虚线，全图覆盖）
+    │      └── 经线 x 由 latLngToContainerPoint 计算，y 固定 0→H
+    │          纬线 y 由 latLngToContainerPoint 计算，x 固定 0→W
+    │
+    ├─ 6. _drawDecorations()    ← 比例尺 / 指北针 / 时间戳
+    │
+    └─ 7. _drawGraticuleFrame() ← 外框刻度线 + 经纬度文字标注
+           └── 在 translate 外绘制，使用绝对画布坐标
+    │
+    ▼
+PNG / JPEG → _downloadCanvas()
+SVG        → _exportSVG()
+```
+
+### 8.3 Graticule Implementation Notes / 经纬网实现说明
+
+| Design Decision / 设计决策 | Reason / 原因 |
+|---|---|
+| 经线端点固定为 `y = 0 → H` | 避免坐标转换误差导致边缘线画不到头 |
+| 纬线端点固定为 `x = 0 → W` | 同上，保证全图覆盖 |
+| 范围使用 `floor(west)` / `ceil(east)` | 往外扩展，确保边缘线不被截断 |
+| 经纬网与外框标注独立开关 | 用户可单独启用外框标注而不显示网格线 |
+| 间隔由 `_niceLatLngInterval()` 自动计算 | 保证屏幕上始终出现 4~6 条网格线 |
+
+### 8.4 Export Options Reference / 导出选项说明
+
+| Option / 选项 | Type | Default | Description |
+|---|---|---|---|
+| `format` | `png` \| `jpeg` \| `svg` | `png` | 导出格式 |
+| `scale` | `1` \| `2` \| `3` \| `4` | `2` | 输出分辨率倍数 |
+| `jpegQuality` | `50–100` | `92` | JPEG 压缩质量（仅 JPEG 格式有效） |
+| `includeBasemap` | `bool` | `true` | 是否包含底图瓦片 |
+| `includeVectors` | `bool` | `true` | 是否包含矢量标注图层 |
+| `includeRasters` | `bool` | `true` | 是否包含栅格影像图层 |
+| `includeDecorations` | `bool` | `true` | 是否包含比例尺 / 指北针 / 时间戳 |
+| `includeGraticule` | `bool` | `false` | 是否叠加经纬网格线 |
+| `graticuleStyle` | `solid` \| `dashed` | `solid` | 经纬网线型 |
+| `includeFrameLabels` | `bool` | `false` | 是否在外框标注经纬度刻度 |
+| `filename` | `string` | `RSMarking_Export` | 导出文件名（不含扩展名） |
+
+---
+
+[Come Back to the Top](#agent-rsmarking-high-performance-remote-sensing-annotation-system)

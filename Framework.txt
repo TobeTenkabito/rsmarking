@@ -14,6 +14,7 @@
 │   │   │   ├── AttributeModule.js  # 矢量业务表逻辑
 │   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
+│   │   │   ├── ExportModule.js
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
 │   │   │   ├── AnnotationModule.js  # 负责矢量标注的模块
 │   │   │   ├── RasterModule.js   # 负责栅格的加载、删除、波段合成

@@ -57,3 +57,5 @@ storage/
 benchmark_results/
 
 .env
+
+.VsCodeCounter/

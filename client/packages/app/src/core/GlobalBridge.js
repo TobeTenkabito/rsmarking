@@ -58,11 +58,11 @@ export class GlobalBridge {
             deleteLayer: (layerId) => this.app.project.handleDeleteSelectedLayer(layerId),
 
             // 脚本编辑器
-            openScriptEditor: () => this.app.script?.openScriptEditor(),
-            closeScriptEditor: () => this.app.script?.closeScriptEditor(),
-            executeScript: () => this.app.script?.executeScript(),
-            clearScriptEditor: () => this.app.script?.clearEditor(),
-            showScriptHistory: () => this.app.script?.showHistory(),
+            openScriptEditor:       () => this.app.script?.openScriptEditor(),
+            closeScriptEditor:      () => this.app.script?.closeScriptEditor(),
+            executeScript:          () => this.app.script?.executeScript(),
+            clearScriptEditor:      () => this.app.script?.clearEditor(),
+            showScriptHistory:      () => this.app.script?.showHistory(),
             loadScriptFromHistory: (id) => this.app.script?.loadFromHistory(id),
 
             // --- AI 智能助手 ---
@@ -91,6 +91,12 @@ export class GlobalBridge {
                 const rasters = Store.state?.rasters ?? [];
                 const raster  = rasters.find(r => String(r.index_id) === String(rasterId));
                 void this.app.attributeTable?.openRaster(rasterId, rasterName, raster ?? null);},
+
+            // --- 导出 ---
+            openExportModal:        ()=> this.app.export?.openModal(),
+            closeExportModal:       ()=> this.app.export?.closeModal(),
+            refreshExportPreview:   ()=> this.app.export?.refreshPreview(),
+            executeExport:          ()=> this.app.export?.executeExport(),
 
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),

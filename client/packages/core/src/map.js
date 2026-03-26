@@ -27,7 +27,7 @@ export class MapEngine {
             this.map = L.map(this.containerId, {zoomControl: false, preferCanvas: true}).setView([35, 105], 4);
             L.control.zoom({ position: 'bottomright' }).addTo(this.map);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'}).addTo(this.map);this.isReady = true;
+                attribution: '© OpenStreetMap', crossOrigin: 'anonymous'}).addTo(this.map);this.isReady = true;
                 console.log("[MapEngine] ✅ 地图实例已就绪");} catch (e) {
             console.error("[MapEngine] 初始化异常:", e);}}
 
