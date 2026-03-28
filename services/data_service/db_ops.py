@@ -37,16 +37,17 @@ async def save_to_db(
     cog_path: str,
     prefix: str,
     bands_count: int = 1,
-    metadata_source: str = None
+    metadata_source: str = None,
+    bundle_id: str = None
 ):
     source_for_meta = metadata_source if metadata_source else cog_path
     metadata = RasterProcessor.extract_metadata(source_for_meta)
-
+    final_bundle_id = bundle_id if bundle_id else f"{prefix}_{task_id[:8]}"
     db_data = {
         "file_name": new_name if new_name.endswith(".tif") else f"{new_name}.tif",
         "file_path": tmp_path,
         "cog_path": f"/data/{cog_filename}",
-        "bundle_id": f"{prefix}_{task_id[:8]}",
+        "bundle_id": final_bundle_id,
         "index_id": get_next_index_id(),
         "crs": metadata.get("crs"),
         "bounds": metadata.get("bounds"),

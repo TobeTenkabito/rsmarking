@@ -31,7 +31,12 @@ router = APIRouter()
 
 
 # Helper function to handle file saving and metadata extraction
-async def save_and_process_file(file: UploadFile, db: AsyncSession, background_tasks: BackgroundTasks) -> dict:
+async def save_and_process_file(
+        file: UploadFile,
+        db: AsyncSession,
+        background_tasks: BackgroundTasks,
+        bundle_id: str = None
+) -> dict:
     file_id = str(uuid.uuid4())
     ext = os.path.splitext(file.filename)[1]
     raw_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
@@ -46,7 +51,7 @@ async def save_and_process_file(file: UploadFile, db: AsyncSession, background_t
         # Extract metadata and save to DB
         metadata = RasterProcessor.extract_metadata(raw_path)
         result = await db_ops.save_to_db(
-            db, file_id, file.filename, raw_path, cog_filename, cog_path, "upload",
+            db, file_id, file.filename, raw_path, cog_filename, cog_path, "upload", bundle_id=bundle_id,
             bands_count=metadata.get("bands", 1),
             metadata_source=raw_path
         )
@@ -103,7 +108,7 @@ async def read_index():
 
 @router.post("/upload")
 async def upload_raster(file: UploadFile = File(...), bundle_id: str = Form(None), background_tasks: BackgroundTasks = BackgroundTasks(), db: AsyncSession = Depends(get_db)):
-    return await save_and_process_file(file, db, background_tasks)
+    return await save_and_process_file(file, db, background_tasks, bundle_id=bundle_id)
 
 
 @router.post("/merge-bands")
