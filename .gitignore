@@ -22,7 +22,7 @@ venv/
 # Cython build
 build/
 dist/
-
+services/tile_service/build
 # =========================
 # Node / JS
 # =========================
