@@ -1,548 +1,466 @@
-# Agent RSMarking: High-Performance Remote Sensing Annotation System
-
+# RSMarking · High-Performance Remote Sensing Annotation System
 智能遥感影像高性能标注系统
 
-[English](#english-documentation) | [中文](#中文文档)
+[English](#english) | [中文](#中文)
 
 ---
 
-[Agent](#71-overview--概述)
+## English
 
-## English Documentation
+### Introduction
 
-### 1. Introduction
-
-**RSMarking** is a microservice-based Remote Sensing (RS) image annotation platform.  
-It is designed to handle massive raster datasets (GeoTIFF) and complex vector geometries without the need for heavy pre-processing.
+**RSMarking** is a microservice-based remote sensing image annotation platform designed for **massive GeoTIFF datasets** and **complex vector geometries** — with zero heavy pre-processing required.
 
 ---
 
-### 2. Core Advantages vs Traditional GIS
+### Core Features
 
-Compared to traditional GIS servers (e.g., GeoServer, MapServer) or standard web-mapping tools, RSMarking offers:
+#### ⚡ Cython-Accelerated On-the-Fly Rendering
+The built-in **TileEngine** uses C/Cython extensions (`fast_stretch_and_stack`) combined with `rasterio` window reads to generate map tiles dynamically from raw raster files.  
+**No pre-tiling, no pyramid generation** — saving disk space and preprocessing time.
 
-- **Cython-Accelerated On-the-Fly (OTF) Rendering**
+#### 🎨 Dynamic Multi-Band Stretching
+Automatic **2%–98% linear stretching** and hardware-accelerated normalization for **16-bit / 32-bit multi-spectral imagery**, with an optimized fallback strategy for outlier statistics.
 
-  The built-in **TileEngine** uses C/Cython extensions (`fast_stretch_and_stack`) and `rasterio` window reads to dynamically generate map tiles directly from raw raster files.  
-  **Zero pre-tiling required**, saving massive disk space and preprocessing time.
+#### 🏗️ Distributed Microservices Architecture
+Fully decoupled services (**Tile / Data / Annotation / AI Gateway / Executor**) built on **FastAPI**, horizontally scalable via **Kubernetes**.
 
-- **Dynamic Multi-Band Stretching**
+#### 🤖 AI Spatial Data Gateway
+A dedicated microservice accepting natural language instructions to **analyze or modify** raster/vector GIS data.  
+Powered by **LiteLLM** (supports DeepSeek, OpenAI, Azure, etc.) with a strict **Pydantic anti-tamper contract layer** that physically blocks AI from overwriting read-only spatial statistics.
 
-  Automatically calculates statistics to perform **2%–98% linear stretching** or hardware-accelerated normalization, ensuring optimal visualization for **16-bit/32-bit multi-spectral imagery**.
+> **vs. QGIS 4.0** — No built-in AI Agent; RSMarking leads in AI-assisted geospatial workflows.  
+> **vs. ArcGIS Pro** — ArcGIS Assistant offers deeper analytics, but is commercial; RSMarking is **open and free**.
 
-- **Distributed Microservices Architecture**
+#### 🗺️ Professional Map Export Module
+A fully client-side export pipeline built on the **Canvas 2D API** — no server round-trip required.
 
-  Decoupled **Tile Service** and **Annotation Service** with robust **FastAPI** backends, easily scalable via **Kubernetes**.
+| Capability | Detail |
+|---|---|
+| Formats | PNG (lossless) · JPEG (adjustable quality) · SVG (vector) |
+| Resolution | 1x / 2x / 3x / **4x ultra-HD** |
+| Layer control | Basemap · Raster · Vector · Decorations (independently toggleable) |
+| Graticule | Lat/lon grid lines, **solid or dashed** |
+| Frame labels | Cartographic-style coordinate ticks outside map boundary |
+| Decorations | Auto scale bar · North arrow · Timestamp watermark |
 
-- **AI-Powered Spatial Data Gateway** *(Updated: March 16, 2026)*
-
-  An integrated **AI Gateway** service that accepts natural language instructions to analyze or modify raster/vector GIS data.  
-  Powered by a pluggable LLM backend (via **LiteLLM**), with a strict **Pydantic contract layer** to prevent AI from tampering with read-only spatial statistics.
-
-  > **Competitive Landscape:**
-  > - **QGIS** (including the latest 4.0 release on March 06, 2026) does **not** include a built-in AI Agent, making RSMarking a more forward-looking choice for AI-assisted geospatial workflows.
-  > - **ArcGIS Pro** with *ArcGIS Assistant (Beta) 3.6* offers geospatial analysis capabilities that may exceed RSMarking in certain analytical depth — however, it remains a **commercial, paid product**, whereas RSMarking is **open and free**.
-  > - RSMarking's AI Gateway is purpose-built for **remote sensing annotation workflows**, offering native raster/vector context injection, multi-language support, and a strict anti-tamper contract layer — features not available in general-purpose GIS AI assistants.
-
-- **Professional Map Export Module** *(Updated: March 26, 2026)*
-
-  A fully client-side map view export pipeline with real-time preview, supporting multiple formats and advanced cartographic decorations.
-
-  > **Key capabilities:**
-  > - **Multi-format export**: PNG (lossless), JPEG (adjustable quality), SVG (vector)
-  > - **Resolution scaling**: 1x / 2x / 3x / **4x ultra-high-definition**
-  > - **Layer-selective export**: independently toggle basemap tiles, raster imagery, vector annotations, and decoration elements
-  > - **Graticule overlay**: full-coverage lat/lon grid lines with **solid or dashed** style options
-  > - **Frame coordinate labels**: cartographic-style lat/lon tick marks and degree labels rendered outside the map boundary, independently toggleable from the graticule grid
-  > - **Built-in decorations**: scale bar (auto-calculated), north arrow, and timestamp watermark
-  > - **Live thumbnail preview** before export
+#### 🐍 Sandboxed Script Executor
+Users can submit custom Python 3 scripts that run in **Docker-isolated containers**, with shared `/storage` access and full lifecycle management.
 
 ---
 
-### 3. Development Setup (Current Dev Stage)
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   client (SPA)                      │
+│  map.js · modules/ · store/ · UI components         │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTP / REST
+     ┌───────────────┼───────────────────┐
+     ▼               ▼                   ▼
+tile_service    data_service      annotation_service
+(Cython OTF)   (Raster Meta)      (PostGIS Vector)
+     │               │                   │
+     └───────────────┼───────────────────┘
+                     │
+            ┌────────┴────────┐
+            ▼                 ▼
+       ai_gateway      executor_service
+      (LiteLLM +       (Docker sandbox)
+       Pydantic)
+            │
+   PostgreSQL/PostGIS + Redis
+```
+
+---
+
+### Development Setup
 
 #### Prerequisites
-
 - Docker & Docker Compose
 - Python 3.12+
 - Node.js 24+
 
----
-
-#### Step 1: Start Infrastructure & Databases
+#### Step 1 — Infrastructure
 
 ```bash
 cd infrastructure/docker
 docker-compose up -d
 ```
 
----
-
-#### Step 2: Run Database Migrations
+#### Step 2 — Database Migrations
 
 ```bash
-# Migrate Raster Database
-cd infrastructure/db_migrations
-alembic upgrade head
-
-# Migrate Vector Annotation Database
-cd ../annot_migrations
-alembic upgrade head
+cd infrastructure/db_migrations && alembic upgrade head
+cd ../annot_migrations          && alembic upgrade head
 ```
 
----
-
-#### Step 3: Start Backend Services
+#### Step 3 — Backend Services
 
 ```bash
-conda env create -f environment.yml
-conda activate your env
+conda env create -f environment.yml && conda activate <env>
 
-cd services/tile_service
-python main.py
-
-cd services/data_service  # main app
-python main.py
-
-cd services/annotation_service
-python main.py
-
-cd services/ai_gateway     # AI Gateway Service (New)
-python main.py
+python services/tile_service/main.py
+python services/data_service/main.py
+python services/annotation_service/main.py
+python services/ai_gateway/main.py
+python services/executor_service/main.py
 ```
 
----
+#### Step 4 — AI Gateway Environment
 
-#### Step 4: Configure AI Gateway Environment
-
-Create a `.env` file in the project root and set the following variables:
+Create `.env` in the project root:
 
 ```env
-AI_MODEL=deepseek/deepseek-chat   # LiteLLM-compatible model identifier
-AI_NAME=deepseek/deepseek-chat    # Runtime model override (optional)
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx  # Your LLM provider API Key
+AI_MODEL=deepseek/deepseek-chat
+AI_NAME=deepseek/deepseek-chat
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx
 ```
 
-> The AI Gateway uses [LiteLLM](https://github.com/BerriAI/litellm) as its unified LLM adapter,  
-> supporting any compatible provider (DeepSeek, OpenAI, Azure, etc.) by simply changing `AI_MODEL`.
+> Switch to any LiteLLM-compatible provider (OpenAI, Azure, etc.) by changing `AI_MODEL`.
 
----
-
-#### Step 5: Start Frontend
+#### Step 5 — Frontend
 
 ```bash
-cd client
-npm install
-npm run dev
+cd client && npm install && npm run dev
 ```
 
 ---
 
-## 中文文档
+### Project Structure
 
-### 1. 简介
-
-**RSMarking** 是一个基于 **微服务架构** 的遥感影像标注平台。
-
-系统专为处理 **海量栅格数据集（GeoTIFF）** 和 **复杂矢量几何数据** 而设计，无需繁重的预处理流程即可实现高性能的交互式标注。
-
----
-
-### 2. 核心特性与优势（对比传统 GIS）
-
-与传统的 GIS 服务器（如 **GeoServer**）或常规 **Web GIS** 平台相比，本项目具有以下显著优势：
-
-- **Cython 加速的即时渲染 (On-the-Fly Rendering)**
-
-  内置的 **TileEngine** 抛弃了传统的"提前切片生成金字塔"方案。  
-  通过 `rasterio` 窗口读取结合 **C/Cython 底层扩展 (`fast_stretch_and_stack`)**，直接在内存中动态生成瓦片。  
-
-  **零预处理开销，极大节省磁盘空间与数据准备时间。**
-
-- **动态多波段拉伸算法**
-
-  引擎内置状态管理器，自动计算极值并执行 **16位 / 32位影像** 的线性拉伸或归一化映射。  
-  在遇到极值异常时提供高度优化的 **Fallback Process（降级处理策略）**。
-
-- **分布式微服务架构**
-
-  **瓦片服务 (Tile Service)** 与 **标注服务 (Annotation Service)** 完全解耦。  
-  通过 **FastAPI** 提供高并发支持，并可通过 **Kubernetes** 实现无缝横向扩展。
-
-- **AI 空间数据智能网关 (AI Gateway)** *(2026 年 3 月 16 日更新)*
-
-  集成 **AI 网关微服务**，接受自然语言指令，对栅格或矢量 GIS 数据执行**智能分析**或**结构化修改**。  
-  通过 **LiteLLM** 适配多种主流大语言模型，并采用严格的 **Pydantic 契约层**防止 AI 篡改只读空间统计数据。
-
-  > **横向对比主流 GIS 软件：**
-  > - **QGIS**（含 2026 年 3 月 6 日发布的 4.0 版本）**尚未内置 AI Agent 功能**，而 RSMarking 已于 2026 年 3 月 16 日正式集成，在 AI 辅助遥感工作流方面具备先发优势。
-  > - **ArcGIS Pro** 的 *ArcGIS Assistant (Beta) 3.6* 在部分地理空间分析深度上优于本项目，但其属于**商业付费软件**；RSMarking 作为**开源免费**平台，在可访问性与部署灵活性上更具优势。
-  > - RSMarking 的 AI 网关专为**遥感影像标注工作流**深度定制，原生支持栅格/矢量上下文注入、多语言响应及防篡改契约层，是通用 GIS AI 助手所不具备的核心能力。
-
-- **专业地图视图导出模块 (Map Export Module)** *(2026 年 3 月 26 日更新)*
-
-  全客户端地图视图导出管线，支持实时预览、多格式输出与专业制图装饰元素。
-
-  > **核心能力：**
-  > - **多格式导出**：PNG（无损透明）、JPEG（可调质量）、SVG（矢量图形）
-  > - **分辨率缩放**：标准 1x / 高清 2x / 超清 3x / **极清 4x 超高清**
-  > - **图层独立控制**：底图瓦片、栅格影像、矢量标注、装饰元素均可独立开关
-  > - **经纬网格叠加**：全图覆盖的经纬网线，支持**实线 / 虚线**两种样式独立选择
-  > - **外框经纬度标注**：在图像边缘外侧绘制专业制图风格的经纬度刻度与标注（与经纬网格独立控制，可单独启用）
-  > - **内置装饰元素**：自动计算的比例尺、指北针、时间戳水印
-  > - **导出前实时缩略图预览**
-
----
-
-### 3. 开发环境快速开始（当前开发阶段）
-
-#### 预需求
-
-- Docker & Docker Compose
-- Python 3.12+
-- Node.js 24+
-
----
-
-#### 第一步：启动基础设施与数据库
-
-使用 **IaC 配置** 启动数据库实例（PostgreSQL/PostGIS, Redis）。
-
-```bash
-cd infrastructure/docker
-docker-compose up -d
 ```
-
----
-
-#### 第二步：执行数据库迁移脚本
-
-```bash
-# 迁移栅格元数据数据库
-cd infrastructure/db_migrations
-alembic upgrade head
-
-# 迁移矢量标注数据库
-cd ../annot_migrations
-alembic upgrade head
-```
-
----
-
-#### 第三步：启动后端服务
-
-```bash
-conda env create -f environment.yml
-conda activate your env
-
-cd services/tile_service
-python main.py
-
-cd services/data_service  # main app 
-python main.py
-
-cd services/annotation_service
-python main.py
-
-cd services/ai_gateway     # AI 网关服务（新增）
-python main.py
-```
-
----
-
-#### 第四步：配置 AI 网关环境变量
-
-在项目根目录创建 `.env` 文件，并配置以下参数：
-
-```env
-AI_MODEL=deepseek/deepseek-chat   # LiteLLM 兼容的模型标识符
-AI_NAME=deepseek/deepseek-chat    # 运行时模型覆盖（可选）
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx  # 你的大模型服务商 API Key
-```
-
-> AI 网关通过 [LiteLLM](https://github.com/BerriAI/litellm) 统一适配多种大模型服务商。  
-> 仅需修改 `AI_MODEL` 即可切换至 DeepSeek、OpenAI、Azure OpenAI 等任意兼容提供商。
-
----
-
-#### 第五步：启动前端应用
-
-```bash
-cd client
-npm install
-npm run dev
-```
-
----
-
-## 4. Program Construction / 项目结构说明
-
-Please check **Framework.txt**  
-详情查看 **Framework.txt**
-
-```text
 .
-├── client                # 前端交互与状态管理 (Vue/React + Leaflet)
-│   └── src/modules
-│       └── ExportModule.js   # 地图视图导出模块（新增）
-├── services              # 后端微服务集群 (FastAPI)
-│   ├── tile_service      # 瓦片渲染引擎 (Cython 加速)
-│   ├── data_service      # 栅格元数据管理服务
-│   ├── annotation_service# 矢量标注服务
-│   └── ai_gateway        # AI 空间数据智能网关 (新增)
-│       ├── main.py           # 服务启动入口
-│       ├── router.py         # 路由层 (POST /ai/process)
-│       ├── schema_validator.py # Pydantic 契约层 (防篡改校验)
-│       └── translator.py     # 数据提取、Prompt 引擎与 LLM 调度
-├── infrastructure        # 基础设施即代码 (IaC)
-│   ├── docker            # 各模块 Dockerfile 及 Compose
-│   ├── kubernetes        # K8s 部署配置文件
-│   ├── annot_migrations  # 矢量数据迁移脚本
-│   └── db_migrations     # 栅格元数据数据库迁移脚本
-└── tests                 # 全局自动化测试 (Pytest & Vitest)
+├── client/                    # Frontend SPA (Vanilla JS + Leaflet)
+│   └── packages/
+│       ├── app/src/
+│       │   ├── modules/       # Feature modules (AI, Export, Annotation, Raster…)
+│       │   ├── core/          # UIManager · GlobalBridge · GlobalEvents
+│       │   ├── store/         # Central state management
+│       │   └── api/           # Service API adapters
+│       ├── core/src/map.js    # Map rendering interface
+│       └── ui/src/            # Business components & templates
+├── services/                  # Backend microservices (FastAPI)
+│   ├── tile_service/          # Cython OTF tile engine + LRU cache
+│   ├── data_service/          # Raster metadata & band management
+│   ├── annotation_service/    # Vector CRUD + PostGIS spatial index
+│   ├── ai_gateway/            # LiteLLM adapter + Pydantic anti-tamper
+│   └── executor_service/      # Docker-sandboxed script runner
+├── functions/                 # Algorithm library
+│   └── implement/             # Spectral indices · Extraction · Raster ops
+├── infrastructure/            # IaC
+│   ├── docker/                # Dockerfiles & Compose
+│   ├── kubernetes/            # K8s manifests
+│   └── *_migrations/          # Alembic migration scripts
+├── storage/
+│   ├── cog/                   # Servable COG rasters
+│   └── raw/                   # Original imagery
+└── tests/                     # Pytest · Vitest · Playwright (planned)
 ```
 
 ---
 
-## 5. 🖼️ Feature Preview / 功能预览
+### Feature Preview
 
-### 5.1 Multi-spectral Image OTF Rendering / 多光谱影像即时渲染
+#### Multi-spectral OTF Rendering
+Direct rendering of 16-bit GeoTIFF with dynamic band stretching.
 
-Directly rendering **16-bit GeoTIFF** with dynamic stretching.  
-直接渲染 **16位 GeoTIFF** 并应用动态拉伸。
+![Rendering Example](resources/5_1.png)
 
-![Figure 5-1 Rendering Example](resources/5_1.png)
+#### Interactive Vector Annotation
+Complex polygon annotation with undo/redo and topology constraints.
 
----
+![Vector Annotation](resources/5_2.png)
 
-### 5.2 Interactive Vector Annotation / 交互式矢量标注
+#### AI Gateway — Analyze Mode
+Submit a natural language query to receive a professional spatial analysis report.
 
-Support for complex polygons with **undo/redo** and **topology constraints**.  
-支持带 **撤销/重做功能** 及 **拓扑约束** 的复杂多边形标注。
+![AI Analyze](resources/5_4_1.png)
 
-![Figure 5-2 Vector Example](resources/5_2.png)
+#### AI Gateway — Modify Mode
+Issue a natural language instruction; AI returns a Pydantic-validated JSON diff for confirmation before committing to DB.
 
----
+![AI Modify](resources/5_4_2.png)
 
-### 5.3 Distributed Service Monitoring / 分布式服务监控
+#### Map Export Module
+Export the live map view as a high-resolution image with cartographic decorations.
 
-Real-time status of **tile service** and **annotation engine**.  
-瓦片服务与标注引擎的实时运行状态。
-
----
-
-### 5.4 AI Gateway — Natural Language GIS Processing / AI 网关 — 自然语言 GIS 处理
-
-#### Analyze Mode / 分析模式
-
-Submit a natural language query to receive a professional spatial data analysis report.  
-提交自然语言问题，获取专业的空间数据分析报告。
-
-![Figure 5-4-1 AI Analyze Mode](resources/5_4_1.png)
+![Export Preview](resources/8_1.png)
 
 ---
 
-#### Modify Mode / 修改模式
+### Performance Highlights
 
-Issue a natural language instruction to modify GIS layer metadata; the AI returns a strictly validated JSON diff for frontend confirmation before committing.  
-通过自然语言指令修改 GIS 图层元数据，AI 返回经严格校验的 JSON 差异供前端确认后落库。
+#### Concurrency Test
+![Concurrency](resources/6_1_1.png)
+*Band count vs. latency under high concurrency*
 
-![Figure 5-4-2 AI Modify Mode](resources/5_4_2.png)
-
----
-
-### 5.5 Map Export / 地图视图导出 *(New / 新增)*
-
-Export the current map view as a high-resolution image with professional cartographic decorations.  
-将当前地图视图导出为高分辨率图像，支持专业制图装饰元素。
-
-> Supports PNG / JPEG / SVG · Up to 4x resolution · Graticule grid · Frame coordinate labels · Scale bar · North arrow
-
-> 支持 PNG / JPEG / SVG · 最高 4x 分辨率 · 经纬网格 · 外框经纬度标注 · 比例尺 · 指北针
+#### Rendering Benchmark
+![Rendering](resources/6_1_2.png)
+*Rendering latency vs. tile size (3 bands, 128–4096 px)*
 
 ---
 
-### 5.6 Automated Test Suite / 自动化测试套件
+### AI Gateway — Architecture Deep Dive
 
-High coverage reports from **Vitest** and **Pytest**.  
-来自 **Vitest** 和 **Pytest** 的高覆盖率测试报告。
-
----
-
-## 6. ⚙️ Performance Results / 性能结果
-
-### 6.1 Rendering Engine Performance / 渲染引擎性能
-
-#### 6.1.1 Concurrency Test / 高并发争抢测试
-
-![Figure 6-1-1 Vector Example](resources/6_1_1.png)
-
-*Relationship between band and latency under high concurrency*
-
-*高并发下波段与延迟的关系*
-
-#### 6.1.2 Rendering Test / 渲染测试
-
-![Figure 6-1-2 Vector Example](resources/6_1_2.png)
-
-*The trend of rendering latency increasing with tile size(3 bands, 128–4096 pixels)*
-
-*渲染延迟随 tile 大小增加的趋势(3 波段，128–4096 像素)*
-
----
-
-[Come Back to the Top](#agent-rsmarking-high-performance-remote-sensing-annotation-system)
-
-## 7. 🤖 AI Gateway — Architecture Deep Dive / AI 网关架构详解
-
-### 7.1 Overview / 概述
-
-The **AI Gateway** (`services/ai_gateway`) is a dedicated microservice that bridges natural language instructions with structured GIS data operations.  
-**AI 网关**（`services/ai_gateway`）是一个独立微服务，负责将自然语言指令桥接至结构化的 GIS 数据操作。
-
-### 7.2 Request Flow / 请求流程
+#### Request Flow
 
 ```
-Frontend / 前端
+POST /ai/process  { target_id, data_type, mode, language, user_prompt, overwrite }
     │
-    │  POST /ai/process
-    │  { target_id, data_type, mode, language, user_prompt, overwrite }
     ▼
-router.py  ──►  translator.py
-                    │
-                    ├─ 1. Extract Context (DB → Pydantic ContextData)
-                    │      ├── RasterContextData  (rasterio stats + metadata)
-                    │      └── VectorContextData  (PostGIS ST_Extent + JSONB agg)
-                    │
-                    ├─ 2. Build Prompt  (_build_system_prompt)
-                    │      ├── ANALYZE: free-form professional report
-                    │      └── MODIFY:  strict JSON Schema constraint
-                    │
-                    ├─ 3. Call LLM  (LiteLLM acompletion + auto-retry)
-                    │
-                    └─ 4. Validate & Write
-                           ├── ANALYZE → return plain text report
-                           └── MODIFY  → schema_validator.py (Pydantic anti-tamper)
-                                             ├── overwrite=true  → UPDATE DB
-                                             └── overwrite=false → CREATE new record
+router.py → translator.py
+    ├─ 1. Extract Context  (RasterContextData | VectorContextData)
+    ├─ 2. Build Prompt     (ANALYZE: free-form | MODIFY: strict JSON Schema)
+    ├─ 3. Call LLM         (LiteLLM acompletion + auto-retry)
+    └─ 4. Validate & Write
+           ├── ANALYZE → plain text report
+           └── MODIFY  → schema_validator.py (Pydantic anti-tamper)
+                             ├── overwrite=true  → UPDATE DB
+                             └── overwrite=false → CREATE new record
 ```
 
-### 7.3 Task Modes / 任务模式
-
-| Mode / 模式 | Description / 说明 | Output / 输出 |
-|---|---|---|
-| `analyze` | Professional spatial data analysis report | Plain text / 纯文本报告 |
-| `modify` | AI-driven metadata modification with anti-tamper validation | Validated JSON + DB write |
-
-### 7.4 Anti-Tamper Contract Layer / 防篡改契约层
-
-A core security design: the AI is **only permitted to output fields defined in `RasterModifiable` / `VectorModifiable`**.  
-核心安全设计：AI **只允许输出 `RasterModifiable` / `VectorModifiable` 中定义的字段**。
-
-All read-only spatial statistics (`bounds`, `stats`, `crs`, `resolution`, etc.) are **physically blocked** by Pydantic — even if the LLM attempts to overwrite them, the values are silently discarded.  
-所有只读空间统计字段（`bounds`、`stats`、`crs`、`resolution` 等）均由 Pydantic **物理拦截** —— 即使大模型尝试篡改，这些值也会被静默丢弃。
-
-### 7.5 Multi-language Support / 多语言支持
-
-The AI response language is controlled by the `language` field in the request payload:  
-AI 响应语言由请求体中的 `language` 字段控制：
-
-| Value | Language |
-|---|---|
-| `zh` | 简体中文 (default) |
-| `en` | English |
-| `ja` | 日本語 |
-
-### 7.6 API Reference / 接口说明
-
-**`POST /ai/process`**
+#### API — `POST /ai/process`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `target_id` | `int` \| `str` | ✅ | Raster `index_id` or Vector Layer UUID |
-| `data_type` | `raster` \| `vector` | ✅ | Data type |
-| `mode` | `analyze` \| `modify` | ✅ | Task mode |
-| `language` | `zh` \| `en` \| `ja` | — | Response language (default: `zh`) |
+| `target_id` | `int \| str` | ✅ | Raster `index_id` or Vector Layer UUID |
+| `data_type` | `raster \| vector` | ✅ | Data type |
+| `mode` | `analyze \| modify` | ✅ | Task mode |
+| `language` | `zh \| en \| ja` | — | Response language (default: `zh`) |
 | `user_prompt` | `string` | ✅ | Natural language instruction (2–2000 chars) |
-| `overwrite` | `bool` | — | Overwrite original record (default: `false`, creates new) |
+| `overwrite` | `bool` | — | Overwrite original record (default: `false`) |
 
-![Figure 7-1 AI Gateway Architecture](resources/7_1.png)
+![AI Gateway Architecture](resources/7_1.png)
 
 ---
 
-## 8. 🗺️ Map Export Module — Design Notes / 地图导出模块设计说明
+## 中文
 
-### 8.1 Overview / 概述
+### 简介
 
-The **Export Module** (`client/src/modules/ExportModule.js`) is a fully client-side, zero-dependency map export pipeline built on the **Canvas 2D API**.  
-**导出模块**（`client/src/modules/ExportModule.js`）是一个完全运行于客户端、基于 **Canvas 2D API** 的零后端依赖地图导出管线。
+**RSMarking** 是一个基于**微服务架构**的遥感影像标注平台，专为处理**海量 GeoTIFF 栅格数据**与**复杂矢量几何**而设计，无需繁重预处理即可实现高性能交互式标注。
 
-It captures the live Leaflet map view and composites multiple layers into a single high-resolution image without any server round-trip.  
-它直接捕获 Leaflet 地图的实时视图，在客户端将多个图层合成为单张高分辨率图像，无需任何服务端请求。
+---
 
-![Figure 8-1 Preview ](resources/8_1.png)
+### 核心特性
 
-### 8.2 Rendering Pipeline / 渲染管线
+#### ⚡ Cython 加速即时渲染 (OTF)
+内置 **TileEngine** 通过 `rasterio` 窗口读取结合 **C/Cython 扩展 (`fast_stretch_and_stack`)**，直接在内存中动态生成瓦片。  
+**零预切片、零金字塔构建**，极大节省磁盘空间与数据准备时间。
 
-```
-openModal()
-    │
-    ▼
-_collectOptions()          ← 收集用户选项（格式 / 分辨率 / 图层开关 / 经纬网配置）
-    │
-    ▼
-_renderToCanvas(opts)
-    │
-    ├─ 1. 计算留白 MARGIN   ← 仅在启用外框经纬度标注时扩展画布
-    │
-    ├─ 2. _captureBasemap()
-    │      ├── 优先：直接读取 Leaflet tile <img>（无跨域限制）
-    │      └── 降级：html2canvas（动态按需加载）
-    │
-    ├─ 3. _drawRasterLayers()   ← Canvas / ImageLayer 叠加
-    │
-    ├─ 4. _drawVectorLayers()   ← SVG 序列化 → Blob → Image 绘制
-    │
-    ├─ 5. _drawGraticuleLines() ← 经纬网线（实线 / 虚线，全图覆盖）
-    │      └── 经线 x 由 latLngToContainerPoint 计算，y 固定 0→H
-    │          纬线 y 由 latLngToContainerPoint 计算，x 固定 0→W
-    │
-    ├─ 6. _drawDecorations()    ← 比例尺 / 指北针 / 时间戳
-    │
-    └─ 7. _drawGraticuleFrame() ← 外框刻度线 + 经纬度文字标注
-           └── 在 translate 外绘制，使用绝对画布坐标
-    │
-    ▼
-PNG / JPEG → _downloadCanvas()
-SVG        → _exportSVG()
-```
+#### 🎨 动态多波段拉伸
+自动执行 **16位 / 32位影像**的 **2%–98% 线性拉伸**或归一化映射，并在统计异常时触发优化降级策略。
 
-### 8.3 Graticule Implementation Notes / 经纬网实现说明
+#### 🏗️ 分布式微服务架构
+**瓦片 / 数据 / 标注 / AI 网关 / 脚本执行**服务完全解耦，基于 **FastAPI** 提供高并发支持，可通过 **Kubernetes** 横向扩展。
 
-| Design Decision / 设计决策 | Reason / 原因 |
+#### 🤖 AI 空间数据智能网关
+独立微服务，接受自然语言指令对栅格/矢量 GIS 数据执行**智能分析**或**结构化修改**。  
+通过 **LiteLLM** 统一适配多种大模型，并以严格的 **Pydantic 契约层**物理拦截 AI 对只读空间统计字段的篡改。
+
+> **对比 QGIS 4.0** — 尚无内置 AI Agent；RSMarking 在 AI 辅助遥感工作流上具备先发优势。  
+> **对比 ArcGIS Pro** — ArcGIS Assistant 分析深度更强，但属商业付费软件；RSMarking **开源免费**。
+
+#### 🗺️ 专业地图视图导出模块
+基于 **Canvas 2D API** 的全客户端导出管线，无需任何服务端请求。
+
+| 能力 | 说明 |
 |---|---|
-| 经线端点固定为 `y = 0 → H` | 避免坐标转换误差导致边缘线画不到头 |
-| 纬线端点固定为 `x = 0 → W` | 同上，保证全图覆盖 |
-| 范围使用 `floor(west)` / `ceil(east)` | 往外扩展，确保边缘线不被截断 |
-| 经纬网与外框标注独立开关 | 用户可单独启用外框标注而不显示网格线 |
-| 间隔由 `_niceLatLngInterval()` 自动计算 | 保证屏幕上始终出现 4~6 条网格线 |
+| 导出格式 | PNG（无损）· JPEG（可调质量）· SVG（矢量） |
+| 分辨率 | 1x / 2x / 3x / **4x 超高清** |
+| 图层控制 | 底图 · 栅格 · 矢量 · 装饰元素（独立开关） |
+| 经纬网格 | 全图覆盖，支持**实线 / 虚线** |
+| 外框标注 | 专业制图风格的经纬度刻度，与网格独立控制 |
+| 内置装饰 | 自动比例尺 · 指北针 · 时间戳水印 |
 
-### 8.4 Export Options Reference / 导出选项说明
-
-| Option / 选项 | Type | Default | Description |
-|---|---|---|---|
-| `format` | `png` \| `jpeg` \| `svg` | `png` | 导出格式 |
-| `scale` | `1` \| `2` \| `3` \| `4` | `2` | 输出分辨率倍数 |
-| `jpegQuality` | `50–100` | `92` | JPEG 压缩质量（仅 JPEG 格式有效） |
-| `includeBasemap` | `bool` | `true` | 是否包含底图瓦片 |
-| `includeVectors` | `bool` | `true` | 是否包含矢量标注图层 |
-| `includeRasters` | `bool` | `true` | 是否包含栅格影像图层 |
-| `includeDecorations` | `bool` | `true` | 是否包含比例尺 / 指北针 / 时间戳 |
-| `includeGraticule` | `bool` | `false` | 是否叠加经纬网格线 |
-| `graticuleStyle` | `solid` \| `dashed` | `solid` | 经纬网线型 |
-| `includeFrameLabels` | `bool` | `false` | 是否在外框标注经纬度刻度 |
-| `filename` | `string` | `RSMarking_Export` | 导出文件名（不含扩展名） |
+#### 🐍 沙箱脚本执行器
+用户可提交自定义 Python 3 脚本，在 **Docker 容器隔离**环境中运行，支持共享 `/storage` 访问与完整生命周期管理。
 
 ---
 
-[Come Back to the Top](#agent-rsmarking-high-performance-remote-sensing-annotation-system)
+### 架构概览
+
+```
+┌─────────────────────────────────────────────────────┐
+│                前端单页应用 (SPA)                    │
+│  map.js · modules/ · store/ · UI 组件               │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTP / REST
+     ┌───────────────┼───────────────────┐
+     ▼               ▼                   ▼
+tile_service    data_service      annotation_service
+(Cython OTF)  (栅格元数据管理)    (PostGIS 矢量标注)
+     │               │                   │
+     └───────────────┼───────────────────┘
+                     │
+            ┌────────┴────────┐
+            ▼                 ▼
+       ai_gateway      executor_service
+      (LiteLLM +       (Docker 沙箱)
+       Pydantic)
+            │
+   PostgreSQL/PostGIS + Redis
+```
+
+---
+
+### 开发环境快速开始
+
+#### 预需求
+- Docker & Docker Compose
+- Python 3.12+
+- Node.js 24+
+
+#### 第一步 — 启动基础设施
+
+```bash
+cd infrastructure/docker
+docker-compose up -d
+```
+
+#### 第二步 — 数据库迁移
+
+```bash
+cd infrastructure/db_migrations && alembic upgrade head
+cd ../annot_migrations          && alembic upgrade head
+```
+
+#### 第三步 — 启动后端服务
+
+```bash
+conda env create -f environment.yml && conda activate <env>
+
+python services/tile_service/main.py
+python services/data_service/main.py
+python services/annotation_service/main.py
+python services/ai_gateway/main.py
+python services/executor_service/main.py
+```
+
+#### 第四步 — 配置 AI 网关环境变量
+
+在项目根目录创建 `.env`：
+
+```env
+AI_MODEL=deepseek/deepseek-chat
+AI_NAME=deepseek/deepseek-chat
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx
+```
+
+> 仅需修改 `AI_MODEL` 即可切换至 DeepSeek、OpenAI、Azure OpenAI 等任意 LiteLLM 兼容提供商。
+
+#### 第五步 — 启动前端
+
+```bash
+cd client && npm install && npm run dev
+```
+
+---
+
+### 项目结构
+
+```
+.
+├── client/                    # 前端单页应用 (Vanilla JS + Leaflet)
+│   └── packages/
+│       ├── app/src/
+│       │   ├── modules/       # 功能模块 (AI · 导出 · 标注 · 栅格…)
+│       │   ├── core/          # UIManager · GlobalBridge · GlobalEvents
+│       │   ├── store/         # 核心状态管理
+│       │   └── api/           # 各服务 API 适配层
+│       ├── core/src/map.js    # 地图渲染核心接口
+│       └── ui/src/            # 业务组件与 HTML 模板
+├── services/                  # 后端微服务 (FastAPI)
+│   ├── tile_service/          # Cython OTF 渲染引擎 + LRU 缓存
+│   ├── data_service/          # 栅格元数据与波段管理
+│   ├── annotation_service/    # 矢量 CRUD + PostGIS 空间索引
+│   ├── ai_gateway/            # LiteLLM 适配 + Pydantic 防篡改
+│   └── executor_service/      # Docker 沙箱脚本执行器
+├── functions/                 # 算法函数库
+│   └── implement/             # 光谱指数 · 目标提取 · 栅格运算
+├── infrastructure/            # 基础设施即代码 (IaC)
+│   ├── docker/                # Dockerfile & Compose
+│   ├── kubernetes/            # K8s 部署配置
+│   └── *_migrations/          # Alembic 迁移脚本
+├── storage/
+│   ├── cog/                   # 可服务 COG 栅格
+│   └── raw/                   # 原始影像
+└── tests/                     # Pytest · Vitest · Playwright（规划中）
+```
+
+---
+
+### 功能预览
+
+#### 多光谱影像即时渲染
+直接渲染 16 位 GeoTIFF，动态波段拉伸。
+
+![渲染示例](resources/5_1.png)
+
+#### 交互式矢量标注
+支持撤销/重做与拓扑约束的复杂多边形标注。
+
+![矢量标注](resources/5_2.png)
+
+#### AI 网关 — 分析模式
+提交自然语言问题，获取专业空间数据分析报告。
+
+![AI 分析](resources/5_4_1.png)
+
+#### AI 网关 — 修改模式
+自然语言指令驱动元数据修改，AI 返回经 Pydantic 校验的 JSON 差异供确认后落库。
+
+![AI 修改](resources/5_4_2.png)
+
+#### 地图视图导出
+将当前地图视图导出为高分辨率图像，支持专业制图装饰元素。
+
+![导出预览](resources/8_1.png)
+
+---
+
+### 性能结果
+
+#### 高并发争抢测试
+![并发测试](resources/6_1_1.png)
+*高并发下波段数与延迟的关系*
+
+#### 渲染性能测试
+![渲染测试](resources/6_1_2.png)
+*渲染延迟随 Tile 尺寸增加的趋势（3 波段，128–4096 像素）*
+
+---
+
+### AI 网关架构详解
+
+#### 请求流程
+
+```
+POST /ai/process  { target_id, data_type, mode, language, user_prompt, overwrite }
+    │
+    ▼
+router.py → translator.py
+    ├─ 1. 提取上下文  (RasterContextData | VectorContextData)
+    ├─ 2. 构建 Prompt (ANALYZE: 自由报告 | MODIFY: 严格 JSON Schema)
+    ├─ 3. 调用 LLM   (LiteLLM acompletion + 自动重试)
+    └─ 4. 校验与写入
+           ├── ANALYZE → 返回纯文本报告
+           └── MODIFY  → schema_validator.py (Pydantic 防篡改)
+                             ├── overwrite=true  → UPDATE DB
+                             └── overwrite=false → CREATE 新记录
+```
+
+#### 接口说明 — `POST /ai/process`
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `target_id` | `int \| str` | ✅ | 栅格 `index_id` 或矢量图层 UUID |
+| `data_type` | `raster \| vector` | ✅ | 数据类型 |
+| `mode` | `analyze \| modify` | ✅ | 任务模式 |
+| `language` | `zh \| en \| ja` | — | 响应语言（默认 `zh`） |
+| `user_prompt` | `string` | ✅ | 自然语言指令（2–2000 字符） |
+| `overwrite` | `bool` | — | 是否覆盖原记录（默认 `false`，创建新记录） |
+
+![AI 网关架构图](resources/7_1.png)
