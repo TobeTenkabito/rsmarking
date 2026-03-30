@@ -104,6 +104,7 @@
 │   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
 │   │   ├── /extraction     # 提取算法(已实现部分，这里略过)
 │   │   ├── __init__.py
+│   │   ├── clip_ops.py          # 裁剪算法
 │   │   ├── io_ops.py            # cog转换，构建金字塔
 │   │   ├── manipulation.py      # 栅格合成
 │   │   ├── spatial_ops.py       # 坐标系转换为wgs84

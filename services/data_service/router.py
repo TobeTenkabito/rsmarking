@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends, Form, Request
 from fastapi.responses import FileResponse
 from typing import Optional
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -28,6 +29,24 @@ CLIENT_DIR = os.path.join(BASE_DIR, "client")
 
 logger = logging.getLogger("data_service.control")
 router = APIRouter()
+
+class ClipRasterByVectorRequest(BaseModel):
+    """矢量裁剪栅格请求体"""
+    raster_id: int                        # 被裁剪的栅格 ID
+    new_name: str                         # 输出文件名
+    geometries: list[dict]                # GeoJSON geometry 对象列表
+    src_vector_crs: str = "EPSG:4326"     # 矢量坐标系
+    crop: bool = True                     # 是否裁剪到最小外接矩形
+    nodata: float | None = None           # 掩膜外填充值
+    all_touched: bool = False             # 边界像元是否纳入掩膜
+
+
+class ClipVectorByRasterRequest(BaseModel):
+    """栅格裁剪矢量请求体"""
+    raster_id: int                        # 提供空间范围的栅格 ID
+    features: list[dict]                  # GeoJSON Feature 对象列表
+    src_vector_crs: str = "EPSG:4326"     # 矢量坐标系
+    mode: str = "intersects"              # intersects / within / clip
 
 
 # Helper function to handle file saving and metadata extraction
@@ -277,6 +296,117 @@ async def delete_raster_field(
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     return None
+
+@router.post("/clip-raster-by-vector")
+async def clip_raster_by_vector(
+    body: ClipRasterByVectorRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    用矢量多边形裁剪栅格。
+
+    - geometries: 前端传入 GeoJSON geometry 列表（Polygon / MultiPolygon）
+    - 结果注册为新栅格记录，走 COG 流程
+    """
+    # 1. 查询源栅格路径
+    result = await db.execute(
+        select(models.RasterMetadata).where(
+            models.RasterMetadata.index_id == body.raster_id
+        )
+    )
+    raster_record = result.scalars().first()
+    if not raster_record:
+        raise HTTPException(status_code=404, detail="栅格不存在")
+
+    # 2. 构建输出路径
+    output_id = str(uuid.uuid4())
+    output_name = (
+        body.new_name if body.new_name.endswith(".tif") else f"{body.new_name}.tif"
+    )
+    tmp_path = os.path.join(UPLOAD_DIR, f"{output_id}_clip.tif")
+    cog_filename = f"{output_id}_{output_name}"
+    cog_path = os.path.join(COG_DIR, cog_filename)
+
+    try:
+        # 3. 执行裁剪
+        clip_meta = RasterProcessor.clip_raster_by_vector(
+            raster_path=raster_record.file_path,
+            output_path=tmp_path,
+            geojson_geometries=body.geometries,
+            src_vector_crs=body.src_vector_crs,
+            crop=body.crop,
+            nodata=body.nodata,
+            all_touched=body.all_touched,
+        )
+
+        # 4. 转 COG
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        # 5. 注册到数据库
+        db_result = await db_ops.save_to_db(
+            db,
+            output_id,
+            output_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "clip_raster",
+            bands_count=clip_meta["bands"],
+            metadata_source=tmp_path,
+        )
+
+        return {
+            "status": "success",
+            "id": db_result["id"],
+            "clip_meta": clip_meta,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"矢量裁剪栅格失败: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clip-vector-by-raster")
+async def clip_vector_by_raster(
+    body: ClipVectorByRasterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    用栅格空间范围裁剪矢量要素。
+
+    - mode=intersects : 返回与栅格范围相交的要素（原始几何不变）
+    - mode=within     : 仅返回完全在栅格范围内的要素
+    - mode=clip       : 将要素几何体裁剪到栅格边界（几何会被修改）
+    - 纯内存操作，直接返回 GeoJSON FeatureCollection，不写库
+    """
+    # 1. 查询栅格路径
+    result = await db.execute(
+        select(models.RasterMetadata).where(
+            models.RasterMetadata.index_id == body.raster_id
+        )
+    )
+    raster_record = result.scalars().first()
+    if not raster_record:
+        raise HTTPException(status_code=404, detail="栅格不存在")
+
+    try:
+        # 2. 执行裁剪
+        feature_collection = RasterProcessor.clip_vector_by_raster(
+            raster_path=raster_record.file_path,
+            geojson_features=body.features,
+            src_vector_crs=body.src_vector_crs,
+            mode=body.mode,
+        )
+        return feature_collection
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"栅格裁剪矢量失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/execute-script")

@@ -6,6 +6,10 @@ import numpy as np
 import numexpr as ne
 import rasterio
 
+from functions.implement.clip_ops import (
+    clip_raster_by_vector,
+    clip_vector_by_raster,
+)
 from functions.implement.spatial_ops import (
     get_wgs84_bounds,
     compute_center_from_bounds,
@@ -223,3 +227,47 @@ class RasterProcessor:
     def run_cloud_extraction(paths: list[str], output_path: str, **kwargs,) -> None:
         RasterProcessor._run_extraction_task(
             paths, output_path, RasterProcessor._ExtractionRegistry.get("cloud"), min_bands=1, **kwargs,)
+
+    @staticmethod
+    def clip_raster_by_vector(
+        raster_path: str,
+        output_path: str,
+        geojson_geometries: list[dict],
+        src_vector_crs: str = "EPSG:4326",
+        crop: bool = True,
+        nodata: float | None = None,
+        all_touched: bool = False,
+    ) -> dict:
+        """
+        用矢量多边形裁剪栅格，结果写入 output_path。
+        裁剪完成后自动构建金字塔。
+        """
+        result = clip_raster_by_vector(
+            raster_path=raster_path,
+            output_path=output_path,
+            geojson_geometries=geojson_geometries,
+            src_vector_crs=src_vector_crs,
+            crop=crop,
+            nodata=nodata,
+            all_touched=all_touched,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def clip_vector_by_raster(
+        raster_path: str,
+        geojson_features: list[dict],
+        src_vector_crs: str = "EPSG:4326",
+        mode: str = "intersects",
+    ) -> dict:
+        """
+        用栅格空间范围过滤/裁剪矢量要素，返回 GeoJSON FeatureCollection。
+        纯内存操作，无文件输出。
+        """
+        return clip_vector_by_raster(
+            raster_path=raster_path,
+            geojson_features=geojson_features,
+            src_vector_crs=src_vector_crs,
+            mode=mode,
+        )
