@@ -3,9 +3,8 @@ export class MapEngine {
         console.group("%c[MapEngine] 🏗️ 引擎初始化", "color: #8b5cf6; font-weight: bold;");
         this.containerId = containerId;
 
-        // --- 图层容器 ---
-        this.layers = new Map();       // Key: index_id (string), Value: L.TileLayer (栅格瓦片)
-        this.vectorLayers = new Map(); // Key: layerId (string), Value: L.GeoJSON (矢量要素)
+        this.layers = new Map();
+        this.vectorLayers = new Map();
 
         this.isReady = false;
         this.tileServiceBase = "http://localhost:8005";
@@ -16,6 +15,8 @@ export class MapEngine {
 
         this._initMap();
         console.groupEnd();
+        this._cesiumViewer = null;
+        this._is3D = false;
     }
 
     _initMap() {
@@ -24,15 +25,20 @@ export class MapEngine {
             return;
         }
         try {
-            this.map = L.map(this.containerId, {zoomControl: false, preferCanvas: true}).setView([35, 105], 4);
+            this.map = L.map(this.containerId, { zoomControl: false, preferCanvas: true }).setView([35, 105], 4);
             L.control.zoom({ position: 'bottomright' }).addTo(this.map);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap', crossOrigin: 'anonymous'}).addTo(this.map);this.isReady = true;
-                console.log("[MapEngine] ✅ 地图实例已就绪");} catch (e) {
-            console.error("[MapEngine] 初始化异常:", e);}}
+                attribution: '© OpenStreetMap', crossOrigin: 'anonymous'
+            }).addTo(this.map);
+            this.isReady = true;
+            console.log("[MapEngine] ✅ 地图实例已就绪");
+        } catch (e) {
+            console.error("[MapEngine] 初始化异常:", e);
+        }
+    }
 
     _projectToWGS84(boundsArray, sourceCRS = "EPSG:32651") {
-        if (typeof proj4 === 'undefined') {console.error("[MapEngine] ❌ 未发现 proj4 库。");return boundsArray;}
+        if (typeof proj4 === 'undefined') { console.error("[MapEngine] ❌ 未发现 proj4 库。"); return boundsArray; }
         try {
             const [xmin, ymin, xmax, ymax] = boundsArray.map(Number);
             if (Math.abs(xmin) <= 180 && Math.abs(xmax) <= 180 && Math.abs(ymin) <= 90 && Math.abs(ymax) <= 90) {
@@ -51,31 +57,23 @@ export class MapEngine {
     }
 
     _convertBounds(boundsArray) {
-        if (!Array.isArray(boundsArray) || boundsArray.length !== 4) {
-            return null;
-        }
+        if (!Array.isArray(boundsArray) || boundsArray.length !== 4) return null;
         const wgs84Coords = this._projectToWGS84(boundsArray, "EPSG:32651");
         if (!wgs84Coords) return null;
         const [lngMin, latMin, lngMax, latMax] = wgs84Coords;
         return L.latLngBounds([latMin, lngMin], [latMax, lngMax]);
     }
-
     async addGeoRasterLayer(raster) {
         const indexId = String(raster.index_id).trim();
         console.group(`%c[MapEngine] ➕ 图层加载: ${indexId}`, "color: #3b82f6;");
-        if (!this.isReady) {
-            console.groupEnd();
-            return false;
-        }
+        if (!this.isReady) { console.groupEnd(); return false; }
+
         this.removeLayer(indexId);
         const tileUrl = `${this.tileServiceBase}/tile/${indexId}/{z}/{x}/{y}.png?bands=1,2,3`;
         try {
             const layer = L.tileLayer(tileUrl, {
-                maxZoom: 18,
-                minZoom: 0,
-                tileSize: 256,
-                crossOrigin: true,
-                index_id: indexId
+                maxZoom: 18, minZoom: 0, tileSize: 256,
+                crossOrigin: true, index_id: indexId
             });
             layer.addTo(this.map);
             this.layers.set(indexId, layer);
@@ -83,6 +81,9 @@ export class MapEngine {
             const leafletBounds = this._convertBounds(boundsData);
             if (leafletBounds) {
                 this.map.fitBounds(leafletBounds, { padding: [20, 20] });
+            }
+            if (this._is3D) {
+                this._syncRastersToCesium();
             }
             console.groupEnd();
             return true;
@@ -115,8 +116,11 @@ export class MapEngine {
                 console.log(`[MapEngine] 🛡️ 暴力清理成功: ${id}`);
             }
         });
-        if (!removed) {
-            console.warn(`[MapEngine] ⚠️ 地图上未发现活动图层 [${id}]`);
+
+        if (!removed) console.warn(`[MapEngine] ⚠️ 地图上未发现活动图层 [${id}]`);
+
+        if (this._is3D) {
+            this._syncRastersToCesium();
         }
         return removed;
     }
@@ -124,10 +128,7 @@ export class MapEngine {
     fitLayer(indexId, data) {
         const id = String(indexId).trim();
         console.group(`%c[MapEngine] 🎯 触发定位: ${id}`, "color: #f59e0b;");
-        if (!this.map) {
-            console.groupEnd();
-            return;
-        }
+        if (!this.map) { console.groupEnd(); return; }
         let targetBoundsArray = Array.isArray(data) ? data : (data?.bounds || data?.extent || null);
         const leafletBounds = this._convertBounds(targetBoundsArray);
         if (leafletBounds) {
@@ -137,135 +138,117 @@ export class MapEngine {
         console.groupEnd();
     }
 
-    /**
-     * 更新或创建矢量 GeoJSON 图层
-     * 适配 MapController.js 中的 this.engine.updateVectorLayer('annotation-layer', geojson)
-     */
     updateVectorLayer(layerId, geojson, selectedId) {
-    if (!this.isReady || !this.map) return;
-
-    let vectorLayer = this.vectorLayers.get(layerId);
-
-    // 2. 闭包高阶样式函数
-    const getFeatureStyle = (feature) => {
-        const fid = feature.id || feature.properties?.id;
-        const isSelected = fid && fid === selectedId;
-        const featureColor = feature.properties?.color || "#4f46e5";
-        return {
-            color: isSelected ? "#ef4444" : featureColor,
-            weight: isSelected ? 3 : 1.5,
-            opacity: 1,
-            fillColor: featureColor,
-            fillOpacity: isSelected ? 0.5 : 0.2,
-            className: 'vector-polygon-blend'
+        if (!this.isReady || !this.map) return;
+        let vectorLayer = this.vectorLayers.get(layerId);
+        const getFeatureStyle = (feature) => {
+            const fid = feature.id || feature.properties?.id;
+            const isSelected = fid && fid === selectedId;
+            const featureColor = feature.properties?.color || "#4f46e5";
+            return {
+                color: isSelected ? "#ef4444" : featureColor,
+                weight: isSelected ? 3 : 1.5,
+                opacity: 1,
+                fillColor: featureColor,
+                fillOpacity: isSelected ? 0.5 : 0.2,
+                className: 'vector-polygon-blend'
+            };
         };
-    };
+        if (!vectorLayer) {
+            console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
+            vectorLayer = L.geoJSON(geojson, {
+                style: getFeatureStyle,
+                onEachFeature: (feature, layer) => {
+                    layer.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e);
+                        const fid = feature.id || feature.properties?.id;
+                        window.dispatchEvent(new CustomEvent('inspect-feature', {
+                            detail: { id: fid, feature, layerId }
+                        }));
+                    });
+                }
+            });
+            vectorLayer.addTo(this.map);
+            this.vectorLayers.set(layerId, vectorLayer);
+            vectorLayer._lastSelectedId = selectedId;
 
-    // 3. 首次初始化（加入对上一状态的缓存）
-    if (!vectorLayer) {
-        console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
-        vectorLayer = L.geoJSON(geojson, {
-            style: getFeatureStyle,
-            onEachFeature: (feature, layer) => {
-                layer.on('click', (e) => {
-                    L.DomEvent.stopPropagation(e);
-                    const fid = feature.id || feature.properties?.id;
-                    window.dispatchEvent(new CustomEvent('inspect-feature', { detail: { id: fid, feature, layerId } }));
-                });
+            if (this._is3D) {
+                this._syncSingleVectorToCesium(layerId);
             }
-        });
-        vectorLayer.addTo(this.map);
-        this.vectorLayers.set(layerId, vectorLayer);
-        // 记录当前选中的 ID，用于后续局部比对
-        vectorLayer._lastSelectedId = selectedId;
-        return;
-    }
-
-    // 4. 增量更新（Diff 算法）：只删除消失的，只添加新增的
-    const newFeaturesMap = new Map();
-    const featuresToAdd = [];
-    const layerIndexById = new Map();
-
-    // 4.1 建立传入新数据的 Hash 索引
-    if (geojson && geojson.features) {
-        geojson.features.forEach(f => {
-            const fid = f.id || f.properties?.id;
-            if (fid) newFeaturesMap.set(fid, f);
-        });
-    }
-
-    // 4.2 遍历地图上的现有要素，移除不在新数据中的
-    vectorLayer.eachLayer(layer => {
-        const fid = layer.feature.id || layer.feature.properties?.id;
-        if (!newFeaturesMap.has(fid)) {
-            vectorLayer.removeLayer(layer); // 视口移出或被删除，卸载它
-        } else {
-            layer.feature = newFeaturesMap.get(fid); // 更新属性（如颜色改变）
-            layerIndexById.set(fid, layer);          // 缓存留下的图层实例
+            return;
         }
-    });
 
-    // 4.3 找出需要新添加到地图的要素
-    if (geojson && geojson.features) {
-        geojson.features.forEach(f => {
-            const fid = f.id || f.properties?.id;
-            if (fid && !layerIndexById.has(fid)) {
-                featuresToAdd.push(f);
-            }
-        });
-    }
+        const newFeaturesMap = new Map();
+        const featuresToAdd = [];
+        const layerIndexById = new Map();
 
-    // 4.4 执行局部添加
-    if (featuresToAdd.length > 0) {
-        // 更新默认样式闭包，确保新要素直接拿到正确样式
-        vectorLayer.options.style = getFeatureStyle;
-        vectorLayer.addData(featuresToAdd);
-        // 将新加的要素也补充进索引，以备后续样式更新
+        if (geojson && geojson.features) {
+            geojson.features.forEach(f => {
+                const fid = f.id || f.properties?.id;
+                if (fid) newFeaturesMap.set(fid, f);
+            });
+        }
+
         vectorLayer.eachLayer(layer => {
             const fid = layer.feature.id || layer.feature.properties?.id;
-            if (!layerIndexById.has(fid)) layerIndexById.set(fid, layer);
+            if (!newFeaturesMap.has(fid)) {
+                vectorLayer.removeLayer(layer);
+            } else {
+                layer.feature = newFeaturesMap.get(fid);
+                layerIndexById.set(fid, layer);
+            }
         });
-    }
 
-    // 5. O(1) 级别的局部样式更新（解决选中状态的性能问题）
-    const prevSelectedId = vectorLayer._lastSelectedId;
-    // 只有当选中项发生变化时，才针对性地修改那两个要素的样式
-    if (prevSelectedId !== selectedId) {
-        // 恢复之前被选中要素的默认样式
-        if (prevSelectedId && layerIndexById.has(prevSelectedId)) {
-            layerIndexById.get(prevSelectedId).setStyle(getFeatureStyle);
+        if (geojson && geojson.features) {
+            geojson.features.forEach(f => {
+                const fid = f.id || f.properties?.id;
+                if (fid && !layerIndexById.has(fid)) featuresToAdd.push(f);
+            });
         }
-        // 高亮新被选中的要素
-        if (selectedId && layerIndexById.has(selectedId)) {
-            const selectedLayer = layerIndexById.get(selectedId);
-            selectedLayer.setStyle(getFeatureStyle);
-            if (typeof selectedLayer.bringToFront === 'function') selectedLayer.bringToFront();
+
+        if (featuresToAdd.length > 0) {
+            vectorLayer.options.style = getFeatureStyle;
+            vectorLayer.addData(featuresToAdd);
+            vectorLayer.eachLayer(layer => {
+                const fid = layer.feature.id || layer.feature.properties?.id;
+                if (!layerIndexById.has(fid)) layerIndexById.set(fid, layer);
+            });
         }
-        vectorLayer._lastSelectedId = selectedId;
-    } else if (featuresToAdd.length === 0) {
-        // 如果选中项没变，且没有新增几何体，但为了防止外部修改了 color 等属性，
-        // 执行一次全量更新。由于 DOM 节点没有增删，这个开销在可接受范围内。
-        vectorLayer.setStyle(getFeatureStyle);
+
+        const prevSelectedId = vectorLayer._lastSelectedId;
+        if (prevSelectedId !== selectedId) {
+            if (prevSelectedId && layerIndexById.has(prevSelectedId)) {
+                layerIndexById.get(prevSelectedId).setStyle(getFeatureStyle);
+            }
+            if (selectedId && layerIndexById.has(selectedId)) {
+                const selectedLayer = layerIndexById.get(selectedId);
+                selectedLayer.setStyle(getFeatureStyle);
+                if (typeof selectedLayer.bringToFront === 'function') selectedLayer.bringToFront();
+            }
+            vectorLayer._lastSelectedId = selectedId;
+        } else if (featuresToAdd.length === 0) {
+            vectorLayer.setStyle(getFeatureStyle);
+        }
+        if (this._is3D) {
+            this._syncSingleVectorToCesium(layerId);
+        }
     }
-}
 
     syncVisibleLayers(visibleIdsArray) {
         if (!this.isReady) return;
         const visibleSet = new Set(visibleIdsArray);
 
-        // 遍历缓存中的所有图层实例
         for (const [layerId, vectorLayer] of this.vectorLayers.entries()) {
-            // 如果某图层不在最新可见列表中，从地图中拔除并销毁缓存
             if (!visibleSet.has(layerId)) {
                 this.map.removeLayer(vectorLayer);
                 this.vectorLayers.delete(layerId);
             }
         }
+        if (this._is3D) {
+            this._syncVectorsToCesium();
+        }
     }
 
-    /**
-     * 隐藏或移除矢量图层 (当取消选中图层时调用)
-     */
     removeVectorLayer(layerId) {
         const layer = this.vectorLayers.get(layerId);
         if (layer) {
@@ -273,5 +256,168 @@ export class MapEngine {
             this.vectorLayers.delete(layerId);
             console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
         }
+
+        if (this._is3D && this._cesiumViewer) {
+            this._cesiumViewer.dataSources.getByName(layerId)
+                .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
+        }
+    }
+
+    _initCesium() {
+        if (this._cesiumViewer) return;
+
+        this._cesiumViewer = new Cesium.Viewer('cesium-container', {
+            terrainProvider:      new Cesium.EllipsoidTerrainProvider(),
+            baseLayerPicker:      false,
+            navigationHelpButton: false,
+            sceneModePicker:      false,
+            geocoder:             false,
+            homeButton:           false,
+            fullscreenButton:     false,
+            animation:            false,
+            timeline:             false,
+            infoBox:              false,
+            selectionIndicator:   false,
+            imageryProvider:      false,
+        });
+
+        this._cesiumViewer.imageryLayers.addImageryProvider(
+            new Cesium.UrlTemplateImageryProvider({
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c'],
+                maximumLevel: 19,
+                credit: '© OpenStreetMap contributors'
+            })
+        );
+
+        this._cesiumViewer.cesiumWidget.creditContainer.style.display = 'none';
+        console.log('[MapEngine] 🌐 Cesium 3D 引擎已就绪');
+    }
+
+    switchTo3D() {
+        if (this._is3D) return;
+
+        this._initCesium();
+
+        const center = this.map.getCenter();
+        const zoom   = this.map.getZoom();
+        const height = 40000000 / Math.pow(2, zoom);
+
+        this._cesiumViewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(center.lng, center.lat, height),
+            duration: 1.2
+        });
+
+        this._syncRastersToCesium();
+        this._syncVectorsToCesium();
+
+        document.getElementById('cesium-container').style.display = 'block';
+        document.getElementById('map').style.visibility = 'hidden';
+
+        const btn   = document.getElementById('globe-toggle-btn');
+        const label = document.getElementById('globe-btn-label');
+        if (btn)   btn.classList.add('is-3d');
+        if (label) label.textContent = '2D';
+
+        this._is3D = true;
+        console.log('[MapEngine] 🌐 已切换到 3D 球形视图');
+    }
+
+    switchTo2D() {
+        if (!this._is3D) return;
+
+        if (this._cesiumViewer) {
+            const pos  = this._cesiumViewer.camera.positionCartographic;
+            const lng  = Cesium.Math.toDegrees(pos.longitude);
+            const lat  = Cesium.Math.toDegrees(pos.latitude);
+            const zoom = Math.round(Math.log2(40000000 / pos.height));
+            this.map.setView([lat, lng], Math.max(2, Math.min(zoom, 18)));
+        }
+
+        document.getElementById('cesium-container').style.display = 'none';
+        document.getElementById('map').style.visibility = 'visible';
+        this.map.invalidateSize();
+
+        const btn   = document.getElementById('globe-toggle-btn');
+        const label = document.getElementById('globe-btn-label');
+        if (btn)   btn.classList.remove('is-3d');
+        if (label) label.textContent = '3D';
+
+        this._is3D = false;
+        console.log('[MapEngine] 🗺️ 已切换回 2D 平面视图');
+    }
+
+    _syncRastersToCesium() {
+        if (!this._cesiumViewer) return;
+
+        const layers = this._cesiumViewer.imageryLayers;
+        while (layers.length > 1) layers.remove(layers.get(1));
+
+        this.layers.forEach((leafletLayer, indexId) => {
+            const tileUrl = `${this.tileServiceBase}/tile/${indexId}/{z}/{x}/{y}.png?bands=1,2,3`;
+            layers.addImageryProvider(
+                new Cesium.UrlTemplateImageryProvider({
+                    url: tileUrl,
+                    maximumLevel: 18
+                })
+            );
+        });
+    }
+
+    _syncVectorsToCesium() {
+        if (!this._cesiumViewer) return;
+
+        this._cesiumViewer.dataSources.removeAll();
+
+        this.vectorLayers.forEach((leafletLayer, layerId) => {
+            this._syncSingleVectorToCesium(layerId);
+        });
+    }
+
+    async _syncSingleVectorToCesium(layerId) {
+        if (!this._cesiumViewer) return;
+
+        this._cesiumViewer.dataSources.getByName(layerId)
+            .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
+
+        const leafletLayer = this.vectorLayers.get(layerId);
+        if (!leafletLayer) return;
+
+        const geojson = leafletLayer.toGeoJSON();
+        if (!geojson?.features?.length) return;
+
+        try {
+            const dataSource = await Cesium.GeoJsonDataSource.load(geojson, {
+                clampToGround: true,
+            });
+
+            dataSource.entities.values.forEach(entity => {
+                const colorStr = entity.properties?.color?.getValue() ?? '#4f46e5';
+                const cesiumColor = Cesium.Color.fromCssColorString(colorStr);
+
+                if (entity.polygon) {
+                    entity.polygon.material     = cesiumColor.withAlpha(0.3);
+                    entity.polygon.outlineColor  = cesiumColor;
+                    entity.polygon.outline       = true;
+                }
+                if (entity.polyline) {
+                    entity.polyline.material = cesiumColor;
+                    entity.polyline.width    = 2;
+                }
+                if (entity.point) {
+                    entity.point.color     = cesiumColor;
+                    entity.point.pixelSize = 8;
+                }
+            });
+
+            dataSource.name = layerId;
+            this._cesiumViewer.dataSources.add(dataSource);
+            console.log(`[MapEngine] 🔷 矢量图层已同步到 Cesium: ${layerId}`);
+        } catch (err) {
+            console.error(`[MapEngine] ❌ 矢量图层同步失败 [${layerId}]:`, err);
+        }
+    }
+    toggleGlobeView() {
+        this._is3D ? this.switchTo2D() : this.switchTo3D();
     }
 }

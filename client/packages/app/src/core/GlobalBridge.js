@@ -100,6 +100,7 @@ export class GlobalBridge {
 
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
+            toggleGlobeView: () => this.app.mapEngine?.toggleGlobeView(),
         };
     }
 }
