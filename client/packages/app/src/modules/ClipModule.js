@@ -108,7 +108,7 @@ export class ClipModule {
                 rasterId, newName, [clipGeometry], 'EPSG:4326', true, null, false,
                 );
             console.log('[ClipModule] 栅格裁剪完成:', result);
-            await this.app.rasterModule?.refreshData();
+            await this.app.raster?.refreshData();
         if (result?.id && this.app.mapController) {
             await this.app.mapController.toggleLayer(result.id);
         }
@@ -167,7 +167,7 @@ export class ClipModule {
         await VectorAPI.bulkCreateFeatures(newLayer.id, payload);
         console.log(`[ClipModule] 矢量裁剪结果已写入新图层: ${newLayerName}`);
 
-        await this.app.projectModule?.handleSelectProject(activeProject.id);
+        await this.app.project?.handleSelectProject(activeProject.id);
         if (this.app.mapController?.toggleVectorLayer) {
             this.app.mapController.toggleVectorLayer(newLayer.id);
         }
@@ -226,20 +226,19 @@ export class ClipModule {
     }
 
     _getActiveRasterId() {
-    const ids = Store.state.activeLayerIds;
-    if (!ids.size) return null;
-    const activeId = [...ids][0];
-    const match = Store.state.rasters.find(r => r.id == activeId);
-    return match?.index_id ?? null;  // ← 返回 index_id
-}
+        const ids = Store.state.activeLayerIds;
+        if (!ids.size) return null;
+        const activeId = [...ids][0];
+        const match = Store.state.rasters.find(r => r.id == activeId);
+        return match?.index_id ?? null;  // ← 返回 index_id
+    }
 
     _getActiveRasterMeta() {
-    const ids = Store.state.activeLayerIds;
-    if (!ids.size) return null;
-
-    const activeId = [...ids][0];
-    return Store.state.rasters.find(r => r.id == activeId) ?? null;
-}
+        const ids = Store.state.activeLayerIds;
+        if (!ids.size) return null;
+        const activeId = [...ids][0];
+        return Store.state.rasters.find(r => r.id == activeId) ?? null;
+    }
 
     async _fetchAllFeatures(layerId) {
         const fc = await VectorAPI.fetchFeaturesInBbox(layerId, [-180, -90, 180, 90]);

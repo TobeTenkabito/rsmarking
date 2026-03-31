@@ -793,8 +793,9 @@ export const ModalTemplates = {
 
                         <label class="clip-type-option">
                             <input type="radio" name="clip-type" value="raster" checked class="hidden">
-                            <div class="clip-type-card border-2 border-amber-400 bg-amber-50
-                                        text-amber-700 rounded-xl p-3 text-center cursor-pointer">
+                            <div class="clip-type-card border-2 border-slate-200 bg-white 
+                            text-slate-600 rounded-xl p-3 text-center cursor-pointer 
+                            hover:border-amber-300">
                                 <div class="text-xl mb-1">🛰️</div>
                                 <div class="text-[11px] font-bold">裁栅格</div>
                                 <div class="text-[9px] opacity-60">手绘裁影像</div>
@@ -804,8 +805,8 @@ export const ModalTemplates = {
                         <label class="clip-type-option">
                             <input type="radio" name="clip-type" value="vector" class="hidden">
                             <div class="clip-type-card border-2 border-slate-200 bg-white
-                                        text-slate-600 rounded-xl p-3 text-center cursor-pointer
-                                        hover:border-amber-300">
+                            text-slate-600 rounded-xl p-3 text-center cursor-pointer
+                            hover:border-amber-300">
                                 <div class="text-xl mb-1">🔷</div>
                                 <div class="text-[11px] font-bold">裁矢量</div>
                                 <div class="text-[9px] opacity-60">范围过滤要素</div>
@@ -815,8 +816,8 @@ export const ModalTemplates = {
                         <label class="clip-type-option">
                             <input type="radio" name="clip-type" value="layer" class="hidden">
                             <div class="clip-type-card border-2 border-slate-200 bg-white
-                                        text-slate-600 rounded-xl p-3 text-center cursor-pointer
-                                        hover:border-amber-300">
+                            text-slate-600 rounded-xl p-3 text-center cursor-pointer
+                            hover:border-amber-300">
                                 <div class="text-xl mb-1">✂️</div>
                                 <div class="text-[11px] font-bold">图层互裁</div>
                                 <div class="text-[9px] opacity-60">图层裁图层</div>
@@ -845,8 +846,9 @@ export const ModalTemplates = {
                     <div class="grid grid-cols-2 gap-2">
                         <label class="clip-source-option">
                             <input type="radio" name="clip-source" value="bounds" checked class="hidden">
-                            <div class="clip-source-card border-2 border-amber-400 bg-amber-50
-                                        text-amber-700 rounded-xl p-3 text-center cursor-pointer">
+                            <div class="clip-source-card border-2 border-slate-200 bg-white
+                                        text-slate-600 rounded-xl p-3 text-center cursor-pointer
+                                        hover:border-amber-300">
                                 <div class="text-lg mb-1">📐</div>
                                 <div class="text-[11px] font-bold">影像范围</div>
                                 <div class="text-[9px] opacity-60">用栅格 bounds</div>

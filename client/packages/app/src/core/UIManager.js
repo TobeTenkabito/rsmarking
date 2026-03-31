@@ -5,6 +5,7 @@ import { ModalComponent } from '../../../ui/src/components/Modal.js';
 export class UIManager {
     constructor(app) {
         this.app = app;
+        this.loadingCount = 0;
     }
 
     injectModals() {
@@ -122,32 +123,20 @@ export class UIManager {
     }
 
     _initClipModalEvents() {
-    const modal = document.getElementById('clip-modal');
-    if (!modal) return;
-
-    // clip-type 切换：控制「裁剪范围来源」和「目标图层」区域的显隐
-    modal.addEventListener('change', (e) => {
-        if (e.target.name !== 'clip-type') return;
-        const isVector = e.target.value === 'vector';
-        const isLayerClip = e.target.value === 'layer';
-
-        // 手绘/bounds 来源区域：仅 vector 模式显示
-        document.getElementById('clip-source-section')
-            ?.classList.toggle('hidden', !isVector);
-
-        // 目标图层选择：vector 和 layer 模式都需要
-        document.getElementById('clip-layer-section')
-            ?.classList.toggle('hidden', !(isVector || isLayerClip));
-
-        // 裁剪刀图层选择：仅 layer 模式显示
-        document.getElementById('clip-knife-section')
-            ?.classList.toggle('hidden', !isLayerClip);
-
-        // 栅格信息提示：仅 raster / vector(bounds) 模式有意义
-        document.getElementById('clip-raster-info-section')
-            ?.classList.toggle('hidden', isLayerClip);
-    });
-}
+        const modal = document.getElementById('clip-modal');
+        if (!modal) return;
+        modal.addEventListener('change', (e) => {
+            if (e.target.name !== 'clip-type') return;
+            const val = e.target.value;
+            document.getElementById('clip-source-section')
+                ?.classList.toggle('hidden', val !== 'vector');
+            document.getElementById('clip-layer-section')
+                ?.classList.toggle('hidden', val === 'raster');
+            document.getElementById('clip-knife-section')
+                ?.classList.toggle('hidden', val !== 'layer');
+            document.getElementById('clip-raster-info-section')
+                ?.classList.toggle('hidden', val === 'layer');});
+    }
 
     openClipModal() {
         const modal = document.getElementById('clip-modal');
@@ -186,6 +175,6 @@ export class UIManager {
     closeClipModal() {
     document.getElementById('clip-modal')?.classList.add('hidden');
     // 若用户直接关弹窗而不是点取消，也要退出绘制模式
-    this.app.clipModule?.cancel();
+    this.app.clip?.cancel();
     }
 }

@@ -12,6 +12,7 @@
  *
  * 不依赖任何第三方库，面积计算使用球面过剩公式（Spherical Excess）。
  */
+import { VectorAPI } from '../api/vector.js';
 
 /** WGS84 椭球体参数 */
 const WGS84_A = 6378.137;             // 长半轴，单位：千米

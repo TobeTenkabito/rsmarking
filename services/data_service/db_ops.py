@@ -6,7 +6,8 @@ from fastapi import HTTPException, Request
 from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-
+from rasterio.warp import transform_bounds
+from pyproj import CRS
 from functions.common.snowflake_utils import get_next_index_id
 import services.data_service.models as models
 from services.data_service.processor import RasterProcessor
@@ -43,6 +44,24 @@ async def save_to_db(
     source_for_meta = metadata_source if metadata_source else cog_path
     metadata = RasterProcessor.extract_metadata(source_for_meta)
     final_bundle_id = bundle_id if bundle_id else f"{prefix}_{task_id[:8]}"
+    bounds_wgs84 = None
+    try:
+        raw_bounds = metadata.get("bounds")
+        raw_crs = metadata.get("crs")
+        if raw_bounds and raw_crs:
+            src_crs = CRS.from_user_input(raw_crs)
+            if not src_crs.equals(CRS.from_epsg(4326)):
+                west, south, east, north = transform_bounds(
+                    src_crs, "EPSG:4326",
+                    raw_bounds[0], raw_bounds[1],
+                    raw_bounds[2], raw_bounds[3]
+                )
+            else:
+                west, south, east, north = raw_bounds
+            bounds_wgs84 = [west, south, east, north]
+    except Exception as e:
+        logger.warning(f"bounds_wgs84 转换失败: {e}")
+
     db_data = {
         "file_name": new_name if new_name.endswith(".tif") else f"{new_name}.tif",
         "file_path": tmp_path,
@@ -51,6 +70,7 @@ async def save_to_db(
         "index_id": get_next_index_id(),
         "crs": metadata.get("crs"),
         "bounds": metadata.get("bounds"),
+        "bounds_wgs84": bounds_wgs84,
         "center": metadata.get("center"),
         "width": metadata.get("width"),
         "height": metadata.get("height"),

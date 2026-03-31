@@ -21,7 +21,8 @@ class RasterMetadata(Base):
 
     # 空间属性
     crs = Column(String(500))
-    bounds = Column(JSON)
+    bounds = Column(JSON)  # 原始坐标
+    bounds_wgs84 = Column(JSON, nullable=True)  # wgs84坐标
     center = Column(JSON)
 
     # 影像参数

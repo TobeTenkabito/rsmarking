@@ -31,6 +31,7 @@ class RasterCRUD:
             cog_path=cog_url,
             crs=metadata_dict.get("crs"),
             bounds=metadata_dict.get("bounds"),
+            bounds_wgs84=metadata_dict.get("bounds_wgs84"),
             center=metadata_dict.get("center"),
             width=metadata_dict.get("width"),
             height=metadata_dict.get("height"),
