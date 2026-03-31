@@ -13,6 +13,7 @@
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
 │   │   │   ├── AttributeModule.js  # 矢量业务表逻辑
 │   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
+│   │   │   ├── ClipModule.js  # 裁剪模塊
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── ExportModule.js  # 导出当前视图为地图
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动

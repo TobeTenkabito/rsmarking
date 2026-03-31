@@ -74,8 +74,7 @@ class FeatureCRUD:
             "properties": {**row.properties, "category": row.category}
         }
 
-    async def find_by_bbox(self, layer_id: UUID, minx: float, miny: float, maxx: float, maxy: float) -> List[
-        Dict[str, Any]]:
+    async def find_by_bbox(self, layer_id: UUID, minx: float, miny: float, maxx: float, maxy: float) -> List[Dict[str, Any]]:
         """
         Fetch features within a specific bounding box using GIST spatial index.
         """

@@ -1,9 +1,10 @@
 """
-clip_ops.py — 几何裁剪核心算法
+clip_ops.py — 幾何裁剪核心算法（優化版）
 
-支持两种模式:
-  - clip_raster_by_vector : 用矢量多边形裁剪栅格 (rasterio.mask)
-  - clip_vector_by_raster : 用栅格空间范围裁剪矢量要素 (返回 GeoJSON FeatureCollection)
+優化重點:
+  - clip_vector_by_raster : STRtree 空間索引，O(n) → O(log n + k)
+  - clip_raster_by_vector : Transformer 快取，消除重複建構開銷
+  - 兩階段過濾 : bbox 預篩 + 精確幾何判斷
 """
 
 import logging
@@ -11,10 +12,10 @@ from typing import Any
 
 import rasterio
 from rasterio.mask import mask as rasterio_mask
-from rasterio.warp import transform_bounds
 from rasterio.crs import CRS
-from shapely.geometry import shape, mapping, box
+from shapely.geometry import shape, mapping
 from shapely.ops import transform as shapely_transform
+from shapely.strtree import STRtree          # ← 新增
 from shapely.validation import make_valid
 import pyproj
 
@@ -22,37 +23,42 @@ logger = logging.getLogger("functions.clip_ops")
 
 
 def _geojson_to_shapely(geojson_geom: dict) -> Any:
-    """
-    将 GeoJSON geometry dict 转为 Shapely 几何体，
-    并自动修复无效拓扑。
-    """
+    """將 GeoJSON geometry dict 轉為 Shapely 幾何體，並自動修復無效拓撲。"""
     geom = shape(geojson_geom)
     if not geom.is_valid:
         geom = make_valid(geom)
-        logger.warning("输入矢量几何体无效，已自动修复。")
+        logger.warning("輸入矢量幾何體無效，已自動修復。")
     return geom
 
 
-def _reproject_shapely_to_raster_crs(
-    shapely_geom: Any,
+def _build_transformer(
     src_crs_str: str,
     dst_crs: CRS,
-) -> Any:
+) -> pyproj.Transformer | None:
     """
-    将 Shapely 几何体从 src_crs 重投影到 dst_crs。
-    src_crs_str: EPSG 字符串，如 "EPSG:4326"
+    建立 pyproj.Transformer；若兩個 CRS 相同則返回 None（無需轉換）。
+    【優化】將 Transformer 建構提取到迴圈外，避免重複開銷。
     """
     src_crs_str = src_crs_str or "EPSG:4326"
     dst_crs_str = dst_crs.to_string()
 
     if CRS.from_user_input(src_crs_str) == dst_crs:
-        return shapely_geom
+        return None
 
-    transformer = pyproj.Transformer.from_crs(
+    return pyproj.Transformer.from_crs(
         src_crs_str, dst_crs_str, always_xy=True
     )
-    reprojected = shapely_transform(transformer.transform, shapely_geom)
-    return reprojected
+
+
+def _reproject_shapely(
+    shapely_geom: Any,
+    transformer: pyproj.Transformer | None,
+) -> Any:
+    """使用預建的 Transformer 做重投影；transformer 為 None 時直接返回原幾何體。"""
+    if transformer is None:
+        return shapely_geom
+    return shapely_transform(transformer.transform, shapely_geom)
+
 
 
 def clip_raster_by_vector(
@@ -65,36 +71,27 @@ def clip_raster_by_vector(
     all_touched: bool = False,
 ) -> dict:
     """
-    用一个或多个矢量多边形裁剪栅格影像。
+    用一個或多個矢量多邊形裁剪柵格影像。
 
-    参数
-    ----
-    raster_path       : 输入栅格路径 (COG/GeoTIFF)
-    output_path       : 输出裁剪结果路径
-    geojson_geometries: GeoJSON geometry 对象列表 (type: Polygon / MultiPolygon)
-    src_vector_crs    : 矢量几何体的坐标系，默认 EPSG:4326
-    crop              : True = 裁剪到掩膜最小外接矩形；False = 保持原始范围
-    nodata            : 掩膜区域外的填充值，None 则继承原栅格 nodata
-    all_touched       : True = 边界像元也纳入掩膜
-
-    返回
-    ----
-    dict: 裁剪结果的基本元数据
+    優化點
+    ------
+    - Transformer 只建構一次，不在迴圈內重複建立。
     """
     if not geojson_geometries:
-        raise ValueError("geojson_geometries 不能为空。")
+        raise ValueError("geojson_geometries 不能為空。")
 
     with rasterio.open(raster_path) as src:
         raster_crs = src.crs
         src_nodata = src.nodata
         fill_value = nodata if nodata is not None else (src_nodata if src_nodata is not None else 0)
 
+        # ✅ 優化：Transformer 提取到迴圈外，只建構一次
+        transformer = _build_transformer(src_vector_crs, raster_crs)
+
         reprojected_geoms = []
         for geojson_geom in geojson_geometries:
             shapely_geom = _geojson_to_shapely(geojson_geom)
-            reprojected = _reproject_shapely_to_raster_crs(
-                shapely_geom, src_vector_crs, raster_crs
-            )
+            reprojected = _reproject_shapely(shapely_geom, transformer)
             reprojected_geoms.append(mapping(reprojected))
 
         clipped_data, clipped_transform = rasterio_mask(
@@ -118,7 +115,7 @@ def clip_raster_by_vector(
         with rasterio.open(output_path, "w", **out_meta) as dest:
             dest.write(clipped_data)
 
-    logger.info(f"矢量裁剪栅格完成: {output_path}")
+    logger.info(f"矢量裁剪柵格完成: {output_path}")
 
     return {
         "width": clipped_data.shape[2],
@@ -136,32 +133,23 @@ def clip_vector_by_raster(
     mode: str = "intersects",
 ) -> dict:
     """
-    用栅格的空间范围过滤/裁剪矢量要素。
+    用柵格的空間範圍過濾/裁剪矢量要素。
 
-    参数
-    ----
-    clip_geometry    : GeoJSON Geometry 对象（由前端从 bounds_wgs84 构造），坐标系为 EPSG:4326
-    geojson_features : GeoJSON Feature 对象列表（含 geometry + properties）
-    src_vector_crs   : 矢量要素的坐标系，默认 EPSG:4326
-    mode             : 空间关系模式
-                       - "intersects" : 保留与栅格范围相交的要素（默认）
-                       - "within"     : 仅保留完全在栅格范围内的要素
-                       - "clip"       : 裁剪几何体到栅格范围边界
-
-    返回
-    ----
-    dict: GeoJSON FeatureCollection，包含过滤/裁剪后的要素
+    優化點
+    ------
+    - STRtree 空間索引：O(n) 線性掃描 → O(log n + k) 索引查詢
+    - 兩階段過濾：bbox 預篩（索引層）+ 精確幾何判斷（精確層）
+    - 跳過無幾何體的 feature，避免無效計算
     """
     if not geojson_features:
-        raise ValueError("geojson_features 不能为空。")
+        raise ValueError("geojson_features 不能為空。")
 
     if mode not in ("intersects", "within", "clip"):
-        raise ValueError(f"不支持的 mode: {mode}，可选值为 intersects / within / clip")
+        raise ValueError(f"不支持的 mode: {mode}，可選值為 intersects / within / clip")
 
-    # 将 GeoJSON Geometry 转为 Shapely，坐标系为 EPSG:4326
+    # 將裁剪框轉換到矢量 CRS
     raster_box_wgs84 = _geojson_to_shapely(clip_geometry)
 
-    # 如果矢量不是 EPSG:4326，将裁剪框转换到矢量 CRS
     if src_vector_crs and src_vector_crs.upper() != "EPSG:4326":
         transformer = pyproj.Transformer.from_crs(
             "EPSG:4326", src_vector_crs, always_xy=True
@@ -170,36 +158,50 @@ def clip_vector_by_raster(
     else:
         raster_box = raster_box_wgs84
 
+    # ✅ 優化 Step 1：預解析所有幾何體，過濾掉無幾何的 feature
+    indexed_features: list[tuple[int, Any]] = []   # (原始索引, shapely_geom)
+    for i, feature in enumerate(geojson_features):
+        raw_geom = feature.get("geometry")
+        if raw_geom:
+            indexed_features.append((i, _geojson_to_shapely(raw_geom)))
+
+    if not indexed_features:
+        return _empty_feature_collection(len(geojson_features), mode)
+
+    # ✅ 優化 Step 2：建立 STRtree 空間索引
+    geom_list = [geom for _, geom in indexed_features]
+    tree = STRtree(geom_list)
+
+    # ✅ 優化 Step 3：用 bbox 快速查詢候選集，再做精確判斷
+    #   tree.query() 返回的是 geom_list 中的位置索引
+    if mode == "intersects":
+        candidate_positions = tree.query(raster_box, predicate="intersects")
+    elif mode == "within":
+        candidate_positions = tree.query(raster_box, predicate="contains")  # A contains B ↔ B within A
+    else:  # clip
+        candidate_positions = tree.query(raster_box, predicate="intersects")
+
     result_features = []
 
-    for feature in geojson_features:
-        raw_geom = feature.get("geometry")
-        if not raw_geom:
-            continue
+    for pos in candidate_positions:
+        orig_idx, feat_geom = indexed_features[pos]
+        feature = geojson_features[orig_idx]
 
-        feat_geom = _geojson_to_shapely(raw_geom)
-
-        if mode == "intersects":
-            if feat_geom.intersects(raster_box):
-                result_features.append(feature)
-
-        elif mode == "within":
-            if feat_geom.within(raster_box):
-                result_features.append(feature)
+        if mode in ("intersects", "within"):
+            # STRtree predicate 已完成精確過濾，直接收錄
+            result_features.append(feature)
 
         elif mode == "clip":
-            if feat_geom.intersects(raster_box):
-                clipped_geom = feat_geom.intersection(raster_box)
-                if not clipped_geom.is_empty:
-                    clipped_feature = {
-                        **feature,
-                        "geometry": mapping(clipped_geom),
-                    }
-                    result_features.append(clipped_feature)
+            clipped_geom = feat_geom.intersection(raster_box)
+            if not clipped_geom.is_empty:
+                result_features.append({
+                    **feature,
+                    "geometry": mapping(clipped_geom),
+                })
 
     logger.info(
-        f"栅格裁剪矢量完成: 输入 {len(geojson_features)} 个要素，"
-        f"输出 {len(result_features)} 个要素 (mode={mode})"
+        f"柵格裁剪矢量完成: 輸入 {len(geojson_features)} 個要素，"
+        f"輸出 {len(result_features)} 個要素 (mode={mode})"
     )
 
     return {
@@ -208,6 +210,19 @@ def clip_vector_by_raster(
         "meta": {
             "input_count": len(geojson_features),
             "output_count": len(result_features),
+            "mode": mode,
+        },
+    }
+
+
+def _empty_feature_collection(input_count: int, mode: str) -> dict:
+    """返回空的 FeatureCollection。"""
+    return {
+        "type": "FeatureCollection",
+        "features": [],
+        "meta": {
+            "input_count": input_count,
+            "output_count": 0,
             "mode": mode,
         },
     }
