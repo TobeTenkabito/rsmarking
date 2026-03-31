@@ -205,5 +205,37 @@ export const VectorAPI = {
      */
     getMvtUrlTemplate(layerId) {
         return `${VTILE_BASE_URL}/tiles/${layerId}/{z}/{x}/{y}.pbf?t=${Date.now()}`;
-    }
+    },
+
+    /**
+     * 用任意几何范围裁剪矢量要素，纯内存操作，直接返回 GeoJSON FeatureCollection
+     *
+     * @param {GeoJSON.Geometry} clipGeometry
+     *   裁剪范围的 GeoJSON Geometry 对象，坐标系为 EPSG:4326。
+     *   可以是任意形状：
+     *     - 矩形：由调用方用 boundsToGeometry(bounds_wgs84) 构造
+     *     - 用户手绘多边形：直接取绘制结果的 geometry
+     *     - 另一个矢量要素的范围：直接取该 feature.geometry
+     *
+     * @param {Array}   features       - GeoJSON Feature 对象数组
+     * @param {string}  [srcVectorCrs] - 矢量数据的 CRS，默认 "EPSG:4326"
+     * @param {string}  [mode]         - 裁剪模式: "intersects" | "within" | "clip"
+     * @returns {Promise<GeoJSON.FeatureCollection>}
+     */
+    async clipVectorByGeometry(
+        clipGeometry,
+        features,
+        srcVectorCrs = "EPSG:4326",
+        mode = "intersects",
+    ) {
+        return await apiRequest(`${ANNO_BASE_URL}/spatial/clip-vector-by-raster`, {
+            method: 'POST',
+            body: JSON.stringify({
+                clip_geometry: clipGeometry,
+                features,
+                src_vector_crs: srcVectorCrs,
+                mode,
+            }),
+        });
+    },
 };

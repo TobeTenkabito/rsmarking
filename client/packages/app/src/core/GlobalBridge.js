@@ -98,6 +98,33 @@ export class GlobalBridge {
             refreshExportPreview:   ()=> this.app.export?.refreshPreview(),
             executeExport:          ()=> this.app.export?.executeExport(),
 
+            // --- 空间裁剪 ---
+            openClipModal:  () => this.app.ui.openClipModal(),
+            closeClipModal: () => this.app.ui.closeClipModal(),
+            executeClip: () => {
+                const type = document.querySelector('input[name="clip-type"]:checked')?.value;
+                this.app.ui.closeClipModal();
+                if (type === 'raster') {
+                    this.app.clip?.startClipRasterByDraw();
+                } else if (type === 'vector') {
+                    const source  = document.querySelector('input[name="clip-source"]:checked')?.value;
+                    const layerId = document.getElementById('clip-vector-layer-select')?.value || undefined;
+                    if (source === 'bounds') {
+                        this.app.clip?.clipVectorByActiveBounds(layerId);
+                    } else {
+                        this.app.clip?.startClipVectorByDraw(layerId);
+                    }
+                } else if (type === 'layer') {
+                    const knifeId  = document.getElementById('clip-knife-layer-select')?.value || undefined;
+                    const targetId = document.getElementById('clip-vector-layer-select')?.value || undefined;
+                    if (!knifeId) {
+                        this.app.ui.showToast('请选择裁剪刀图层', 'warning');
+                        return;
+                    }
+                    this.app.clip?.clipVectorByLayer(knifeId, targetId);
+                }
+            },
+
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
             toggleGlobeView: () => this.app.mapEngine?.toggleGlobeView(),

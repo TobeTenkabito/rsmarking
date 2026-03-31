@@ -10,12 +10,8 @@ from services.data_service.database import get_db
 import services.data_service.models as models
 import services.data_service.db_ops as db_ops
 from services.data_service.processor import RasterProcessor
-from services.data_service.schemas import (
-    ClipRasterByVectorRequest,
-    ClipVectorByRasterRequest,
-)
+from services.data_service.schemas import ClipRasterByVectorRequest
 
-# Constants
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", ".."))
 UPLOAD_DIR = os.path.join(BASE_DIR, "storage", "raw")
@@ -79,38 +75,4 @@ async def clip_raster_by_vector(
     except Exception as e:
         logger.error(f"矢量裁剪栅格失败: {e}")
         await db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/clip-vector-by-raster")
-async def clip_vector_by_raster(
-        body: ClipVectorByRasterRequest,
-        db: AsyncSession = Depends(get_db),
-):
-    """
-    用栅格空间范围裁剪矢量要素。
-    纯内存操作，直接返回 GeoJSON FeatureCollection，不写库。
-    """
-    result = await db.execute(
-        select(models.RasterMetadata).where(
-            models.RasterMetadata.index_id == body.raster_id
-        )
-    )
-    raster_record = result.scalars().first()
-    if not raster_record:
-        raise HTTPException(status_code=404, detail="栅格不存在")
-
-    try:
-        feature_collection = RasterProcessor.clip_vector_by_raster(
-            raster_path=raster_record.file_path,
-            geojson_features=body.features,
-            src_vector_crs=body.src_vector_crs,
-            mode=body.mode,
-        )
-        return feature_collection
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"栅格裁剪矢量失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -100,15 +100,39 @@
                 已载入图层: 0
             </div>
             <button onclick="RS.openAIModal()"
-                    class="flex items-center space-x-1.5 text-xs font-bold text-violet-300 hover:text-violet-200 bg-violet-900/40 hover:bg-violet-900/60 border border-violet-700/50 px-3 py-1.5 rounded-full transition-all">
+                    class="flex items-center space-x-1.5 text-xs font-bold
+                    text-violet-300 hover:text-violet-200
+                    bg-violet-900/40 hover:bg-violet-900/60
+                    border border-violet-700/50
+                    px-3 py-1.5 rounded-full transition-all">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347A3.75 3.75 0 0112 18.75a3.75 3.75 0 01-2.651-1.098l-.347-.347z"/>
                 </svg>
                 <span>AI 助手</span>
             </button>
+
+            <button onclick="RS.openClipModal()"
+                    class="flex items-center space-x-1.5 text-xs font-bold
+                    text-amber-300 hover:text-amber-200
+                    bg-amber-900/40 hover:bg-amber-900/60
+                    border border-amber-700/50
+                    px-3 py-1.5 rounded-full transition-all">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M6 2v4m0 0a2 2 0 100 4 2 2 0 000-4zm0 0H2
+                          m16 14v-4m0 0a2 2 0 100-4 2 2 0 000 4zm0 0h4
+                          M6 6l12 12"/>
+                </svg>
+                <span>空间裁剪</span>
+            </button>
+
             <button onclick="RS.openExportModal()"
-                    class="flex items-center space-x-1.5 text-xs font-bold text-teal-300 hover:text-teal-200 bg-teal-900/40 hover:bg-teal-900/60 border border-teal-700/50 px-3 py-1.5 rounded-full transition-all">
+                    class="flex items-center space-x-1.5 text-xs font-bold
+                    text-teal-300 hover:text-teal-200
+                    bg-teal-900/40 hover:bg-teal-900/60
+                    border border-teal-700/50
+                    px-3 py-1.5 rounded-full transition-all">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>

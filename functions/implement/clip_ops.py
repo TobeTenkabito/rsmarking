@@ -9,7 +9,6 @@ clip_ops.py — 几何裁剪核心算法
 import logging
 from typing import Any
 
-
 import rasterio
 from rasterio.mask import mask as rasterio_mask
 from rasterio.warp import transform_bounds
@@ -46,7 +45,6 @@ def _reproject_shapely_to_raster_crs(
     src_crs_str = src_crs_str or "EPSG:4326"
     dst_crs_str = dst_crs.to_string()
 
-    # 如果 CRS 相同则跳过
     if CRS.from_user_input(src_crs_str) == dst_crs:
         return shapely_geom
 
@@ -91,7 +89,6 @@ def clip_raster_by_vector(
         src_nodata = src.nodata
         fill_value = nodata if nodata is not None else (src_nodata if src_nodata is not None else 0)
 
-        # 将所有矢量几何体重投影到栅格 CRS
         reprojected_geoms = []
         for geojson_geom in geojson_geometries:
             shapely_geom = _geojson_to_shapely(geojson_geom)
@@ -100,7 +97,6 @@ def clip_raster_by_vector(
             )
             reprojected_geoms.append(mapping(reprojected))
 
-        # 执行掩膜裁剪
         clipped_data, clipped_transform = rasterio_mask(
             src,
             reprojected_geoms,
@@ -110,7 +106,6 @@ def clip_raster_by_vector(
             filled=True,
         )
 
-        # 构建输出元数据
         out_meta = src.meta.copy()
         out_meta.update({
             "driver": "GTiff",
@@ -135,7 +130,7 @@ def clip_raster_by_vector(
 
 
 def clip_vector_by_raster(
-    raster_path: str,
+    clip_geometry: dict,
     geojson_features: list[dict],
     src_vector_crs: str = "EPSG:4326",
     mode: str = "intersects",
@@ -145,7 +140,7 @@ def clip_vector_by_raster(
 
     参数
     ----
-    raster_path      : 输入栅格路径，用于读取空间范围
+    clip_geometry    : GeoJSON Geometry 对象（由前端从 bounds_wgs84 构造），坐标系为 EPSG:4326
     geojson_features : GeoJSON Feature 对象列表（含 geometry + properties）
     src_vector_crs   : 矢量要素的坐标系，默认 EPSG:4326
     mode             : 空间关系模式
@@ -163,14 +158,10 @@ def clip_vector_by_raster(
     if mode not in ("intersects", "within", "clip"):
         raise ValueError(f"不支持的 mode: {mode}，可选值为 intersects / within / clip")
 
-    with rasterio.open(raster_path) as src:
-        raster_crs = src.crs
-        # 将栅格 bounds 转换为 WGS84（矢量通常为 4326）
-        bounds_wgs84 = transform_bounds(raster_crs, "EPSG:4326", *src.bounds)
+    # 将 GeoJSON Geometry 转为 Shapely，坐标系为 EPSG:4326
+    raster_box_wgs84 = _geojson_to_shapely(clip_geometry)
 
-    raster_box_wgs84 = box(*bounds_wgs84)  # Shapely Polygon
-
-    # 如果矢量不是 4326，需要将 raster_box 转换到矢量 CRS
+    # 如果矢量不是 EPSG:4326，将裁剪框转换到矢量 CRS
     if src_vector_crs and src_vector_crs.upper() != "EPSG:4326":
         transformer = pyproj.Transformer.from_crs(
             "EPSG:4326", src_vector_crs, always_xy=True
@@ -218,6 +209,5 @@ def clip_vector_by_raster(
             "input_count": len(geojson_features),
             "output_count": len(result_features),
             "mode": mode,
-            "raster_bounds_wgs84": list(bounds_wgs84),
         },
     }

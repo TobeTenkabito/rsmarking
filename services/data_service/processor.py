@@ -253,21 +253,3 @@ class RasterProcessor:
         )
         build_raster_overviews(output_path)
         return result
-
-    @staticmethod
-    def clip_vector_by_raster(
-        raster_path: str,
-        geojson_features: list[dict],
-        src_vector_crs: str = "EPSG:4326",
-        mode: str = "intersects",
-    ) -> dict:
-        """
-        用栅格空间范围过滤/裁剪矢量要素，返回 GeoJSON FeatureCollection。
-        纯内存操作，无文件输出。
-        """
-        return clip_vector_by_raster(
-            raster_path=raster_path,
-            geojson_features=geojson_features,
-            src_vector_crs=src_vector_crs,
-            mode=mode,
-        )

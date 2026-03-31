@@ -283,6 +283,55 @@ export const RasterAPI = {
         }
     },
 
+    /**
+     * 用矢量多边形裁剪栅格，结果注册为新栅格记录走 COG 流程
+     * @param {string}   rasterId       - 被裁剪的栅格 index_id
+     * @param {string}   newName        - 输出栅格文件名（不含 .tif 也可，后端会补全）
+     * @param {Array}    geometries     - GeoJSON geometry 对象数组
+     * @param {string}   [srcVectorCrs] - 矢量数据的 CRS，默认 "EPSG:4326"
+     * @param {boolean}  [crop=true]    - 是否按几何边界裁剪（false 则仅掩膜）
+     * @param {number}   [nodata]       - 输出 nodata 值
+     * @param {boolean}  [allTouched=false] - 是否包含边界接触像元
+     * @returns {{ status, id, clip_meta }}
+     */
+    async clipRasterByVector(
+        rasterId,
+        newName,
+        geometries,
+        srcVectorCrs = "EPSG:4326",
+        crop = true,
+        nodata = null,
+        allTouched = false,
+    ) {
+        const payload = {
+            raster_id: rasterId,
+            new_name: newName,
+            geometries,
+            src_vector_crs: srcVectorCrs,
+            crop,
+            all_touched: allTouched,
+        };
+        // nodata 为 null 时不传，避免后端接收到意外的 null 覆盖原始值
+        if (nodata !== null && nodata !== undefined) {
+            payload.nodata = nodata;
+        }
+        try {
+            const response = await fetch(`${BASE_URL}/clip-raster-by-vector`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail ?? `裁剪失败: ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("[RasterAPI] clipRasterByVector Error:", error);
+            throw error;
+        }
+    },
+
     // --- 调试接口 ---
     async clearDB() {
         return fetch(`${BASE_URL}/debug/clear-db`);

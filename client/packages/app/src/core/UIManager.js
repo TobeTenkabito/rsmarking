@@ -1,3 +1,4 @@
+import { Store } from '../store/index.js';
 import { ModalTemplates } from '../../../ui/src/templates/Modals.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 
@@ -15,8 +16,9 @@ export class UIManager {
                 ModalTemplates.mergeModal +
                 ModalTemplates.calculatorModal +
                 ModalTemplates.scriptModal +
-                ModalTemplates.aiModal  +
-                ModalTemplates.exportModal;
+                ModalTemplates.aiModal +
+                ModalTemplates.exportModal +
+                ModalTemplates.clipModal;
         }
         const detailContainer = document.getElementById('detail-panel-container') || document.body;
         const detailDiv = document.createElement('div');
@@ -27,6 +29,8 @@ export class UIManager {
         const attrDiv = document.createElement('div');
         attrDiv.innerHTML = ModalTemplates.attributeTablePanel;
         document.body.appendChild(attrDiv);
+
+        this._initClipModalEvents();
     }
 
     showGlobalLoader(show) {
@@ -115,5 +119,73 @@ export class UIManager {
 
     hideDetail() {
         document.getElementById('detail-panel')?.classList.add('hidden');
+    }
+
+    _initClipModalEvents() {
+    const modal = document.getElementById('clip-modal');
+    if (!modal) return;
+
+    // clip-type 切换：控制「裁剪范围来源」和「目标图层」区域的显隐
+    modal.addEventListener('change', (e) => {
+        if (e.target.name !== 'clip-type') return;
+        const isVector = e.target.value === 'vector';
+        const isLayerClip = e.target.value === 'layer';
+
+        // 手绘/bounds 来源区域：仅 vector 模式显示
+        document.getElementById('clip-source-section')
+            ?.classList.toggle('hidden', !isVector);
+
+        // 目标图层选择：vector 和 layer 模式都需要
+        document.getElementById('clip-layer-section')
+            ?.classList.toggle('hidden', !(isVector || isLayerClip));
+
+        // 裁剪刀图层选择：仅 layer 模式显示
+        document.getElementById('clip-knife-section')
+            ?.classList.toggle('hidden', !isLayerClip);
+
+        // 栅格信息提示：仅 raster / vector(bounds) 模式有意义
+        document.getElementById('clip-raster-info-section')
+            ?.classList.toggle('hidden', isLayerClip);
+    });
+}
+
+    openClipModal() {
+        const modal = document.getElementById('clip-modal');
+        if (!modal) return;
+        const defaultRadio = modal.querySelector('input[name="clip-type"][value="raster"]');
+        if (defaultRadio) {
+            defaultRadio.checked = true;
+            defaultRadio.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+        const rasterInfoEl = document.getElementById('clip-raster-info');
+        if (rasterInfoEl) {
+            const ids = Store.state.activeLayerIds;
+            const activeId = ids.size ? [...ids][0] : null;
+            const raster = activeId ? Store.state.rasters.find(r => r.id == activeId) : null;
+            rasterInfoEl.innerHTML = raster ? `<span class="font-bold text-slate-700">当前影像：</span>
+                                     ${raster.name ?? raster.file_name}` : `
+                                     <span class="text-amber-500">⚠ 当前未加载任何栅格影像</span>`;
+        }
+        const layers     = Store.state.vectorLayers;
+        const layerOpts  = layers.map(l =>
+            `<option value="${l.id}">${l.name}</option>`
+        ).join('');
+        const targetSelect = document.getElementById('clip-vector-layer-select');
+        if (targetSelect) {
+            targetSelect.innerHTML =
+                `<option value="">— 使用当前激活图层 —</option>${layerOpts}`;
+        }
+        const knifeSelect = document.getElementById('clip-knife-layer-select');
+        if (knifeSelect) {
+            knifeSelect.innerHTML =
+                `<option value="">— 请选择裁剪刀图层 —</option>${layerOpts}`;
+        }
+        modal.classList.remove('hidden');
+    }
+
+    closeClipModal() {
+    document.getElementById('clip-modal')?.classList.add('hidden');
+    // 若用户直接关弹窗而不是点取消，也要退出绘制模式
+    this.app.clipModule?.cancel();
     }
 }
