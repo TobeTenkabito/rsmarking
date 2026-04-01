@@ -10,7 +10,6 @@ export class ChangeDetectionModule {
     this.method      = 'band-diff';
     this._lastResult = null;
 
-  // 用箭头函数保存引用，方便日后 removeEventListener
   this._onIndexChange = (e) => {
     if (e.target.id !== 'change-index-select') return;
     const hints = {
@@ -26,9 +25,6 @@ export class ChangeDetectionModule {
   document.addEventListener('change', this._onIndexChange);
 }
 
-  // ─────────────────────────────────────────────
-  // 弹窗开关
-  // ─────────────────────────────────────────────
 
   open() {
     const modal = document.getElementById('change-modal');
@@ -43,9 +39,6 @@ export class ChangeDetectionModule {
     document.getElementById('change-modal')?.classList.add('hidden');
   }
 
-  // ─────────────────────────────────────────────
-  // Tab 切换
-  // ─────────────────────────────────────────────
 
   switchMethod(method) {
     this.method = method;
@@ -72,10 +65,6 @@ export class ChangeDetectionModule {
 
     this._resetResult();
   }
-
-  // ─────────────────────────────────────────────
-  // 核心：执行分析
-  // ─────────────────────────────────────────────
 
   async run() {
     const t1Id = Number(document.getElementById('change-t1-select')?.value);
@@ -154,51 +143,44 @@ export class ChangeDetectionModule {
     }
   }
 
-  // ─────────────────────────────────────────────
-  // 结果加载到地图
-  // ─────────────────────────────────────────────
 
   /**
    * 加载差值图 + 可选掩膜到地图
    * @param {'diff'|'mask'} which - 加载哪一层，默认 diff
    */
-  async loadResultToMap(which = 'diff') {
-    if (!this._lastResult) return;
+async loadResultToMap(which = 'diff') {
+  if (!this._lastResult) return;
 
-    const indexId = which === 'mask'
-      ? this._lastResult.mask_index_id
-      : this._lastResult.diff_index_id;
+  const indexId = which === 'mask'
+    ? this._lastResult.mask_index_id
+    : this._lastResult.diff_index_id;
 
-    if (!indexId) {
-      this.app.ui.showToast('该结果图层不存在', 'warning');
-      return;
-    }
-
-    try {
-      // 刷新 Store 影像列表（后端已入库）
-      await Store.refreshRasters(() =>
-        this.app.rasterModule?.fetchList?.()
-      );
-
-      // 委托 MapController 按 index_id 加载（与现有方式一致）
-      if (this.app.mapController?.loadRasterLayer) {
-        await this.app.mapController.loadRasterLayer({ index_id: indexId });
-      }
-
-      this.app.ui.showToast(
-        `已加载${which === 'mask' ? '变化掩膜' : '差值图'}`,
-        'success'
-      );
-      this.close();
-    } catch (err) {
-      console.error('[ChangeDetection] 加载图层失败:', err);
-      this.app.ui.showToast(`加载失败：${err.message}`, 'error');
-    }
+  if (!indexId) {
+    this.app.ui.showToast('该结果图层不存在', 'warning');
+    return;
   }
 
-  // ─────────────────────────────────────────────
-  // 私有辅助
-  // ─────────────────────────────────────────────
+  try {
+    await this.app.raster.refreshData();
+    const raster = Store.getRasters().find(r => r.index_id === indexId);
+    if (!raster) {
+      this.app.ui.showToast('结果图层未找到，请稍后重试', 'warning');
+      return;
+    }
+    await this.app.mapController.toggleLayer(raster.id);
+
+    this.app.ui.showToast(
+      `已加载${which === 'mask' ? '变化掩膜' : '差值图'}`,
+      'success'
+    );
+    this.close();
+
+  } catch (err) {
+    console.error('[ChangeDetection] 加载图层失败:', err);
+    this.app.ui.showToast(`加载失败：${err.message}`, 'error');
+  }
+}
+
 
   _renderRasterOptions() {
     const rasters = Store.getRasters();
@@ -223,12 +205,8 @@ export class ChangeDetectionModule {
   _showResult(result) {
     const area = document.getElementById('change-result-area');
     if (area) area.classList.remove('hidden');
-
-    // 差值图按钮
     const diffBtn = document.getElementById('change-load-diff-btn');
     if (diffBtn) diffBtn.classList.toggle('hidden', !result.diff_index_id);
-
-    // 掩膜按钮
     const maskBtn = document.getElementById('change-load-mask-btn');
     if (maskBtn) maskBtn.classList.toggle('hidden', !result.mask_index_id);
   }

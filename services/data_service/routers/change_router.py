@@ -7,6 +7,7 @@ POST /change/detect
 import os
 import time
 import logging
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -28,8 +29,32 @@ from functions.implement.io_ops import (
 logger = logging.getLogger("data_service.change_router")
 router = APIRouter(prefix="/change", tags=["变化检测"])
 
-COG_DIR = os.environ.get("COG_DIR", "/storage/cog")
-RAW_DIR = os.environ.get("RAW_DIR", "/storage/raw")
+
+
+def _resolve_storage_dir(env_key: str, relative: str) -> str:
+    """
+    优先读环境变量；
+    没有则以本文件位置向上找项目根（含 storage 目录的那层），再拼接 relative。
+    最终确保目录存在。
+    """
+    from_env = os.environ.get(env_key, "").strip()
+    if from_env:
+        p = Path(from_env)
+    else:
+        # 从当前文件向上找，直到找到含 'storage' 子目录的根
+        current = Path(__file__).resolve()
+        root = current
+        for parent in current.parents:
+            if (parent / "storage").exists():
+                root = parent
+                break
+        p = root / "storage" / relative
+
+    p.mkdir(parents=True, exist_ok=True)
+    return str(p)
+
+COG_DIR = _resolve_storage_dir("COG_DIR", "cog")
+RAW_DIR = _resolve_storage_dir("RAW_DIR", "raw")
 
 
 class BandDiffRequest(BaseModel):
@@ -71,14 +96,43 @@ class ChangeDetectResponse(BaseModel):
 
 
 async def _get_raster_path(db: AsyncSession, index_id: int, label: str) -> str:
-    """从 DB 取 COG 路径，不存在则抛 404。"""
     record = await RasterCRUD.get_raster_by_index_id(db, index_id)
     if not record:
-        raise HTTPException(status_code=404, detail=f"{label} (index_id={index_id}) 不存在")
-    path = record.cog_path or record.file_path
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"{label} 文件不存在: {path}")
-    return path
+        raise HTTPException(
+            status_code=404,
+            detail=f"{label} (index_id={index_id}) 数据库中不存在"
+        )
+
+    # 第一优先：直接用数据库存的完整路径
+    for full_path in [record.cog_path, record.file_path]:
+        if full_path and os.path.exists(full_path):
+            logger.debug(f"[_get_raster_path] {label} → {full_path}")
+            return full_path
+
+    # 兜底：提取文件名，去配置目录扫描
+    ref_path = record.cog_path or record.file_path
+    if not ref_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{label} (index_id={index_id}) 数据库中路径字段均为空"
+        )
+
+    disk_filename = os.path.basename(ref_path)
+    for d in [COG_DIR, RAW_DIR]:
+        candidate = os.path.join(d, disk_filename)
+        if os.path.exists(candidate):
+            logger.debug(f"[_get_raster_path] {label} fallback → {candidate}")
+            return candidate
+
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            f"{label} 文件未找到\n"
+            f"  cog_path : {record.cog_path}\n"
+            f"  file_path: {record.file_path}\n"
+            f"  扫描目录 : {[COG_DIR, RAW_DIR]}"
+        )
+    )
 
 
 async def _register_result(
@@ -87,7 +141,6 @@ async def _register_result(
     file_name: str,
     bundle_id: str,
 ) -> int:
-    """将检测结果转 COG、构建金字塔，并写入 RasterMetadata，返回 index_id。"""
     new_index_id = generate_index_id()
     cog_path = os.path.join(COG_DIR, f"{new_index_id}.tif")
 
@@ -97,9 +150,9 @@ async def _register_result(
     meta = RasterProcessor.extract_metadata(cog_path)
     meta.update({
         "file_name": file_name,
-        "index_id": new_index_id,
+        "index_id":  new_index_id,
         "file_path": raw_path,
-        "cog_path": cog_path,
+        "cog_path":  cog_path,
         "bundle_id": bundle_id,
     })
     await RasterCRUD.create_raster(db, meta)
