@@ -11,7 +11,7 @@ import logging
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
-from rasterio.warp import reproject, calculate_default_transform
+from rasterio.warp import reproject
 
 logger = logging.getLogger("functions.change_ops")
 

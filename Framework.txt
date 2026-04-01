@@ -1,9 +1,10 @@
-简体中文
+rsmarking
 ├── /client                # 前端单页应用
 │   ├── index.html         # 前端入口，仅包含必要功能
 │   ├── /packages/app/src
 │   │   ├── /api/
 │   │   │   ├── ai.js      # ai分析专属api
+│   │   │   ├── change.js  # 時序比較api
 │   │   │   ├── raster.js  # 栅格api
 │   │   │   └── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
 │   │   ├── /glue/  # 胶水层，负责整合已有组件实现微功能
@@ -13,6 +14,7 @@
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
 │   │   │   ├── AttributeModule.js  # 矢量业务表逻辑
 │   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
+│   │   │   ├── ChangeDetectionModule.js  # 時序比較
 │   │   │   ├── ClipModule.js  # 裁剪模塊
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── ExportModule.js  # 导出当前视图为地图
