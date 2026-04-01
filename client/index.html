@@ -385,6 +385,39 @@
                         </div>
                     </div>
 
+                    <!-- 子模块 6: 变化检测 -->
+                    <div class="accordion-item border-b border-slate-100">
+                        <button onclick="this.parentElement.classList.toggle('active')"
+                                class="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-100/50 transition-colors">
+                            <div class="flex items-center space-x-3">
+                                <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                </svg>
+                                <span class="text-xs font-bold text-slate-700">变化检测</span>
+                            </div>
+                            <svg class="chevron-icon w-3 h-3 text-slate-400 transition-transform duration-300"
+                                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div class="accordion-content bg-white">
+                            <div class="p-3">
+                                <button onclick="RS.openChangeModal()"
+                                        class="w-full tool-card flex items-center space-x-3 p-3 rounded-xl
+                                        border border-orange-100 bg-orange-50/20 hover:border-orange-500 transition-all">
+                                    <div class="w-10 h-10 rounded-xl bg-orange-500 flex items-center justify-center text-xl
+                                    shadow-lg shadow-orange-200">🔄</div>
+                                    <div class="text-left">
+                                        <p class="text-xs font-bold text-orange-700">多期影像变化检测</p>
+                                        <p class="text-[9px] text-orange-500/70">差值 / 比值 / 指数差值分析</p>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+
                 </div>
 
                 <!-- 3. 影像资源列表 -->

@@ -16,7 +16,7 @@ import { WelcomeModule } from './modules/WelcomeModule.js';
 import { AttributeTable }   from './modules/AttributeTable.js';
 import { ExportModule } from "./modules/ExportModule.js";
 import { ClipModule } from "./modules/ClipModule.js";
-
+import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
 /**
  * App Class - 纯粹的系统调度与依赖注入中心
  */
@@ -39,7 +39,8 @@ class App {
         this.ai = null;
         this.attributeTable = null;
         this.export = null;
-        this.clip = null
+        this.clip = null;
+        this.change = null;
     }
 
     async init() {
@@ -62,7 +63,8 @@ class App {
             this.ai = new AIModule(this);
             this.attributeTable = new AttributeTable(this);
             this.export = new ExportModule(this);
-            this.clip = new ClipModule(this)
+            this.clip = new ClipModule(this);
+            this.change = new ChangeDetectionModule(this)
 
             // 4. 挂载全局方法与绑定事件
             new GlobalBridge(this).mount();

@@ -125,6 +125,13 @@ export class GlobalBridge {
                 }
             },
 
+            // --- 變化檢測 ---
+            openChangeModal:        ()  => this.app.change?.open(),
+            closeChangeModal:       ()  => this.app.change?.close(),
+            runChangeDetection:     ()  => this.app.change?.run(),
+            switchChangeMethod:     (m) => this.app.change?.switchMethod(m),
+            loadChangeResult:       (w) => this.app.change?.loadResultToMap(w),
+
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
             toggleGlobeView: () => this.app.mapEngine?.toggleGlobeView(),

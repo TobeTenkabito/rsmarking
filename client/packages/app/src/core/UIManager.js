@@ -19,7 +19,8 @@ export class UIManager {
                 ModalTemplates.scriptModal +
                 ModalTemplates.aiModal +
                 ModalTemplates.exportModal +
-                ModalTemplates.clipModal;
+                ModalTemplates.clipModal +
+                ModalTemplates.changeModal;
         }
         const detailContainer = document.getElementById('detail-panel-container') || document.body;
         const detailDiv = document.createElement('div');
