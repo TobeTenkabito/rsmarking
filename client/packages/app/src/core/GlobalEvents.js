@@ -35,17 +35,28 @@ export class GlobalEvents {
 
     // 上传文件监听
     document.getElementById('raster-upload-input')?.addEventListener('change', async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
         this.app.ui.showGlobalLoader(true);
-        try {
-            await RasterAPI.upload(file);
+        const results = { success: [], failed: [] };
+        for (const file of files) {
+            try {
+                await RasterAPI.upload(file);
+                results.success.push(file.name);
+            } catch (err) {
+                results.failed.push({ name: file.name, error: err.message });
+            }
+        }
+        if (results.success.length > 0) {
             await this.app.raster.refreshData();
-        } catch (err) {
-            alert(`上传失败: ${err.message}`);
-        } finally {
-            this.app.ui.showGlobalLoader(false);
-            e.target.value = "";
+        }
+        this.app.ui.showGlobalLoader(false);
+        e.target.value = "";
+        if (results.failed.length === 0) {
+            console.info(`全部上传成功 (${results.success.length} 个)`);
+        } else {
+            const failMsg = results.failed.map(f => `• ${f.name}: ${f.error}`).join('\n');
+            alert(`上传完成\n✅ 成功 ${results.success.length} 个\n❌ 失败 ${results.failed.length} 个:\n${failMsg}`);
         }
     });
 

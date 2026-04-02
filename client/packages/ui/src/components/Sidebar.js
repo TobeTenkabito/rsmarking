@@ -26,6 +26,7 @@ export const SidebarComponent = {
                     <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">影像资源 (Raster)</h3>
                     <button onclick="document.getElementById('raster-upload-input').click()" class="text-indigo-500 hover:text-indigo-700 font-bold text-[10px]">+ 导入</button>
                 </div>
+                <input type="file" id="raster-upload-input" class="hidden" multiple accept=".tif,.tiff,.jp2,.vrt,.img">
                 <div id="raster-list">
                     ${this.renderRasterSection(rasters, activeLayerIds, loadingIds)}
                 </div>
