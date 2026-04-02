@@ -38,6 +38,15 @@ export class GlobalBridge {
             executeMerge: () => this.app.raster.handleExecuteMerge(),
             toggleMergeItem: (id) => this.app.raster.handleToggleMergeSelection(id),
 
+            // --- 波段提取 ---
+            openExtractModal: () => this.app.raster.handleOpenExtractModal(),
+            closeExtractModal: () => document.getElementById('extract-modal')?.classList.add('hidden'),
+            executeExtract: () => this.app.raster.handleExecuteExtract(),
+            toggleExtractItem: (bandIndex) => this.app.raster.handleToggleExtractSelection(bandIndex),
+            extractStepNext: () => this.app.raster.handleExtractStepNext(),
+            extractStepBack: () => this.app.raster.handleExtractStepBack(),
+            selectExtractSource: (rasterId) => this.app.raster.handleSelectExtractSource(rasterId),
+
             // --- UI 辅助 ---
             hideDetail: () => this.app.ui.hideDetail(),
 

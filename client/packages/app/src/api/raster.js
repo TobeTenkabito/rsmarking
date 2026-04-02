@@ -77,6 +77,20 @@ export const RasterAPI = {
         return fetch(`${BASE_URL}/merge-bands`, { method: 'POST', body: formData });
     },
 
+    /**
+    * 提取波段
+    * @param {number} rasterId - 源文件 index_id
+    * @param {string} bandIndices - 波段索引，逗號分隔，如 "1,3"
+    * @param {string} newName - 輸出文件名
+    */
+    async extractBands(rasterId, bandIndices, newName) {
+        const formData = new FormData();
+        formData.append('raster_id', rasterId);
+        formData.append('band_indices', bandIndices);
+        formData.append('new_name', newName);
+        return fetch(`${BASE_URL}/extract-bands`, { method: 'POST', body: formData });
+        },
+
     // --- 指数计算接口 ---
 
     async calculateNDVI(redId, nirId, newName) {

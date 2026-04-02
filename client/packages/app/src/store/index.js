@@ -28,6 +28,10 @@ export const Store = {
         spectrumMode: false,       // 是否處於光譜拾取模式
         spectrumResult: null,      // 最近一次查詢結果 { bands, has_nodata, coordinate }
         spectrumRasterId: null,    // 當前綁定查詢的影像 index_id
+
+        // --- 波段提取狀態 ---
+        extractSourceId: null,       // 提取操作的源文件 index_id
+        selectedExtractIndices: [],  // 已選中的波段索引列表 [1, 3, ...]
     },
 
     // 监听回调
@@ -179,6 +183,7 @@ export const Store = {
         }
         this.notifyVectorChange();
     },
+
     /**
     * 重新从后端拉取最新栅格列表，并通知 UI 刷新
     * @param {Function} fetchFn  外部传入的 API 请求函数，返回 raster 数组
@@ -223,5 +228,31 @@ export const Store = {
 
     getVectorLayers() {return this.state.vectorLayers;},
     getProjects() {return this.state.projects;},
-    getActiveProject() {return this.state.activeProject;}
+    getActiveProject() {return this.state.activeProject;},
+
+    setExtractSource(rasterId) {
+        this.state.extractSourceId = rasterId;
+        },
+
+    getExtractSource() {
+        return this.state.extractSourceId;
+        },
+
+    clearExtractSelection() {
+        this.state.selectedExtractIndices = [];
+        },
+
+    toggleExtractSelection(bandIndex) {
+        const index = this.state.selectedExtractIndices.indexOf(bandIndex);
+        if (index > -1) {
+            this.state.selectedExtractIndices.splice(index, 1);
+        } else {
+            this.state.selectedExtractIndices.push(bandIndex);
+        }
+        return [...this.state.selectedExtractIndices];
+        },
+
+    getExtractSelection() {
+        return this.state.selectedExtractIndices;
+        },
     };

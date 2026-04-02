@@ -15,6 +15,7 @@ export class UIManager {
                 ModalTemplates.indexModal +
                 ModalTemplates.extractionModal +
                 ModalTemplates.mergeModal +
+                ModalTemplates.extractModal +
                 ModalTemplates.calculatorModal +
                 ModalTemplates.scriptModal +
                 ModalTemplates.aiModal +

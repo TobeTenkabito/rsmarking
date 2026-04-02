@@ -94,6 +94,41 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
     )
 
 
+async def extract_raster_bands_task(raster_id: int, band_indices: str, new_name: str, db: AsyncSession) -> dict:
+    """查询源文件路径 → 提取指定波段 → 转 COG → 注册数据库"""
+    # 查询源文件
+    result = await db.execute(
+        select(models.RasterMetadata).where(models.RasterMetadata.index_id == raster_id)
+    )
+    r = result.scalars().first()
+    if not r:
+        raise HTTPException(status_code=404, detail="未找到对应栅格文件")
+
+    input_path = r.file_path
+    indices = [int(i) for i in band_indices.split(',')]
+
+    upload_id = str(uuid.uuid4())
+    tmp_tiff = os.path.join(UPLOAD_DIR, f"{upload_id}_extracted.tif")
+    cog_filename = (
+        f"{upload_id}_{new_name}.tif"
+        if not new_name.endswith('.tif')
+        else f"{upload_id}_{new_name}"
+    )
+    cog_output = os.path.join(COG_DIR, cog_filename)
+
+    RasterProcessor.extract_bands(input_path, tmp_tiff, indices)
+    RasterProcessor.convert_to_cog(tmp_tiff, cog_output)
+
+    with rasterio.open(tmp_tiff) as extracted:
+        actual_bands = extracted.count
+
+    return await db_ops.save_to_db(
+        db, upload_id, new_name, tmp_tiff,
+        cog_filename, cog_output, "extracted",
+        bands_count=actual_bands
+    )
+
+
 @router.post("/upload")
 async def upload_raster(
         file: UploadFile = File(...),
@@ -111,3 +146,13 @@ async def merge_bands(
         db: AsyncSession = Depends(get_db)
 ):
     return await merge_raster_bands_task(raster_ids, new_name, db)
+
+
+@router.post("/extract-bands")
+async def extract_bands(
+        raster_id: int = Form(...),
+        band_indices: str = Form(...),
+        new_name: str = Form(...),
+        db: AsyncSession = Depends(get_db)
+):
+    return await extract_raster_bands_task(raster_id, band_indices, new_name, db)

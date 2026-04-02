@@ -7,12 +7,15 @@ logger = logging.getLogger("functions.manipulation")
 
 def extract_raster_bands(input_path: str, output_path: str, band_indices: List[int]) -> bool:
     with rasterio.open(input_path) as src:
+        invalid = [i for i in band_indices if i < 1 or i > src.count]
+        if invalid:
+            raise ValueError(f"波段索引越界: {invalid}，文件共 {src.count} 個波段")
+
         out_meta = src.meta.copy()
         out_meta.update({
             "count": len(band_indices),
             "driver": "GTiff"
         })
-
         with rasterio.open(output_path, "w", **out_meta) as dest:
             for i, band_idx in enumerate(band_indices, start=1):
                 dest.write(src.read(band_idx), i)
