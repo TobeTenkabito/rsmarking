@@ -2,7 +2,7 @@ import os
 import shutil
 import uuid
 import logging
-
+import rasterio
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -84,10 +84,13 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
     RasterProcessor.merge_bands(input_paths, tmp_tiff)
     RasterProcessor.convert_to_cog(tmp_tiff, cog_output)
 
+    with rasterio.open(tmp_tiff) as merged:
+        actual_bands = merged.count
+
     return await db_ops.save_to_db(
         db, upload_id, new_name, tmp_tiff,
         cog_filename, cog_output, "merged",
-        bands_count=len(input_paths)
+        bands_count=actual_bands
     )
 
 

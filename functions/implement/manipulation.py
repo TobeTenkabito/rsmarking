@@ -22,18 +22,24 @@ def extract_raster_bands(input_path: str, output_path: str, band_indices: List[i
 def merge_raster_bands(input_paths: List[str], output_path: str) -> bool:
     if not input_paths:
         raise ValueError("Input paths list cannot be empty")
-
+    total_bands = 0
+    for p in input_paths:
+        with rasterio.open(p) as src:
+            total_bands += src.count
     with rasterio.open(input_paths[0]) as first:
         meta = first.meta.copy()
         meta.update({
-            "count": len(input_paths),
+            "count": total_bands,
             "driver": "GTiff"
         })
-        with rasterio.open(output_path, "w", **meta) as dest:
-            for i, path in enumerate(input_paths, start=1):
-                with rasterio.open(path) as src:
+    with rasterio.open(output_path, "w", **meta) as dest:
+        band_idx = 1
+        for path in input_paths:
+            with rasterio.open(path) as src:
+                for b in range(1, src.count + 1):
                     dest.write(
-                        src.read(1, out_shape=(first.height, first.width)),
-                        i
+                        src.read(b, out_shape=(first.height, first.width)),
+                        band_idx
                     )
+                    band_idx += 1
     return True
