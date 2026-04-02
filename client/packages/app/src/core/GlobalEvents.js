@@ -136,7 +136,14 @@ export class GlobalEvents {
 
     bindMapEvents() {
         if (this.app.mapEngine && this.app.mapEngine.map) {
-            this.app.mapEngine.map.on('click', () => {
+            this.app.mapEngine.map.on('click', async (e) => {
+                // 光譜模式優先攔截
+                if (Store.state.spectrumMode) {
+                    const { lng, lat } = e.latlng;
+                    await this.app.analysis.querySpectrumAt(lng, lat);
+                    return; // 阻止後續邏輯
+                }
+                // 原有邏輯：取消要素選中
                 if (Store.state.selectedFeatureId) {
                     Store.setSelectedFeatureId(null);
                     const delBtn = document.getElementById('btn-delete-feature');

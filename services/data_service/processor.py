@@ -253,3 +253,75 @@ class RasterProcessor:
         )
         build_raster_overviews(output_path)
         return result
+
+    @staticmethod
+    def query_spectrum(
+            file_path: str,
+            lng: float,
+            lat: float,
+            band_names: list[str] | None = None,
+    ) -> dict:
+        """
+        查詢指定 WGS84 坐標點的多波段像素值（光譜）
+        :param file_path:  COG 或原始文件路徑
+        :param lng:        經度 (WGS84)
+        :param lat:        緯度 (WGS84)
+        :param band_names: 波段語義名稱，如 ["Red","Green","Blue","NIR"]
+        :return: {
+            "bands": [{"index": 1, "name": "Band 1", "value": 0.34}, ...],
+            "has_nodata": False,
+            "coordinate": {"lng": 116.3, "lat": 39.9}
+        }
+        """
+        from pyproj import Transformer
+
+        with rasterio.open(file_path) as src:
+            # 1. WGS84 → 影像原始 CRS
+            if src.crs and src.crs.to_epsg() != 4326:
+                transformer = Transformer.from_crs(
+                    "EPSG:4326", src.crs, always_xy=True
+                )
+                x, y = transformer.transform(lng, lat)
+            else:
+                x, y = lng, lat
+
+            # 2. 地理坐標 → 像素行列號
+            row, col = src.index(x, y)
+
+            # 3. 邊界檢查
+            if not (0 <= row < src.height and 0 <= col < src.width):
+                raise ValueError(
+                    f"坐標 ({lng}, {lat}) 超出影像範圍，"
+                    f"影像 WGS84 範圍: {src.bounds}"
+                )
+
+            # 4. 讀取所有波段在該像素的值（Window 避免讀整張影像）
+            window = rasterio.windows.Window(col, row, 1, 1)
+            pixel_values = src.read(window=window)  # shape: (band_count, 1, 1)
+
+            nodata = src.nodata
+            result_bands = []
+
+            for i in range(src.count):
+                raw_val = pixel_values[i, 0, 0]
+                is_nodata = nodata is not None and float(raw_val) == float(nodata)
+
+                # 波段名稱優先級: 傳入參數 > 文件內嵌描述 > 默認編號
+                if band_names and i < len(band_names):
+                    name = band_names[i]
+                elif src.descriptions[i]:
+                    name = src.descriptions[i]
+                else:
+                    name = f"Band {i + 1}"
+
+                result_bands.append({
+                    "index": i + 1,
+                    "name": name,
+                    "value": None if is_nodata else float(raw_val),
+                })
+
+            return {
+                "bands": result_bands,
+                "has_nodata": any(b["value"] is None for b in result_bands),
+                "coordinate": {"lng": lng, "lat": lat},
+            }

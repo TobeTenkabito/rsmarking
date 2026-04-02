@@ -332,6 +332,35 @@ export const RasterAPI = {
         }
     },
 
+
+    /**
+    * 查詢指定影像在某 WGS84 坐標點的各波段像素值（光譜）
+    * @param {number} rasterId  - 影像 index_id
+    * @param {number} lng       - 經度 (WGS84)
+    * @param {number} lat       - 緯度 (WGS84)
+    * @returns {{
+    *   bands: Array<{index: number, name: string, value: number|null}>,
+    *   has_nodata: boolean,
+    *   coordinate: {lng: number, lat: number}
+    * } | null}
+    */
+    async querySpectrum(rasterId, lng, lat) {
+    try {
+        const params = new URLSearchParams({ lng, lat });
+        const response = await fetch(
+            `${BASE_URL}/raster/${rasterId}/spectrum?${params}`
+        );
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail ?? "光譜查詢失敗");
+        }
+        return await response.json();
+    } catch (error) {
+        console.error("[RasterAPI] querySpectrum Error:", error);
+        return null;
+    }
+},
+
     // --- 调试接口 ---
     async clearDB() {
         return fetch(`${BASE_URL}/debug/clear-db`);

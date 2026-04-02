@@ -17,6 +17,7 @@ export class GlobalBridge {
             openIndexModal: (type) => this.app.analysis?.openModal(type),
             closeIndexModal: () => this.app.analysis?.closeModal(),
             executeIndexCalculation: () => this.app.analysis?.execute(),
+            showSpectrumMode:   (index_id)=>this.app.analysis?.toggleSpectrumMode(index_id),
 
             // --- 要素提取 ---
             openExtractionModal: (type) => this.app.extraction?.openModal(type),

@@ -23,6 +23,11 @@ export const Store = {
         },
         drawColor: '#4f46e5',
         selectedFeatureId: null, // 存储当前被选中的要素 ID
+
+        // --- 光譜查詢狀態 ---
+        spectrumMode: false,       // 是否處於光譜拾取模式
+        spectrumResult: null,      // 最近一次查詢結果 { bands, has_nodata, coordinate }
+        spectrumRasterId: null,    // 當前綁定查詢的影像 index_id
     },
 
     // 监听回调
@@ -200,6 +205,19 @@ export const Store = {
         } catch (err) {
             console.error('[Store] refreshProjects 失败:', err);
         }
+    },
+
+
+    setSpectrumMode(enabled, rasterId = null) {
+        this.state.spectrumMode = enabled;
+        this.state.spectrumRasterId = rasterId;
+        if (!enabled) this.state.spectrumResult = null;
+        // 復用現有通知機制
+        if (this.onRastersChange) this.onRastersChange(this.state.rasters);
+    },
+
+    setSpectrumResult(result) {
+        this.state.spectrumResult = result;
     },
 
 
