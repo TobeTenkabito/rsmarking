@@ -142,3 +142,14 @@ rsmarking
     ├── /unit              # 单元测试
     ├── /integration       # 通讯测试
     └── /benchmark         # 性能压测脚本
+
+
+client (前端)
+   ↓
+services (API层)
+   ↓
+worker_cluster (调度层)
+   ↓
+functions (算法层)
+   ↓
+core_lib (高性能层)
