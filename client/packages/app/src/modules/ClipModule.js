@@ -79,8 +79,6 @@ export class ClipModule {
                 return;
             }
             const clipGeometry = this._mergeFeaturesToGeometry(clipFeatures);
-            // _executeClipVector 内部会再次调用 showGlobalLoading，
-            // 先 hide 一次避免计数错乱
             this.app.ui.hideGlobalLoading();
             await this._executeClipVector(targetLayerId, clipGeometry);
         } catch (err) {

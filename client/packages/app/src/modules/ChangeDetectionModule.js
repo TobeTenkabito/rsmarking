@@ -148,17 +148,16 @@ export class ChangeDetectionModule {
    * 加载差值图 + 可选掩膜到地图
    * @param {'diff'|'mask'} which - 加载哪一层，默认 diff
    */
-async loadResultToMap(which = 'diff') {
-  if (!this._lastResult) return;
+  async loadResultToMap(which = 'diff') {
+    if (!this._lastResult) return;
 
-  const indexId = which === 'mask'
-    ? this._lastResult.mask_index_id
-    : this._lastResult.diff_index_id;
+    const indexId = which === 'mask'
+      ? this._lastResult.mask_index_id
+      : this._lastResult.diff_index_id;
 
-  if (!indexId) {
-    this.app.ui.showToast('该结果图层不存在', 'warning');
-    return;
-  }
+    if (!indexId) {
+      this.app.ui.showToast('该结果图层不存在', 'warning');
+      return;}
 
   try {
     await this.app.raster.refreshData();

@@ -82,9 +82,6 @@ export class ExportModule {
         }
     }
 
-    // ─────────────────────────────────────────────
-    //  核心渲染管线
-    // ─────────────────────────────────────────────
 
     async _renderToCanvas(opts) {
         const map   = this._getMap();
@@ -153,9 +150,6 @@ export class ExportModule {
         return output;
     }
 
-    // ─────────────────────────────────────────────
-    //  经纬网：网格线
-    // ─────────────────────────────────────────────
 
     /**
      * 计算合适的经纬网间隔（度）
@@ -225,9 +219,6 @@ export class ExportModule {
     ctx.restore();
 }
 
-    // ─────────────────────────────────────────────
-    //  经纬网：外框 + 经纬度标注
-    // ─────────────────────────────────────────────
 
     _drawGraticuleFrame(ctx, map, W, H, MARGIN, scale) {
     const interval = this._niceLatLngInterval(map);
@@ -325,9 +316,6 @@ export class ExportModule {
         return str;
     }
 
-    // ─────────────────────────────────────────────
-    //  底图捕获
-    // ─────────────────────────────────────────────
 
     async _captureBasemap(mapEl) {
         const tileCanvas = this._extractTileImages(mapEl);
@@ -376,9 +364,6 @@ export class ExportModule {
         return out;
     }
 
-    // ─────────────────────────────────────────────
-    //  图层绘制
-    // ─────────────────────────────────────────────
 
     _drawRasterLayers(ctx, mapEl, W, H) {
         const mapRect = mapEl.getBoundingClientRect();
@@ -436,9 +421,6 @@ export class ExportModule {
         });
     }
 
-    // ─────────────────────────────────────────────
-    //  装饰元素
-    // ─────────────────────────────────────────────
 
     _drawDecorations(ctx, W, H, scale) {
         const pad = 16 * scale;
@@ -527,9 +509,6 @@ export class ExportModule {
         ctx.fillText(`RSMarking Pro · ${now}`, W - pad, H - pad);
     }
 
-    // ─────────────────────────────────────────────
-    //  SVG 导出
-    // ─────────────────────────────────────────────
 
     async _exportSVG(opts) {
         const map   = this._getMap();
@@ -583,9 +562,6 @@ export class ExportModule {
         this._triggerDownload(URL.createObjectURL(blob), `${opts.filename}.svg`);
     }
 
-    // ─────────────────────────────────────────────
-    //  下载
-    // ─────────────────────────────────────────────
 
     _downloadCanvas(canvas, opts) {
         const mime = opts.format === 'jpeg' ? 'image/jpeg' : 'image/png';
@@ -605,9 +581,6 @@ export class ExportModule {
         setTimeout(() => URL.revokeObjectURL(href), 5000);
     }
 
-    // ─────────────────────────────────────────────
-    //  UI 绑定 & 工具
-    // ─────────────────────────────────────────────
 
     _bindUIEvents() {
         if (this._uiBound) return;
