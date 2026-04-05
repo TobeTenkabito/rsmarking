@@ -129,6 +129,14 @@ class AIRequestPayload(BaseModel):
     language: AILanguage = Field(default=AILanguage.ZH, description="AI 响应语言")
     user_prompt: str = Field(..., min_length=2, max_length=2000, description="用户的自然语言指令")
     overwrite:   bool = Field(default=False, description="是否覆盖原始记录，默认新建。需前端用户手动确认后置为 True")
+    session_id: Optional[str] = Field(
+        None,
+        description="会话ID，用于多轮对话记忆。前端生成并维护，格式建议 UUID4。"
+    )
+    map_context: Optional[Dict[str, Any]] = Field(
+        None,
+        description="前端地图上下文（当前视野、选中要素等），由 context_builder 解析注入 Prompt。"
+    )
 
 
 class AIModifyResponse(BaseModel):
