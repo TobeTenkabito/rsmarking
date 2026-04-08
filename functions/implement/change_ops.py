@@ -8,12 +8,22 @@ change_ops.py — 变化检测核心算法
 """
 
 import logging
+from typing import Callable
+
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import reproject
 
 logger = logging.getLogger("functions.change_ops")
+
+
+_INDEX_FUNCS: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
+    "ndvi": lambda b1, b2: (b2 - b1) / (b2 + b1 + 1e-6),
+    "ndwi": lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
+    "ndbi": lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
+    "mndwi": lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
+}
 
 
 def _align_to_reference(
@@ -24,27 +34,21 @@ def _align_to_reference(
     将 src_path 的所有波段重采样对齐到 ref_path 的空间格网。
     返回 (aligned_array[bands, H, W], ref_meta)
     """
-    with rasterio.open(ref_path) as ref:
+    # 合并为单个上下文块，减少文件句柄开销
+    with rasterio.open(ref_path) as ref, rasterio.open(src_path) as src:
         ref_meta = ref.meta.copy()
-        ref_crs = ref.crs
-        ref_transform = ref.transform
-        ref_height = ref.height
-        ref_width = ref.width
-
-    with rasterio.open(src_path) as src:
-        band_count = src.count
         aligned = np.zeros(
-            (band_count, ref_height, ref_width),
+            (src.count, ref.height, ref.width),
             dtype=np.float32,
         )
-        for i in range(1, band_count + 1):
+        for i in range(1, src.count + 1):
             reproject(
                 source=rasterio.band(src, i),
                 destination=aligned[i - 1],
-                dst_crs=ref_crs,
-                dst_transform=ref_transform,
-                dst_width=ref_width,
-                dst_height=ref_height,
+                dst_crs=ref.crs,
+                dst_transform=ref.transform,
+                dst_width=ref.width,
+                dst_height=ref.height,
                 resampling=Resampling.bilinear,
             )
 
@@ -52,6 +56,7 @@ def _align_to_reference(
 
 
 def _read_band_as_float(path: str, band_idx: int = 1) -> np.ndarray:
+    """读取指定波段并转换为 float32。"""
     with rasterio.open(path) as src:
         return src.read(band_idx).astype(np.float32)
 
@@ -88,6 +93,40 @@ def _apply_threshold(
         raise ValueError(f"不支持的 threshold mode: {mode}")
 
 
+def _build_meta(base_meta: dict, dtype: str, nodata) -> dict:
+    """
+    基于 base_meta 构建单波段输出元数据，避免重复的 copy+update 模式。
+    """
+    meta = base_meta.copy()
+    meta.update({"dtype": dtype, "count": 1, "driver": "GTiff", "nodata": nodata})
+    return meta
+
+
+def _write_raster(path: str, array: np.ndarray, meta: dict) -> None:
+    """将单波段数组写入栅格文件。"""
+    with rasterio.open(path, "w", **meta) as dst:
+        dst.write(array, 1)
+
+
+def _write_mask_if_needed(
+    output_mask_path: str | None,
+    diff: np.ndarray,
+    threshold: float,
+    threshold_mode: str,
+    ref_meta: dict,
+) -> int | None:
+    """
+    按需生成并写出二值变化掩膜，返回变化像元数（无输出路径时返回 None）。
+    将 band_diff / band_ratio / index_diff 中重复的掩膜写出逻辑统一收口。
+    """
+    if output_mask_path is None:
+        return None
+
+    mask = _apply_threshold(diff, threshold, threshold_mode)
+    _write_raster(output_mask_path, mask, _build_meta(ref_meta, "uint8", nodata=0))
+    return int(mask.sum())
+
+
 def band_diff(
     path_t1: str,
     path_t2: str,
@@ -110,32 +149,18 @@ def band_diff(
     threshold        : 变化判定阈值
     threshold_mode   : abs / positive / negative
     """
-    # 对齐到 t1 格网
     aligned_t2, ref_meta = _align_to_reference(path_t2, path_t1)
     band_t1 = _read_band_as_float(path_t1, band_idx)
     band_t2 = aligned_t2[band_idx - 1]
 
-    diff = band_t2 - band_t1
-    diff = np.nan_to_num(diff, nan=0.0)
+    diff = np.nan_to_num(band_t2 - band_t1, nan=0.0)
 
-    # 写出差值图
-    diff_meta = ref_meta.copy()
-    diff_meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": None})
-    with rasterio.open(output_diff_path, "w", **diff_meta) as dst:
-        dst.write(diff, 1)
+    _write_raster(output_diff_path, diff, _build_meta(ref_meta, "float32", nodata=None))
+    change_pixel_count = _write_mask_if_needed(
+        output_mask_path, diff, threshold, threshold_mode, ref_meta
+    )
 
-    change_pixel_count = None
-
-    # 写出二值掩膜（可选）
-    if output_mask_path:
-        mask = _apply_threshold(diff, threshold, threshold_mode)
-        change_pixel_count = int(mask.sum())
-        mask_meta = ref_meta.copy()
-        mask_meta.update({"dtype": "uint8", "count": 1, "driver": "GTiff", "nodata": 0})
-        with rasterio.open(output_mask_path, "w", **mask_meta) as dst:
-            dst.write(mask, 1)
-
-    logger.info(f"band_diff 完成: {output_diff_path}, 变化像元={change_pixel_count}")
+    logger.info("band_diff 完成: %s, 变化像元=%s", output_diff_path, change_pixel_count)
 
     return {
         "method": "band_diff",
@@ -162,25 +187,23 @@ def band_ratio(
     band_t1 = _read_band_as_float(path_t1, band_idx)
     band_t2 = aligned_t2[band_idx - 1]
 
-    ratio = band_t2 / (band_t1 + 1e-6)
-    ratio = np.nan_to_num(ratio, nan=1.0, posinf=1.0, neginf=1.0)
+    ratio = np.nan_to_num(
+        band_t2 / (band_t1 + 1e-6),
+        nan=1.0, posinf=1.0, neginf=1.0,
+    )
 
-    diff_meta = ref_meta.copy()
-    diff_meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": None})
-    with rasterio.open(output_diff_path, "w", **diff_meta) as dst:
-        dst.write(ratio, 1)
+    _write_raster(output_diff_path, ratio, _build_meta(ref_meta, "float32", nodata=None))
 
-    change_pixel_count = None
-    if output_mask_path:
-        # 偏离 1.0 超过 threshold 视为变化
-        mask = (np.abs(ratio - 1.0) > threshold).astype(np.uint8)
-        change_pixel_count = int(mask.sum())
-        mask_meta = ref_meta.copy()
-        mask_meta.update({"dtype": "uint8", "count": 1, "driver": "GTiff", "nodata": 0})
-        with rasterio.open(output_mask_path, "w", **mask_meta) as dst:
-            dst.write(mask, 1)
+    # 比值法：偏离 1.0 超过 threshold 视为变化，固定使用 abs 语义
+    change_pixel_count = _write_mask_if_needed(
+        output_mask_path,
+        ratio - 1.0,        # 转换为"偏差量"，复用统一的阈值函数
+        threshold,
+        "abs",
+        ref_meta,
+    )
 
-    logger.info(f"band_ratio 完成: {output_diff_path}, 变化像元={change_pixel_count}")
+    logger.info("band_ratio 完成: %s, 变化像元=%s", output_diff_path, change_pixel_count)
 
     return {
         "method": "band_ratio",
@@ -213,46 +236,32 @@ def index_diff(
       ndbi  : b1=SWIR,  b2=NIR
       mndwi : b1=Green, b2=SWIR
     """
-    _INDEX_FUNCS = {
-        "ndvi":  lambda b1, b2: (b2 - b1) / (b2 + b1 + 1e-6),
-        "ndwi":  lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
-        "ndbi":  lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
-        "mndwi": lambda b1, b2: (b1 - b2) / (b1 + b2 + 1e-6),
-    }
     if index_type not in _INDEX_FUNCS:
         raise ValueError(f"不支持的 index_type: {index_type}")
 
     index_func = _INDEX_FUNCS[index_type]
 
-    # t1 指数
+    # t1 指数（以 t1_b1 为参考格网）
     b1_t1 = _read_band_as_float(path_t1_b1)
     aligned_t1_b2, ref_meta = _align_to_reference(path_t1_b2, path_t1_b1)
-    b2_t1 = aligned_t1_b2[0]
-    idx_t1 = index_func(b1_t1, b2_t1)
+    idx_t1 = index_func(b1_t1, aligned_t1_b2[0])
 
-    # t2 指数（对齐到 t1 格网）
+    # t2 指数：两个波段统一对齐到 t1 格网，各调用一次 _align_to_reference
     aligned_t2_b1, _ = _align_to_reference(path_t2_b1, path_t1_b1)
     aligned_t2_b2, _ = _align_to_reference(path_t2_b2, path_t1_b1)
     idx_t2 = index_func(aligned_t2_b1[0], aligned_t2_b2[0])
 
-    diff = idx_t2 - idx_t1
-    diff = np.nan_to_num(diff, nan=0.0)
+    diff = np.nan_to_num(idx_t2 - idx_t1, nan=0.0)
 
-    diff_meta = ref_meta.copy()
-    diff_meta.update({"dtype": "float32", "count": 1, "driver": "GTiff", "nodata": None})
-    with rasterio.open(output_diff_path, "w", **diff_meta) as dst:
-        dst.write(diff, 1)
+    _write_raster(output_diff_path, diff, _build_meta(ref_meta, "float32", nodata=None))
+    change_pixel_count = _write_mask_if_needed(
+        output_mask_path, diff, threshold, threshold_mode, ref_meta
+    )
 
-    change_pixel_count = None
-    if output_mask_path:
-        mask = _apply_threshold(diff, threshold, threshold_mode)
-        change_pixel_count = int(mask.sum())
-        mask_meta = ref_meta.copy()
-        mask_meta.update({"dtype": "uint8", "count": 1, "driver": "GTiff", "nodata": 0})
-        with rasterio.open(output_mask_path, "w", **mask_meta) as dst:
-            dst.write(mask, 1)
-
-    logger.info(f"index_diff({index_type}) 完成: {output_diff_path}, 变化像元={change_pixel_count}")
+    logger.info(
+        "index_diff(%s) 完成: %s, 变化像元=%s",
+        index_type, output_diff_path, change_pixel_count,
+    )
 
     return {
         "method": f"index_diff_{index_type}",
