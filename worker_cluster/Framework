@@ -1,0 +1,30 @@
+/worker_cluster
+├── celeryconfig.py          # Celery + RabbitMQ 配置
+├── worker.py                # Worker 启动入口
+├── /tasks
+│   ├── __init__.py
+│   ├── base.py              # 基础任务类（统一状态回写、错误处理）
+│   ├── /preprocess
+│   │   ├── __init__.py
+│   │   ├── pyramid.py       # 金字塔构建任务
+│   │   ├── reproject.py     # 重投影任务
+│   │   └── statistics.py    # 统计计算任务（直方图、波段统计）
+│   └── /export
+│       ├── __init__.py
+│       ├── geojson.py       # 异步导出 GeoJSON
+│       ├── coco.py          # 异步导出 COCO
+│       └── tfrecord.py      # 异步导出 TFRecord
+├── /bridge
+│   ├── db_sync.py           # 同步数据库会话（Worker 专用）
+│   └── status_reporter.py   # 任务状态回写到 data_service
+└── /infrastructure/docker
+    └── worker.Dockerfile
+
+
+┌─────────────────────────────────────────────────────┐
+│  data_service  →  enqueue task  →  RabbitMQ         │
+│                                        ↓            │
+│  Worker 消费任务  →  调用 functions/  →  写回 DB       │
+│                                        ↓            │
+│  前端轮询 /task/{id}/status  ←  data_service          │
+└─────────────────────────────────────────────────────┘
