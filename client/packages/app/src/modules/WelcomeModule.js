@@ -110,24 +110,37 @@ export const WelcomeModule = {
         const cols = earthMap[0].length;
 
         for (let j = 0; j < rows; j++) {
-            for (let i = 0; i < cols; i++) {
-                if (earthMap[j][i] !== ' ') {
-                    // 每个陆地区块生成 3 个随机微小偏移的点，增加点云的质感和密度
-                    for (let k = 0; k < 3; k++) {
-                        const u = (i + Math.random()) / cols;
-                        const v = (j + Math.random()) / rows;
+        for (let i = 0; i < cols; i++) {
+            if (earthMap[j][i] !== ' ') {
+                for (let k = 0; k < 3; k++) {
+                    // 优化点 1：引入微小扰动，打破矩阵感
+                    const jitterX = Math.random() - 0.5;
+                    const jitterY = Math.random() - 0.5;
+                    const u = (i + 0.5 + jitterX) / cols;
+                    const v = (j + 0.5 + jitterY) / rows;
 
-                        const lon = (u - 0.5) * Math.PI * 2;
-                        const lat = (v - 0.5) * Math.PI;
+                    const lon = (u - 0.5) * Math.PI * 2;
+                    // 保持原本的线性映射以兼容渲染器，但加上极小值偏移防止重叠
+                    const lat = (v - 0.5) * Math.PI;
 
-                        // 底层地图主色调为翠绿(Emerald)，混入 20% 的青色(Cyan)与顶层粒子呼应
-                        const color = Math.random() > 0.8 ? [34, 211, 238] : [16, 185, 129];
+                    // 优化点 2：更高级的配色逻辑
+                    // 基于纬度 lat 给点增加亮度权重，模拟极光感
+                    const brightness = 0.7 + Math.abs(Math.sin(lat)) * 0.3;
+                    const rand = Math.random();
+                    let baseColor = rand > 0.9 ? [34, 211, 238] : [16, 185, 129]; // Cyan vs Emerald
+                    if (rand < 0.05) baseColor = [168, 85, 247]; // 极低概率出现紫色点缀
 
-                        this.earthNodes.push({ u, v, lon, lat, color });
-                    }
+                    const color = baseColor.map(c => Math.floor(c * brightness));
+
+                    // 优化点 3：增加个性化尺寸和相位
+                    const size = 0.6 + Math.random() * 0.8;
+                    const phase = Math.random() * Math.PI * 2; // 用于后续动画
+
+                    this.earthNodes.push({ u, v, lon, lat, color, size, phase });
                 }
             }
         }
+    }
     },
 
     createParticles() {
@@ -155,9 +168,6 @@ export const WelcomeModule = {
         const centerX = this.canvas.width / 2;
         const centerY = this.canvas.height / 2;
 
-        // ==========================================
-        // 1. 渲染底层：全息数据地球 (2D平面 <-> 3D球体 循环)
-        // ==========================================
         if (!this.settings.aggrActive) {
             const cycleTime = 20000; // 20秒完整循环
             const cycle = (Date.now() % cycleTime) / cycleTime;
@@ -194,44 +204,50 @@ export const WelcomeModule = {
             const radius = mapHeight * 0.7;
             const focalLength = 800;
 
+            const time = Date.now();
+
             for (let i = 0; i < this.earthNodes.length; i++) {
                 const node = this.earthNodes[i];
-
                 let currentU = (node.u + panOffset) % 1;
                 let currentLon = (currentU - 0.5) * Math.PI * 2;
-
                 const flatX = (currentU - 0.5) * mapWidth;
                 const flatY = (node.v - 0.5) * mapHeight;
                 const flatZ = 0;
-
                 const sphereX = radius * Math.cos(node.lat) * Math.sin(currentLon);
                 const sphereY = radius * Math.sin(node.lat);
                 const sphereZ = radius * Math.cos(node.lat) * Math.cos(currentLon);
-
                 const x = flatX * (1 - foldProgress) + sphereX * foldProgress;
                 const y = flatY * (1 - foldProgress) + sphereY * foldProgress;
                 const z = flatZ * (1 - foldProgress) + sphereZ * foldProgress;
-
                 const scale = focalLength / (focalLength + z + radius * foldProgress);
                 const screenX = centerX + x * scale;
                 const screenY = centerY + y * scale;
-
-                let alpha = 0.6;
-                // 3D 模式下的背面剔除与透明度衰减
-                if (foldProgress > 0.5 && z > 0) {
-                    alpha = 0.08;
+                let depthAlpha = 0.6;
+                if (foldProgress > 0.1) {
+                    const normalizedZ = (radius - z) / (2 * radius);
+                    depthAlpha = z < 0 ? 0.2 + normalizedZ * 0.6 : 0.05 + normalizedZ * 0.1;
                 }
-
+                const breath = Math.sin(time * 0.002 + i * 0.5) * 0.2 + 0.8;
+                const finalAlpha = depthAlpha * breath;
+                const dotSize = (node.size || 1.2) * scale * (z < 0 ? 1.0 : 0.7);
                 this.ctx.beginPath();
-                this.ctx.arc(screenX, screenY, 1.2 * scale, 0, Math.PI * 2);
-                this.ctx.fillStyle = `rgba(${node.color[0]}, ${node.color[1]}, ${node.color[2]}, ${alpha})`;
+                this.ctx.arc(screenX, screenY, dotSize, 0, Math.PI * 2);
+                let r = node.color[0], g = node.color[1], b = node.color[2];
+                if (z > 0 && foldProgress > 0.5) {
+                    b = Math.min(255, b + 50);
+                }
+                this.ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${finalAlpha})`;
                 this.ctx.fill();
+                if (z < -radius * 0.8 && Math.random() > 0.9995) {
+                    this.ctx.shadowBlur = 10;
+                    this.ctx.shadowColor = `rgba(255, 255, 255, 0.8)`;
+                    this.ctx.fillStyle = "#fff";
+                    this.ctx.fill();
+                    this.ctx.shadowBlur = 0;
+                }
             }
         }
 
-        // ==========================================
-        // 2. 渲染顶层：交互式粒子与神经网络连线
-        // ==========================================
         const { x: mx, y: my, radius: mouseRadius } = this.mouse;
 
         for (let i = 0; i < this.particles.length; i++) {
