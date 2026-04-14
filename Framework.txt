@@ -117,24 +117,41 @@ rsmarking
 │       └── translator.py
 ├── /functions              # 函数和功能
 │   ├── /common             # 简单算法如生成id等
-│   ├── /implement          # 核心函数 "植被，水体，建筑，云提取"
-│   │   ├── /extraction     # 提取算法(已实现部分，这里略过)
-│   │   ├── __init__.py
-│   │   ├── clip_ops.py          # 裁剪算法
-│   │   ├── io_ops.py            # cog转换，构建金字塔
-│   │   ├── manipulation.py      # 栅格合成
-│   │   ├── spatial_ops.py       # 坐标系转换为wgs84
-│   │   └── spectral_indices.py  # 遥感常见指数计算
-│   └── /ml                # "暂无"
-├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)"暂未实现"
-│   ├── /tasks/preprocess  # 影像金字塔构建、统计计算、重投影
-│   └── /tasks/export      # 异步导出 COCO/GeoJSON/TFRecord
+│   └── /implement          # 核心函数 "植被，水体，建筑，云提取"
+│       ├── /extraction     # 提取算法(已实现部分，这里略过)
+│       ├── __init__.py
+│       ├── clip_ops.py          # 裁剪算法
+│       ├── io_ops.py            # cog转换，构建金字塔
+│       ├── manipulation.py      # 栅格合成
+│       ├── spatial_ops.py       # 坐标系转换为wgs84
+│       └── spectral_indices.py  # 遥感常见指数计算
+├── /worker_cluster        # 离线处理集群 (Celery/RabbitMQ)
+│   ├── celeryconfig.py    # Celery + RabbitMQ 配置
+│   ├── worker.py          # Worker 启动入口
+│   ├── /bridge
+│   │   ├── db_sync.py  # 同步数据库会话
+│   │   └── status_reporter.py  # 任务状态回写到 data_service
+│   └── /tasks
+│       ├── __init__.py
+│       ├── base.py        # 基础任务类（统一状态回写、错误处理）
+│       ├── /preprocess
+│       │   ├── __init__.py
+│       │   ├── pyramid.py    # 金字塔构建任务
+│       │   ├── reproject.py  # 重投影任务
+│       │   └── statistics.py # 统计计算任务
+│       └── /export
+│           ├── __init__.py
+│           ├── geojson.py
+│           ├── coco.py
+│           └── tfrecord.py
 ├── /core_lib              # [Cython/C++] 高性能底层库(未实现)
 │   ├── /spatial-math      # 坐标变换、球面几何计算
 │   ├── /topology-engine   # 拓扑校验器 (检查空隙、自相交)
 │   └── /telemetry         # 结构化日志、OpenTelemetry 接入
 ├── /infrastructure        # 基础设施即代码 (IaC)
 │   ├── /docker            # 各模块 Dockerfile
+│   │   ├── docker-compose.yml
+│   │   └── worker.Dockerfile
 │   ├── /kubernetes        # K8s 部署配置文件
 │   ├── /annot_migrations  # 矢量数据迁移脚本
 │   └── /db_migrations     # 栅格元数据数据库迁移脚本
