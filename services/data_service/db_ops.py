@@ -2,8 +2,9 @@ import os
 import uuid
 import logging
 import re
+from uuid import UUID
 from fastapi import HTTPException, Request
-from typing import List
+from typing import List, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from rasterio.warp import transform_bounds
@@ -183,3 +184,53 @@ async def get_dynamic_band_ids(request: Request) -> List[int]:
         if re.match(r'^id_\d+$', k)]
     id_keys.sort(key=lambda x: int(x.split('_')[1]))
     return [int(form_data[k]) for k in id_keys]
+
+
+async def process_rasterize_task(
+        db: AsyncSession,
+        layer_id: UUID,
+        ref_index_id: int,
+        new_name: str,
+        prefix: str,
+        processor_func,
+        fetch_func: Callable
+):
+    """
+    矢量转栅格通用任务
+    :param fetch_func: 跨服务获取矢量的函数 (internal_fetch_features)
+    :param processor_func: RasterProcessor.run_rasterization
+    """
+    try:
+        # 1. 获取参考影像路径
+        stmt = select(models.RasterMetadata).where(models.RasterMetadata.index_id == ref_index_id)
+        res = await db.execute(stmt)
+        ref_record = res.scalar_one_or_none()
+        if not ref_record:
+            raise HTTPException(status_code=404, detail="参考影像不存在")
+
+        # 2. 跨服务获取矢量数据 (GeoJSON Features)
+        features = await fetch_func(layer_id)
+        if not features:
+            raise HTTPException(status_code=400, detail="该图层无有效矢量要素")
+
+        # 3. 准备路径
+        task_id = str(uuid.uuid4())
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        # 4. 执行转换 (注意：processor_func 需要处理坐标对齐)
+        processor_func(features, ref_record.file_path, tmp_path)
+
+        # 5. 转换为 COG
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        # 6. 入库
+        return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
+
+    except Exception as e:
+        logger.error(f"{prefix} 转换失败: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,10 +1,13 @@
 import os
 import logging
-from typing import TypedDict, TypeAlias, ParamSpec
-from collections.abc import Callable
 import numpy as np
 import numexpr as ne
 import rasterio
+from typing import TypedDict, TypeAlias, ParamSpec, List, Dict, Any
+from collections.abc import Callable
+from pyproj import Transformer
+from shapely.geometry import shape
+from shapely.ops import transform as shapely_transform
 
 from functions.implement.clip_ops import (
     clip_raster_by_vector,
@@ -34,6 +37,7 @@ from functions.implement.extraction import (
     extract_building,
     extract_cloud,
 )
+from functions.implement.rasterize_ops import vector_to_raster
 
 logger = logging.getLogger("data_service.processor")
 
@@ -325,3 +329,80 @@ class RasterProcessor:
                 "has_nodata": any(b["value"] is None for b in result_bands),
                 "coordinate": {"lng": lng, "lat": lat},
             }
+
+    @staticmethod
+    def run_rasterization(
+            features: List[Dict[str, Any]],
+            ref_raster_path: str,
+            output_path: str,
+            burn_field: str = None
+    ) -> str:
+        """
+        基于参考影像将矢量要素栅格化。
+
+        工业级考量：
+        1. 自动处理 CRS 转换（WGS84 -> 影像原生投影）
+        2. 支持根据属性字段动态烧录像素值 (Burn value)
+        3. 优化 template_meta 获取逻辑
+        """
+        if not features:
+            raise ValueError("矢量要素列表为空，无法执行栅格化")
+
+        with rasterio.open(ref_raster_path) as src:
+            # 1. 获取参考影像元数据
+            template_meta = {
+                "crs": src.crs,
+                "transform": src.transform,
+                "width": src.width,
+                "height": src.height
+            }
+            dst_crs = src.crs
+
+        # 2. 坐标重投影 (Reprojecting geometries from EPSG:4326 to target CRS)
+        # 矢量服务导出的通常是 4326
+        src_crs_str = "EPSG:4326"
+        reprojected_features = []
+
+        # 只有在坐标系不一致时才执行重投影，减少开销
+        need_reproject = dst_crs.to_string() != src_crs_str
+        transformer = None
+        if need_reproject:
+            transformer = Transformer.from_crs(src_crs_str, dst_crs, always_xy=True)
+
+        for feat in features:
+            try:
+                geom = shape(feat["geometry"])
+
+                # 如果坐标系不一致，执行投影转换
+                if need_reproject:
+                    geom = shapely_transform(transformer.transform, geom)
+
+                # 确定烧录值 (优先级: 参数指定字段 > features中的category > 默认值1)
+                burn_val = 1
+                if burn_field and burn_field in feat.get("properties", {}):
+                    burn_val = feat["properties"][burn_field]
+                elif "category" in feat:
+                    # 尝试将 category 映射为数字，这里简化处理
+                    burn_val = feat["category"] if isinstance(feat["category"], (int, float)) else 1
+
+                reprojected_features.append({
+                    "geometry": geom,
+                    "value": burn_val
+                })
+            except Exception as e:
+                logger.warning(f"要素解析或投影转换失败，跳过: {e}")
+                continue
+
+        if not reprojected_features:
+            raise ValueError("没有有效的几何要素可供投影或栅格化")
+
+        # 3. 调用核心算法执行转换
+        # 修改了参数传递方式，适配重投影后的几何体对象
+        vector_to_raster(
+            features=reprojected_features,
+            template_meta=template_meta,
+            out_path=output_path,
+            all_touched=True
+        )
+
+        return output_path

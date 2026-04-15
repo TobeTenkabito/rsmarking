@@ -2,6 +2,8 @@ import httpx
 import os
 import uuid
 import logging
+from typing import List, Dict, Any
+from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.data_service.crud.raster_crud import RasterCRUD
@@ -12,6 +14,43 @@ logger = logging.getLogger("data_service.executor_bridge")
 
 # 执行服务的内部通信地址
 EXECUTOR_URL = "http://localhost:8004/execute"
+# 矢量标注服务的内部通信地址
+ANNOTATION_SERVICE_URL = "http://localhost:8001"
+
+
+async def internal_fetch_features(layer_id: UUID) -> List[Dict[str, Any]]:
+    """
+    跨服务调用：从 annotation_service (8001) 获取图层的矢量要素。
+    用于矢量转栅格等分析任务。
+    """
+    url = f"{ANNOTATION_SERVICE_URL}/layers/{layer_id}/features/export"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.get(url)
+            # 如果接口不存在或报错，抛出异常
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"图层 {layer_id} 不存在或未找到要素导出接口")
+
+            response.raise_for_status()
+            data = response.json()
+
+            # 根据后端实现，通常返回的是 List[Dict] 或 {"features": [...]}
+            # 如果是 FeatureCollection 格式，提取 features 数组
+            if isinstance(data, dict) and data.get("type") == "FeatureCollection":
+                return data.get("features", [])
+
+            return data
+
+        except httpx.ConnectError:
+            logger.error(f"无法连接到矢量服务: {url}")
+            raise HTTPException(status_code=503, detail="矢量标注服务暂不可用")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"矢量服务返回错误: {e.response.text}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"获取矢量数据失败: {e.response.text}")
+        except Exception as e:
+            logger.error(f"获取矢量数据时发生未知错误: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"内部通讯故障: {str(e)}")
 
 
 async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[int], output_name: str):
@@ -28,19 +67,13 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
         raster = await RasterCRUD.get_raster_by_index_id(db, r_id)
         if not raster:
             raise HTTPException(status_code=404, detail=f"影像 ID {r_id} 在库中未找到")
-        # 只需要文件名，executor 服务会根据其 config 拼接路径
         input_filenames.append(os.path.basename(raster.file_path))
 
-    # 生成本次任务的唯一标识
     task_id = str(uuid.uuid4())
     prefix = "script"
-
-    # 预定义输出路径（需与 executor 配置的宿主机目录一致）
-    # 让沙箱直接把结果写到 UPLOAD_DIR (即 storage/raw)，模拟上传的文件
     raw_output_filename = f"{task_id}_{prefix}_raw.tif"
 
     # 2. 调用沙箱执行服务
-    # 注意：这里的 timeout 需要设置得足够长，因为遥感运算耗时较久
     async with httpx.AsyncClient(timeout=600.0) as client:
         try:
             payload = {
@@ -52,33 +85,30 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
             response.raise_for_status()
             res_data = response.json()
         except httpx.ConnectError:
-            raise HTTPException(status_code=503, detail="无法连接到执行服务沙箱，请检查服务是否启动")
+            raise HTTPException(status_code=503, detail="无法连接到执行服务沙箱")
         except Exception as e:
             logger.error(f"沙箱调用异常: {str(e)}")
             raise HTTPException(status_code=500, detail=f"执行服务故障: {str(e)}")
 
     if res_data.get("status") != "success":
-        # 如果沙箱内部报错（如脚本语法错误、GDAL计算错误），提取其 logs 返回给前端查看
         return {
             "status": "error",
             "message": "沙箱执行失败",
             "logs": res_data.get("logs", "未知错误")
         }
 
-    # 3. 后处理：将沙箱生成的 raw 文件转换为 COG
-    # 此时文件已存在于 /storage/raw/{raw_output_filename}
+    # 3. 后处理：转换 COG
     tmp_path = os.path.join(UPLOAD_DIR, raw_output_filename)
     cog_filename = f"{task_id}_{prefix}.tif"
     cog_path = os.path.join(COG_DIR, cog_filename)
 
     if not os.path.exists(tmp_path):
-        raise HTTPException(status_code=500, detail="沙箱报告成功但未找到生成的影像文件")
+        raise HTTPException(status_code=500, detail="未找到生成的影像文件")
 
     try:
-        # 调用 processor 执行标准转换
         RasterProcessor.convert_to_cog(tmp_path, cog_path)
 
-        # 4. 结果入库：复用 db_ops 中的 save_to_db，自动提取 CRS、Bounds 等元数据
+        # 4. 结果入库
         db_res = await save_to_db(
             db=db,
             task_id=task_id,
@@ -87,7 +117,7 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
             cog_filename=cog_filename,
             cog_path=cog_path,
             prefix=prefix,
-            bands_count=1  # 脚本默认输出单波段，save_to_db 内部会自动重新探测
+            bands_count=1
         )
 
         return {
