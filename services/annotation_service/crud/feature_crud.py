@@ -4,13 +4,13 @@ from uuid import UUID
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func, text
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert
-from geoalchemy2.functions import ST_AsGeoJSON, ST_GeomFromText, ST_MakeEnvelope
-from shapely.geometry import shape, mapping
+from geoalchemy2.functions import ST_AsGeoJSON, ST_MakeEnvelope
+from shapely.geometry import shape
 from shapely.wkt import dumps
 
-from ..models.feature import Feature, Project, Layer
+from ..models.feature import Feature
 from ..schemas.geojson import FeatureCreate, FeatureUpdate
 
 

@@ -14,10 +14,8 @@ import pyproj
 from ..schemas.geojson import FeatureCreate, GeometryModel
 
 
-# ── 支持的几何类型 ──────────────────────────────────────────────
 SUPPORTED_GEOM_TYPES = {"Point", "MultiPoint", "LineString", "MultiLineString", "Polygon", "MultiPolygon"}
 
-# ── DBF 字段类型 → LayerField.field_type 映射 ──────────────────
 FIONA_TYPE_MAP: Dict[str, str] = {
     "str" : "string",
     "int" : "number",
@@ -68,14 +66,12 @@ def parse_shapefile_bytes(
     异常：
         ValueError: 缺少必要文件 / 不支持的几何类型
     """
-    # ── 1. 校验必要文件 ──────────────────────────────────────────
     exts = {os.path.splitext(name)[1].lower() for name in files}
     required = {".shp", ".shx", ".dbf"}
     missing = required - exts
     if missing:
         raise ValueError(f"缺少必要文件: {', '.join(sorted(missing))}")
 
-    # ── 2. 写入临时目录（fiona 需要真实文件路径）────────────────
     with tempfile.TemporaryDirectory() as tmpdir:
         # 统一用同一个 stem，避免 fiona 找不到配套文件
         stem = "upload"
@@ -87,7 +83,6 @@ def parse_shapefile_bytes(
 
         shp_path = os.path.join(tmpdir, stem + ".shp")
 
-        # ── 3. 用 fiona 打开并解析 ───────────────────────────────
         with fiona.open(shp_path, encoding="utf-8") as src:
             src_crs = src.crs_wkt or src.crs.get("init") if src.crs else None
 

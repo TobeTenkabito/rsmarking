@@ -11,10 +11,10 @@ from ..schemas.layer_field import LayerFieldCreate, LayerFieldUpdate, LayerField
 
 # 文件属性类型 → LayerField.field_type 的映射
 PYTHON_TYPE_MAP = {
-    str  : "string",
-    int  : "number",
+    str: "string",
+    int: "number",
     float: "number",
-    bool : "boolean",
+    bool: "boolean",
 }
 
 

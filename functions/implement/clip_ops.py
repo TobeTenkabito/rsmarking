@@ -1,44 +1,34 @@
 """
-clip_ops.py — 幾何裁剪核心算法（優化版 v2）
+clip_ops.py — 幾何裁剪核心算法（效能極致版 v3）
 
 優化重點:
-  - clip_vector_by_raster : STRtree 空間索引，O(n) → O(log n + k)
-  - clip_raster_by_vector : Transformer 快取，消除重複建構開銷
-  - 兩階段過濾 : bbox 預篩 + 精確幾何判斷
-修復重點:
-  - _clean_clipped_geometry : 處理降維幾何、GeometryCollection、Sliver 碎屑
+  - 徹底移除純 Python 的遞迴幾何檢查，改用 Shapely 2.0+ GEOS 向量化操作 (O(1) 迴圈開銷)
+  - 批次投影轉換: PyProj 結合 shapely.transform，一次性轉換所有座標頂點
+  - 批次交集運算: shapely.intersection 替代逐項計算
+  - 陣列化清理: get_parts, get_type_id 結合 NumPy 遮罩，以 C 語言層級完成降維與碎屑過濾
 """
 
 import logging
 from typing import Any
 
+import numpy as np
 import rasterio
 from rasterio.mask import mask as rasterio_mask
 from rasterio.crs import CRS
-from shapely.geometry import (
-    shape, mapping,
-    Polygon, MultiPolygon,
-    LineString, MultiLineString,
-    Point, MultiPoint,
-    GeometryCollection,
-)
-from shapely.ops import transform as shapely_transform
+import shapely
+from shapely.geometry import shape, mapping
 from shapely.strtree import STRtree
-from shapely.validation import make_valid
 import pyproj
 
 logger = logging.getLogger("functions.clip_ops")
 
-# Sliver 面積閾值（平方單位，與輸入 CRS 一致）
-# 投影座標系建議設為 1e-6（平方公尺級）；地理座標系建議 1e-10（平方度）
 _DEFAULT_SLIVER_AREA_THRESHOLD = 1e-10
 
 
 def _geojson_to_shapely(geojson_geom: dict) -> Any:
-    """將 GeoJSON geometry dict 轉為 Shapely 幾何體，並自動修復無效拓撲。"""
     geom = shape(geojson_geom)
-    if not geom.is_valid:
-        geom = make_valid(geom)
+    if not shapely.is_valid(geom):
+        geom = shapely.make_valid(geom)
         logger.warning("輸入矢量幾何體無效，已自動修復。")
     return geom
 
@@ -47,10 +37,6 @@ def _build_transformer(
     src_crs_str: str,
     dst_crs: CRS,
 ) -> pyproj.Transformer | None:
-    """
-    建立 pyproj.Transformer；若兩個 CRS 相同則返回 None（無需轉換）。
-    Transformer 建構提取到迴圈外，避免重複開銷。
-    """
     src_crs_str = src_crs_str or "EPSG:4326"
     dst_crs_str = dst_crs.to_string()
 
@@ -62,138 +48,56 @@ def _build_transformer(
     )
 
 
-def _reproject_shapely(
-    shapely_geom: Any,
-    transformer: pyproj.Transformer | None,
-) -> Any:
-    """使用預建的 Transformer 做重投影；transformer 為 None 時直接返回原幾何體。"""
-    if transformer is None:
-        return shapely_geom
-    return shapely_transform(transformer.transform, shapely_geom)
-
-
-def _extract_by_dimension(geom: Any, target_dim: int) -> list[Any]:
-    """
-    從任意幾何體（含 GeometryCollection）中遞迴提取指定維度的子幾何。
-
-    target_dim:
-      2 → Polygon / MultiPolygon
-      1 → LineString / MultiLineString
-      0 → Point / MultiPoint
-    """
-    _DIM_TYPES = {
-        2: (Polygon, MultiPolygon),
-        1: (LineString, MultiLineString),
-        0: (Point, MultiPoint),
-    }
-    target_types = _DIM_TYPES[target_dim]
-
-    if isinstance(geom, target_types):
-        # MultiXxx：拆解為子幾何列表
-        if hasattr(geom, "geoms"):
-            return list(geom.geoms)
-        return [geom]
-
-    if isinstance(geom, GeometryCollection):
-        result = []
-        for sub in geom.geoms:
-            result.extend(_extract_by_dimension(sub, target_dim))
-        return result
-
-    return []
-
-
 def _clean_clipped_geometry(
     clipped_geom: Any,
     original_geom: Any,
     sliver_area_threshold: float = _DEFAULT_SLIVER_AREA_THRESHOLD,
 ) -> Any | None:
-    """
-    清理 intersection 後的幾何體，處理三類拓撲污染：
-
-    1. GeometryCollection / 降維：只保留與原始幾何同維度的子幾何
-    2. Sliver 碎屑：面積低於閾值的多邊形視為無效並丟棄
-    3. 空幾何：返回 None，呼叫端應跳過該 Feature
-
-    參數
-    ----
-    clipped_geom          : intersection 的原始輸出
-    original_geom         : 原始要素幾何體（用於判斷目標維度）
-    sliver_area_threshold : 面積過濾閾值（僅對多邊形有效）
-
-    返回
-    ----
-    清理後的 Shapely 幾何體，或 None（表示應丟棄該 Feature）
-    """
-    if clipped_geom is None or clipped_geom.is_empty:
+    """向量化的幾何體清理函數，無需遞迴與 isinstance。"""
+    if clipped_geom is None or shapely.is_empty(clipped_geom):
         return None
 
-    #  Step 1：判斷原始幾何的目標維度
-    if isinstance(original_geom, (Polygon, MultiPolygon)):
-        target_dim = 2
-    elif isinstance(original_geom, (LineString, MultiLineString)):
-        target_dim = 1
+    # Step 1: 確定目標維度 (Shapely Type IDs: 0=Point, 1=Line, 3=Poly, Multi+3)
+    orig_type = shapely.get_type_id(original_geom)
+    if orig_type in (3, 6):
+        target_dims = (3, 6)
+        is_poly = True
+    elif orig_type in (1, 5):
+        target_dims = (1, 5)
+        is_poly = False
     else:
-        target_dim = 0
+        target_dims = (0, 4)
+        is_poly = False
 
-    #  Step 2：從 intersection 結果中提取同維度子幾何
-    # 若 intersection 結果本身就是目標類型，直接使用；
-    # 否則從 GeometryCollection 中遞迴提取。
-    _TARGET_TYPES = {
-        2: (Polygon, MultiPolygon),
-        1: (LineString, MultiLineString),
-        0: (Point, MultiPoint),
-    }
-    if isinstance(clipped_geom, _TARGET_TYPES[target_dim]):
-        parts = (
-            list(clipped_geom.geoms)
-            if hasattr(clipped_geom, "geoms")
-            else [clipped_geom]
-        )
-    else:
-        parts = _extract_by_dimension(clipped_geom, target_dim)
-        if parts:
-            dropped_types = {
-                type(g).__name__
-                for g in (
-                    clipped_geom.geoms
-                    if hasattr(clipped_geom, "geoms")
-                    else [clipped_geom]
-                )
-                if not isinstance(g, _TARGET_TYPES[target_dim])
-            }
-            if dropped_types:
-                logger.debug(
-                    f"降維幾何已過濾，丟棄類型: {dropped_types}"
-                )
+    # Step 2: 拍平所有 GeometryCollection 並取得子幾何體陣列與類型
+    parts = shapely.get_parts(clipped_geom)
+    types = shapely.get_type_id(parts)
 
-    if not parts:
+    # 透過 NumPy 遮罩過濾降維物件
+    mask = np.isin(types, target_dims)
+    parts = parts[mask]
+
+    if len(parts) == 0:
         return None
 
-    # Step 3：Sliver 面積過濾（僅對多邊形）
-    if target_dim == 2:
-        before_count = len(parts)
-        parts = [p for p in parts if p.area > sliver_area_threshold]
-        sliver_count = before_count - len(parts)
-        if sliver_count:
-            logger.debug(
-                f"已過濾 {sliver_count} 個 Sliver 碎屑 "
-                f"(閾值={sliver_area_threshold})"
-            )
+    # Step 3: Sliver 面積過濾（向量化計算所有子塊面積）
+    if is_poly:
+        areas = shapely.area(parts)
+        parts = parts[areas > sliver_area_threshold]
+        if len(parts) == 0:
+            return None
 
-    if not parts:
-        return None
-
-    # Step 4：重組為合法幾何體
+    # Step 4: 幾何重建
     if len(parts) == 1:
         return parts[0]
 
-    _MULTI_CONSTRUCTORS = {
-        2: MultiPolygon,
-        1: MultiLineString,
-        0: MultiPoint,
-    }
-    return _MULTI_CONSTRUCTORS[target_dim](parts)
+    # 利用向量化構建函數，直接合併相同維度的陣列
+    if is_poly:
+        return shapely.multipolygons(parts)
+    elif orig_type in (1, 5):
+        return shapely.multilinestrings(parts)
+    else:
+        return shapely.multipoints(parts)
 
 
 def clip_raster_by_vector(
@@ -205,13 +109,6 @@ def clip_raster_by_vector(
     nodata: float | None = None,
     all_touched: bool = False,
 ) -> dict:
-    """
-    用一個或多個矢量多邊形裁剪柵格影像。
-
-    優化點
-    ------
-    - Transformer 只建構一次，不在迴圈內重複建立。
-    """
     if not geojson_geometries:
         raise ValueError("geojson_geometries 不能為空。")
 
@@ -223,14 +120,24 @@ def clip_raster_by_vector(
             else (src_nodata if src_nodata is not None else 0)
         )
 
-        # Transformer 提取到迴圈外，只建構一次
         transformer = _build_transformer(src_vector_crs, raster_crs)
+        shapely_geoms = [_geojson_to_shapely(g) for g in geojson_geometries]
 
-        reprojected_geoms = []
-        for geojson_geom in geojson_geometries:
-            shapely_geom = _geojson_to_shapely(geojson_geom)
-            reprojected = _reproject_shapely(shapely_geom, transformer)
-            reprojected_geoms.append(mapping(reprojected))
+        # 向量化批次座標轉換
+        if transformer is not None:
+            def transform_coords(pts):
+                # 處理 2D/3D 座標陣列
+                if pts.shape[1] == 3:
+                    x, y, z = transformer.transform(pts[:, 0], pts[:, 1], pts[:, 2])
+                    return np.column_stack((x, y, z))
+                else:
+                    x, y = transformer.transform(pts[:, 0], pts[:, 1])
+                    return np.column_stack((x, y))
+
+            # 將所有多邊形座標視為連續陣列，單次通過 PyProj C 擴展
+            shapely_geoms = shapely.transform(shapely_geoms, transform_coords)
+
+        reprojected_geoms = [mapping(g) for g in shapely_geoms]
 
         clipped_data, clipped_transform = rasterio_mask(
             src,
@@ -271,89 +178,78 @@ def clip_vector_by_raster(
     mode: str = "intersects",
     sliver_area_threshold: float = _DEFAULT_SLIVER_AREA_THRESHOLD,
 ) -> dict:
-    """
-    用柵格的空間範圍過濾/裁剪矢量要素。
-
-    優化點
-    ------
-    - STRtree 空間索引：O(n) 線性掃描 → O(log n + k) 索引查詢
-    - 兩階段過濾：bbox 預篩（索引層）+ 精確幾何判斷（精確層）
-
-    修復點
-    ------
-    - clip 模式：_clean_clipped_geometry 處理降維幾何、GeometryCollection、Sliver
-
-    參數
-    ----
-    sliver_area_threshold : clip 模式下的 Sliver 面積過濾閾值
-    """
     if not geojson_features:
         raise ValueError("geojson_features 不能為空。")
 
     if mode not in ("intersects", "within", "clip"):
-        raise ValueError(
-            f"不支持的 mode: {mode}，可選值為 intersects / within / clip"
-        )
+        raise ValueError(f"不支持的 mode: {mode}")
 
-    # 將裁剪框轉換到矢量 CRS
     raster_box_wgs84 = _geojson_to_shapely(clip_geometry)
 
     if src_vector_crs and src_vector_crs.upper() != "EPSG:4326":
         transformer = pyproj.Transformer.from_crs(
             "EPSG:4326", src_vector_crs, always_xy=True
         )
-        raster_box = shapely_transform(transformer.transform, raster_box_wgs84)
+        def transform_box(pts):
+            x, y = transformer.transform(pts[:, 0], pts[:, 1])
+            return np.column_stack((x, y))
+        raster_box = shapely.transform(raster_box_wgs84, transform_box)
     else:
         raster_box = raster_box_wgs84
 
-    # Step 1：預解析所有幾何體，過濾掉無幾何的 feature
-    indexed_features: list[tuple[int, Any]] = []
+    # 預處理：同時建立索引查詢用的映射與 NumPy 幾何陣列
+    indexed_features = []
+    geoms_list = []
     for i, feature in enumerate(geojson_features):
         raw_geom = feature.get("geometry")
         if raw_geom:
-            indexed_features.append((i, _geojson_to_shapely(raw_geom)))
+            geom = _geojson_to_shapely(raw_geom)
+            indexed_features.append((i, geom))
+            geoms_list.append(geom)
 
-    if not indexed_features:
+    if not geoms_list:
         return _empty_feature_collection(len(geojson_features), mode)
 
-    # Step 2：建立 STRtree 空間索引
-    geom_list = [geom for _, geom in indexed_features]
-    tree = STRtree(geom_list)
+    geom_array = np.array(geoms_list)
+    tree = STRtree(geom_array)
 
-    # Step 3：用 bbox 快速查詢候選集，再做精確判斷
     predicate = "contains" if mode == "within" else "intersects"
-    candidate_positions = tree.query(raster_box, predicate=predicate)
+    # 返回 NumPy 索引陣列
+    candidate_indices = tree.query(raster_box, predicate=predicate)
+
+    if len(candidate_indices) == 0:
+        return _empty_feature_collection(len(geojson_features), mode)
 
     result_features = []
-    skipped_sliver = 0
     skipped_dimension = 0
 
-    for pos in candidate_positions:
-        orig_idx, feat_geom = indexed_features[pos]
-        feature = geojson_features[orig_idx]
+    if mode in ("intersects", "within"):
+        for idx in candidate_indices:
+            orig_idx = indexed_features[idx][0]
+            result_features.append(geojson_features[orig_idx])
 
-        if mode in ("intersects", "within"):
-            result_features.append(feature)
+    elif mode == "clip":
+        # 向量化交集運算：將 C 語言執行範圍極大化
+        candidate_geoms = geom_array[candidate_indices]
+        clipped_geoms = shapely.intersection(candidate_geoms, raster_box)
 
-        elif mode == "clip":
-            raw_clipped = feat_geom.intersection(raster_box)
+        for i, idx in enumerate(candidate_indices):
+            orig_idx = indexed_features[idx][0]
+            feature = geojson_features[orig_idx]
 
-            # ✅ 修復：清理降維幾何、GeometryCollection、Sliver 碎屑
             cleaned = _clean_clipped_geometry(
-                raw_clipped,
-                feat_geom,
+                clipped_geoms[i],
+                candidate_geoms[i],
                 sliver_area_threshold=sliver_area_threshold,
             )
 
             if cleaned is None:
-                # 判斷是哪種原因被過濾，記錄統計
-                if not raw_clipped.is_empty:
+                if not shapely.is_empty(clipped_geoms[i]):
                     skipped_dimension += 1
                 continue
 
-            # 二次驗證：確保輸出幾何有效
-            if not cleaned.is_valid:
-                cleaned = make_valid(cleaned)
+            if not shapely.is_valid(cleaned):
+                cleaned = shapely.make_valid(cleaned)
 
             result_features.append({
                 **feature,
@@ -361,9 +257,7 @@ def clip_vector_by_raster(
             })
 
     if skipped_dimension:
-        logger.warning(
-            f"clip 模式：{skipped_dimension} 個要素因降維或 Sliver 被過濾。"
-        )
+        logger.warning(f"clip 模式：{skipped_dimension} 個要素因降維或 Sliver 被過濾。")
 
     logger.info(
         f"柵格裁剪矢量完成: 輸入 {len(geojson_features)} 個要素，"
@@ -383,7 +277,6 @@ def clip_vector_by_raster(
 
 
 def _empty_feature_collection(input_count: int, mode: str) -> dict:
-    """返回空的 FeatureCollection。"""
     return {
         "type": "FeatureCollection",
         "features": [],
