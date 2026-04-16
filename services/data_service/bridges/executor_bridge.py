@@ -14,43 +14,6 @@ logger = logging.getLogger("data_service.executor_bridge")
 
 # 执行服务的内部通信地址
 EXECUTOR_URL = "http://localhost:8004/execute"
-# 矢量标注服务的内部通信地址
-ANNOTATION_SERVICE_URL = "http://localhost:8001"
-
-
-async def internal_fetch_features(layer_id: UUID) -> List[Dict[str, Any]]:
-    """
-    跨服务调用：从 annotation_service (8001) 获取图层的矢量要素。
-    用于矢量转栅格等分析任务。
-    """
-    url = f"{ANNOTATION_SERVICE_URL}/layers/{layer_id}/features/export"
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(url)
-            # 如果接口不存在或报错，抛出异常
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail=f"图层 {layer_id} 不存在或未找到要素导出接口")
-
-            response.raise_for_status()
-            data = response.json()
-
-            # 根据后端实现，通常返回的是 List[Dict] 或 {"features": [...]}
-            # 如果是 FeatureCollection 格式，提取 features 数组
-            if isinstance(data, dict) and data.get("type") == "FeatureCollection":
-                return data.get("features", [])
-
-            return data
-
-        except httpx.ConnectError:
-            logger.error(f"无法连接到矢量服务: {url}")
-            raise HTTPException(status_code=503, detail="矢量标注服务暂不可用")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"矢量服务返回错误: {e.response.text}")
-            raise HTTPException(status_code=e.response.status_code, detail=f"获取矢量数据失败: {e.response.text}")
-        except Exception as e:
-            logger.error(f"获取矢量数据时发生未知错误: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"内部通讯故障: {str(e)}")
 
 
 async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[int], output_name: str):

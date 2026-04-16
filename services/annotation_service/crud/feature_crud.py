@@ -163,3 +163,26 @@ class FeatureCRUD:
         await self.db.commit()
         return len(data_to_insert)
 
+    async def export_by_layer(self, layer_id: UUID) -> List[Dict[str, Any]]:
+        """
+        全量导出指定图层的所有要素
+        """
+        query = select(
+            Feature.id,
+            Feature.layer_id,
+            Feature.category,
+            Feature.properties,
+            ST_AsGeoJSON(Feature.geom).label("geometry_json")
+        ).where(Feature.layer_id == layer_id)
+
+        result = await self.db.execute(query)
+        features = []
+        for row in result:
+            features.append({
+                "id": row.id,
+                "layer_id": row.layer_id,
+                "type": "Feature",
+                "geometry": json.loads(row.geometry_json),
+                "properties": {**row.properties, "category": row.category}
+            })
+        return features

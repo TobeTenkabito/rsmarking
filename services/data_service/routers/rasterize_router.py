@@ -1,12 +1,12 @@
 import logging
 from uuid import UUID
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.data_service.database import get_db
 import services.data_service.db_ops as db_ops
 from services.data_service.processor import RasterProcessor
-from services.data_service.executor_bridge import internal_fetch_features
+from services.data_service.bridges.vector_bridge import internal_fetch_features
 
 logger = logging.getLogger("data_service.rasterize")
 router = APIRouter(prefix="/rasterize", tags=["Analysis"])

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.data_service.database import get_db
-from services.data_service.executor_bridge import dispatch_user_script
+from services.data_service.bridges.executor_bridge import dispatch_user_script
 
 logger = logging.getLogger("data_service.script")
 router = APIRouter()

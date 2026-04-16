@@ -220,3 +220,21 @@ async def import_shapefile(
         "fields_registered": len(field_defs),
         "layer_id": str(layer_id),
     }
+
+
+@router.get(
+    "/layers/{layer_id}/features/export",
+    response_model=FeatureCollectionResponse,
+    tags=["Export"],
+    summary="全量导出图层数据用于分析"
+)
+async def export_features(
+    layer_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    专门供给其他内部服务（如计算引擎）调用的全量数据接口
+    """
+    crud = FeatureCRUD(db)
+    features = await crud.export_by_layer(layer_id)
+    return {"type": "FeatureCollection", "features": features}
