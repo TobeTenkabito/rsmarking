@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def extract_cloud(bands: list[np.ndarray], threshold: float) -> np.ndarray:
+def extract_cloud(bands: list[np.ndarray], threshold: float, mode: str = "default") -> np.ndarray:
     if len(bands) < 1:
         raise ValueError("Cloud extraction requires at least 1 band (Blue)")
 

@@ -148,23 +148,25 @@ export const RasterAPI = {
         return fetch(`${BASE_URL}/extract-water`, {method: 'POST', body: formData});
     },
 
-    async extractBuildings(bandIds, newName, redId = null) {
+    async extractBuildings(bandIds, newName, threshold = 0.0, mode = "") {
         const formData = new FormData();
         bandIds.forEach((id, index) => {
             formData.append(`id_${index + 1}`, id);
         });
         formData.append('new_name', newName);
-        if (redId) formData.append('red_id', redId);
+        formData.append('threshold', threshold);
+        if (mode) formData.append('mode', mode);
         return fetch(`${BASE_URL}/extract-buildings`, { method: 'POST', body: formData });
     },
 
-    async extractClouds(bandIds, newName, swirId = null) {
+    async extractClouds(bandIds, newName, threshold = 0.0, mode = "") {
         const formData = new FormData();
         bandIds.forEach((id, index) => {
             formData.append(`id_${index + 1}`, id);
         });
         formData.append('new_name', newName);
-        if (swirId) formData.append('swir_id', swirId);
+        formData.append('threshold', threshold);
+        if (mode) formData.append('mode', mode);
         return fetch(`${BASE_URL}/extract-clouds`, { method: 'POST', body: formData });
     },
 
@@ -300,7 +302,7 @@ export const RasterAPI = {
     /**
      * 用矢量多边形裁剪栅格，结果注册为新栅格记录走 COG 流程
      * @param {string}   rasterId       - 被裁剪的栅格 index_id
-     * @param {string}   newName        - 输出栅格文件名（不含 .tif 也可，后端会补全）
+     * @param {string}   newName        - 输出栅格文件名（不含 .tif 也可）
      * @param {Array}    geometries     - GeoJSON geometry 对象数组
      * @param {string}   [srcVectorCrs] - 矢量数据的 CRS，默认 "EPSG:4326"
      * @param {boolean}  [crop=true]    - 是否按几何边界裁剪（false 则仅掩膜）

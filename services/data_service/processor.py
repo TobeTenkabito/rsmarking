@@ -230,7 +230,7 @@ class RasterProcessor:
     @staticmethod
     def run_cloud_extraction(paths: list[str], output_path: str, **kwargs,) -> None:
         RasterProcessor._run_extraction_task(
-            paths, output_path, RasterProcessor._ExtractionRegistry.get("cloud"), min_bands=1, **kwargs,)
+            paths, output_path, RasterProcessor._ExtractionRegistry.get("cloud"), min_bands=2, **kwargs,)
 
     @staticmethod
     def clip_raster_by_vector(

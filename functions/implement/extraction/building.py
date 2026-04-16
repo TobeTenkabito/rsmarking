@@ -2,7 +2,7 @@ import numpy as np
 from ..spectral_indices import calculate_ndbi_array, calculate_ndvi_array
 
 
-def extract_building(bands: list[np.ndarray], threshold: float) -> np.ndarray:
+def extract_building(bands: list[np.ndarray], threshold: float, mode: str = "ndbi") -> np.ndarray:
     if len(bands) < 2:
         raise ValueError("Building extraction requires at least 2 bands")
 

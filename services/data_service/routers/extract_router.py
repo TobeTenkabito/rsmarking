@@ -54,6 +54,8 @@ async def extract_water_api(
 async def extract_buildings_api(
         request: Request,
         new_name: str = Form(...),
+        threshold: float = Form(None),
+        mode: Optional[str] = Form(None),
         db: AsyncSession = Depends(get_db)
 ):
     band_ids = await db_ops.get_dynamic_band_ids(request)
@@ -61,7 +63,9 @@ async def extract_buildings_api(
         raise HTTPException(status_code=400, detail="No band IDs provided.")
     return await db_ops.process_extraction_task(
         db, band_ids, new_name, "building",
-        RasterProcessor.run_building_extraction
+        RasterProcessor.run_building_extraction,
+        threshold=threshold,
+        mode=mode
     )
 
 
@@ -69,6 +73,8 @@ async def extract_buildings_api(
 async def extract_clouds_api(
         request: Request,
         new_name: str = Form(...),
+        threshold: float = Form(None),
+        mode: Optional[str] = Form(None),
         db: AsyncSession = Depends(get_db)
 ):
     band_ids = await db_ops.get_dynamic_band_ids(request)
@@ -76,5 +82,7 @@ async def extract_clouds_api(
         raise HTTPException(status_code=400, detail="No band IDs provided.")
     return await db_ops.process_extraction_task(
         db, band_ids, new_name, "cloud",
-        RasterProcessor.run_cloud_extraction
+        RasterProcessor.run_cloud_extraction,
+        threshold=threshold,
+        mode=mode
     )
