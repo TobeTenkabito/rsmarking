@@ -142,6 +142,17 @@ export class GlobalBridge {
             switchChangeMethod:     (m) => this.app.change?.switchMethod(m),
             loadChangeResult:       (w) => this.app.change?.loadResultToMap(w),
 
+            // 矢量转栅格
+            openConversionModal:  () => this.app.conversion?.openModal(),
+            closeConversionModal: () => this.app.conversion?.closeModal(),
+            handleConversionNameInput: () => this.app.conversion?.handleNameInput(),
+            handleConversionStepBack:  () => this.app.conversion?.handleStepBack(),
+            handleConversionStepNext:  () => this.app.conversion?.handleStepNext(),
+            handleConversionExecute:   () => this.app.conversion?.handleExecute(),
+            handleConversionSelectLayer: (id) => this.app.conversion?.handleSelectLayer(id),
+            handleConversionSelectRef:   (id) => this.app.conversion?.handleSelectRef(id),
+
+
             // 兼容性接口
             refreshData: () => this.app.raster.refreshData(),
             toggleGlobeView: () => this.app.mapEngine?.toggleGlobeView(),
