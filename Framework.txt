@@ -16,6 +16,7 @@ rsmarking
 │   │   │   ├── CalculatorModule.js  # 负责栅格计算器逻辑
 │   │   │   ├── ChangeDetectionModule.js  # 時序比較
 │   │   │   ├── ClipModule.js  # 裁剪模塊
+│   │   │   ├── ConversionModule.js #矢量转栅格
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── ExportModule.js  # 导出当前视图为地图
 │   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
@@ -63,9 +64,9 @@ rsmarking
 │   │   │   ├── raster_router.py
 │   │   │   ├── script_router.py
 │   │   │   └── upload_router.py
-│   │   ├── /bridges
-│   │   │   ├── executor_bridge.py 跨脚本服务调用
-│   │   │   └── vector_bridge.py  矢量服务调用
+│   │   ├── /bridges  #跨服务通信
+│   │   │   ├── executor_bridge.py 脚本服务
+│   │   │   └── vector_bridge.py  矢量服务
 │   │   ├── __init__.py
 │   │   ├── router.py      # 顶层路由
 │   │   ├── raster_field.py      # 业务表

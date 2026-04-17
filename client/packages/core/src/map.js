@@ -38,14 +38,17 @@ export class MapEngine {
     }
 
     _projectToWGS84(boundsArray, sourceCRS = "EPSG:32651") {
-        if (typeof proj4 === 'undefined') { console.error("[MapEngine] ❌ 未发现 proj4 库。"); return boundsArray; }
+        if (typeof proj4 === 'undefined') {
+            console.error("[MapEngine] ❌ 未发现 proj4 库。");
+            return boundsArray;
+        }
         try {
             const [xmin, ymin, xmax, ymax] = boundsArray.map(Number);
             if (Math.abs(xmin) <= 180 && Math.abs(xmax) <= 180 && Math.abs(ymin) <= 90 && Math.abs(ymax) <= 90) {
                 return [xmin, ymin, xmax, ymax];
             }
             const fromProj = this.PROJ_DEFS[sourceCRS] || sourceCRS;
-            const toProj = this.PROJ_DEFS["WGS84"];
+            const toProj   = this.PROJ_DEFS["WGS84"];
             const sw = proj4(fromProj, toProj, [xmin, ymin]);
             const ne = proj4(fromProj, toProj, [xmax, ymax]);
             console.log(`[MapEngine] 🔄 投影转换成功 [${sourceCRS} -> WGS84]`);
@@ -63,6 +66,24 @@ export class MapEngine {
         const [lngMin, latMin, lngMax, latMax] = wgs84Coords;
         return L.latLngBounds([latMin, lngMin], [latMax, lngMax]);
     }
+
+
+    _circleToPolygon(center, radiusMeters, sides = 64) {
+        const [lng, lat] = center;
+        const latR = radiusMeters / 111320;
+        const lngR = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
+        const coords = [];
+        for (let i = 0; i <= sides; i++) {
+            const angle = (i / sides) * 2 * Math.PI;
+            coords.push([
+                lng + lngR * Math.cos(angle),
+                lat + latR * Math.sin(angle)
+            ]);
+        }
+        return coords;
+    }
+
+
     async addGeoRasterLayer(raster) {
         const indexId = String(raster.index_id).trim();
         console.group(`%c[MapEngine] ➕ 图层加载: ${indexId}`, "color: #3b82f6;");
@@ -77,14 +98,14 @@ export class MapEngine {
             });
             layer.addTo(this.map);
             this.layers.set(indexId, layer);
-            const boundsData = raster.bounds || raster.extent;
+
+            const boundsData    = raster.bounds || raster.extent;
             const leafletBounds = this._convertBounds(boundsData);
             if (leafletBounds) {
                 this.map.fitBounds(leafletBounds, { padding: [20, 20] });
             }
-            if (this._is3D) {
-                this._syncRastersToCesium();
-            }
+            if (this._is3D) this._syncRastersToCesium();
+
             console.groupEnd();
             return true;
         } catch (error) {
@@ -99,6 +120,7 @@ export class MapEngine {
         const id = String(indexId).trim();
         console.log(`[MapEngine] ➖ 执行移除指令，目标标识: [${id}]`);
         let removed = false;
+
         const layer = this.layers.get(id);
         if (layer) {
             this.map.removeLayer(layer);
@@ -106,8 +128,9 @@ export class MapEngine {
             removed = true;
             console.log(`[MapEngine] ✅ 已成功移除图层引用: ${id}`);
         }
+
         this.map.eachLayer((l) => {
-            const optId = l.options && String(l.options.index_id || "").trim();
+            const optId    = l.options && String(l.options.index_id || "").trim();
             const urlMatch = l._url && l._url.includes(`/tile/${id}/`);
             if (optId === id || urlMatch) {
                 this.map.removeLayer(l);
@@ -118,10 +141,7 @@ export class MapEngine {
         });
 
         if (!removed) console.warn(`[MapEngine] ⚠️ 地图上未发现活动图层 [${id}]`);
-
-        if (this._is3D) {
-            this._syncRastersToCesium();
-        }
+        if (this._is3D) this._syncRastersToCesium();
         return removed;
     }
 
@@ -129,8 +149,8 @@ export class MapEngine {
         const id = String(indexId).trim();
         console.group(`%c[MapEngine] 🎯 触发定位: ${id}`, "color: #f59e0b;");
         if (!this.map) { console.groupEnd(); return; }
-        let targetBoundsArray = Array.isArray(data) ? data : (data?.bounds || data?.extent || null);
-        const leafletBounds = this._convertBounds(targetBoundsArray);
+        const targetBoundsArray = Array.isArray(data) ? data : (data?.bounds || data?.extent || null);
+        const leafletBounds     = this._convertBounds(targetBoundsArray);
         if (leafletBounds) {
             this.map.invalidateSize();
             this.map.fitBounds(leafletBounds, { padding: [40, 40], animate: true });
@@ -143,43 +163,36 @@ export class MapEngine {
         let vectorLayer = this.vectorLayers.get(layerId);
 
         const getFeatureStyle = (feature) => {
-            const fid = feature.id || feature.properties?.id;
+            const fid        = feature.id || feature.properties?.id;
             const isSelected = fid && fid === selectedId;
             const featureColor = feature.properties?.color || "#4f46e5";
             return {
-                color: isSelected ? "#ef4444" : featureColor,
-                weight: isSelected ? 3 : 1.5,
-                opacity: 1,
-                fillColor: featureColor,
+                color:       isSelected ? "#ef4444" : featureColor,
+                weight:      isSelected ? 3 : 1.5,
+                opacity:     1,
+                fillColor:   featureColor,
                 fillOpacity: isSelected ? 0.5 : 0.2,
-                className: 'vector-polygon-blend'
+                className:   'vector-polygon-blend'
             };
         };
 
         const pointToLayer = (feature, latlng) => {
-            const props = feature.properties || {};
+            const props    = feature.properties || {};
             const drawType = props.draw_type;
-
             if (drawType === 'circle' && typeof props.radius_meters === 'number') {
-                return L.circle(latlng, {
-                    radius: props.radius_meters,
-                    ...getFeatureStyle(feature)
-                });
+                return L.circle(latlng, { radius: props.radius_meters, ...getFeatureStyle(feature) });
             }
             if (drawType === 'circlemarker') {
-                return L.circleMarker(latlng, {
-                    radius: 6,
-                    ...getFeatureStyle(feature)
-                });
+                return L.circleMarker(latlng, { radius: 6, ...getFeatureStyle(feature) });
             }
-        return L.marker(latlng);
-    };
+            return L.marker(latlng);
+        };
 
-    if (vectorLayer && typeof vectorLayer.options.pointToLayer !== 'function') {
-        this.map.removeLayer(vectorLayer);
-        this.vectorLayers.delete(layerId);
-        vectorLayer = null;
-    }
+        if (vectorLayer && typeof vectorLayer.options.pointToLayer !== 'function') {
+            this.map.removeLayer(vectorLayer);
+            this.vectorLayers.delete(layerId);
+            vectorLayer = null;
+        }
 
         if (!vectorLayer) {
             console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
@@ -199,17 +212,15 @@ export class MapEngine {
             vectorLayer.addTo(this.map);
             this.vectorLayers.set(layerId, vectorLayer);
             vectorLayer._lastSelectedId = selectedId;
-
-            if (this._is3D) {
-                this._syncSingleVectorToCesium(layerId);
-            }
+            if (this._is3D) this._syncSingleVectorToCesium(layerId);
             return;
         }
-        const newFeaturesMap = new Map();
-        const featuresToAdd = [];
-        const layerIndexById = new Map();
 
-        if (geojson && geojson.features) {
+        const newFeaturesMap  = new Map();
+        const featuresToAdd   = [];
+        const layerIndexById  = new Map();
+
+        if (geojson?.features) {
             geojson.features.forEach(f => {
                 const fid = f.id || f.properties?.id;
                 if (fid) newFeaturesMap.set(fid, f);
@@ -226,7 +237,7 @@ export class MapEngine {
             }
         });
 
-        if (geojson && geojson.features) {
+        if (geojson?.features) {
             geojson.features.forEach(f => {
                 const fid = f.id || f.properties?.id;
                 if (fid && !layerIndexById.has(fid)) featuresToAdd.push(f);
@@ -257,24 +268,19 @@ export class MapEngine {
             vectorLayer.setStyle(getFeatureStyle);
         }
 
-        if (this._is3D) {
-            this._syncSingleVectorToCesium(layerId);
-        }
+        if (this._is3D) this._syncSingleVectorToCesium(layerId);
     }
 
     syncVisibleLayers(visibleIdsArray) {
         if (!this.isReady) return;
         const visibleSet = new Set(visibleIdsArray);
-
         for (const [layerId, vectorLayer] of this.vectorLayers.entries()) {
             if (!visibleSet.has(layerId)) {
                 this.map.removeLayer(vectorLayer);
                 this.vectorLayers.delete(layerId);
             }
         }
-        if (this._is3D) {
-            this._syncVectorsToCesium();
-        }
+        if (this._is3D) this._syncVectorsToCesium();
     }
 
     removeVectorLayer(layerId) {
@@ -284,7 +290,6 @@ export class MapEngine {
             this.vectorLayers.delete(layerId);
             console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
         }
-
         if (this._is3D && this._cesiumViewer) {
             this._cesiumViewer.dataSources.getByName(layerId)
                 .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
@@ -311,20 +316,25 @@ export class MapEngine {
 
         this._cesiumViewer.imageryLayers.addImageryProvider(
             new Cesium.UrlTemplateImageryProvider({
-                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: ['a', 'b', 'c'],
+                url:          'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains:   ['a', 'b', 'c'],
                 maximumLevel: 19,
-                credit: '© OpenStreetMap contributors'
+                credit:       '© OpenStreetMap contributors'
             })
         );
 
         this._cesiumViewer.cesiumWidget.creditContainer.style.display = 'none';
+
+        // 使用 EllipsoidTerrainProvider（无真实地形）时，
+        // 开启深度测试会导致矢量要素被栅格瓦片遮挡，
+        // 尤其是线段在叠加影像图层后完全不可见。
+        this._cesiumViewer.scene.globe.depthTestAgainstTerrain = false;
+
         console.log('[MapEngine] 🌐 Cesium 3D 引擎已就绪');
     }
 
     switchTo3D() {
         if (this._is3D) return;
-
         this._initCesium();
 
         const center = this.map.getCenter();
@@ -340,7 +350,7 @@ export class MapEngine {
         this._syncVectorsToCesium();
 
         document.getElementById('cesium-container').style.display = 'block';
-        document.getElementById('map').style.visibility = 'hidden';
+        document.getElementById('map').style.visibility           = 'hidden';
 
         const btn   = document.getElementById('globe-toggle-btn');
         const label = document.getElementById('globe-btn-label');
@@ -363,7 +373,7 @@ export class MapEngine {
         }
 
         document.getElementById('cesium-container').style.display = 'none';
-        document.getElementById('map').style.visibility = 'visible';
+        document.getElementById('map').style.visibility           = 'visible';
         this.map.invalidateSize();
 
         const btn   = document.getElementById('globe-toggle-btn');
@@ -373,6 +383,10 @@ export class MapEngine {
 
         this._is3D = false;
         console.log('[MapEngine] 🗺️ 已切换回 2D 平面视图');
+    }
+
+    toggleGlobeView() {
+        this._is3D ? this.switchTo2D() : this.switchTo3D();
     }
 
     _syncRastersToCesium() {
@@ -385,7 +399,7 @@ export class MapEngine {
             const tileUrl = `${this.tileServiceBase}/tile/${indexId}/{z}/{x}/{y}.png?bands=1,2,3`;
             layers.addImageryProvider(
                 new Cesium.UrlTemplateImageryProvider({
-                    url: tileUrl,
+                    url:          tileUrl,
                     maximumLevel: 18
                 })
             );
@@ -394,10 +408,8 @@ export class MapEngine {
 
     _syncVectorsToCesium() {
         if (!this._cesiumViewer) return;
-
         this._cesiumViewer.dataSources.removeAll();
-
-        this.vectorLayers.forEach((leafletLayer, layerId) => {
+        this.vectorLayers.forEach((_, layerId) => {
             this._syncSingleVectorToCesium(layerId);
         });
     }
@@ -405,6 +417,7 @@ export class MapEngine {
     async _syncSingleVectorToCesium(layerId) {
         if (!this._cesiumViewer) return;
 
+        // 先清除同名旧数据源，避免重复叠加
         this._cesiumViewer.dataSources.getByName(layerId)
             .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
 
@@ -414,27 +427,60 @@ export class MapEngine {
         const geojson = leafletLayer.toGeoJSON();
         if (!geojson?.features?.length) return;
 
+        const processedFeatures = geojson.features.map(f => {
+            const drawType = f.properties?.draw_type;
+            const radius   = f.properties?.radius_meters;
+            if (
+                drawType === 'circle' &&
+                f.geometry?.type === 'Point' &&
+                typeof radius === 'number'
+            ) {
+                return {
+                    ...f,
+                    geometry: {
+                        type:        'Polygon',
+                        coordinates: [this._circleToPolygon(f.geometry.coordinates, radius)]
+                    }
+                };
+            }
+            return f;
+        });
+
+        const processedGeoJSON = { ...geojson, features: processedFeatures };
+
         try {
-            const dataSource = await Cesium.GeoJsonDataSource.load(geojson, {
+            const dataSource = await Cesium.GeoJsonDataSource.load(processedGeoJSON, {
                 clampToGround: true,
             });
 
             dataSource.entities.values.forEach(entity => {
-                const colorStr = entity.properties?.color?.getValue() ?? '#4f46e5';
+                const colorStr    = entity.properties?.color?.getValue() ?? '#4f46e5';
                 const cesiumColor = Cesium.Color.fromCssColorString(colorStr);
 
                 if (entity.polygon) {
                     entity.polygon.material     = cesiumColor.withAlpha(0.3);
                     entity.polygon.outlineColor  = cesiumColor;
                     entity.polygon.outline       = true;
+                    entity.polygon.arcType       = Cesium.ArcType.GEODESIC;
                 }
+
                 if (entity.polyline) {
-                    entity.polyline.material = cesiumColor;
+                    entity.polyline.material = new Cesium.ColorMaterialProperty(cesiumColor);
                     entity.polyline.width    = 2;
+                    entity.polyline.arcType  = Cesium.ArcType.GEODESIC;
+                    entity.polyline.clampToGround = true;
+                    entity.polyline.depthFailMaterial = new Cesium.PolylineDashMaterialProperty({
+                        color: cesiumColor.withAlpha(0.4)
+                    });
                 }
+
                 if (entity.point) {
-                    entity.point.color     = cesiumColor;
-                    entity.point.pixelSize = 8;
+                    entity.point.color          = cesiumColor;
+                    entity.point.pixelSize      = 8;
+                    entity.point.outlineColor   = Cesium.Color.WHITE;
+                    entity.point.outlineWidth   = 1;
+                    entity.point.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+                    entity.point.disableDepthTestDistance = Number.POSITIVE_INFINITY;
                 }
             });
 
@@ -444,8 +490,5 @@ export class MapEngine {
         } catch (err) {
             console.error(`[MapEngine] ❌ 矢量图层同步失败 [${layerId}]:`, err);
         }
-    }
-    toggleGlobeView() {
-        this._is3D ? this.switchTo2D() : this.switchTo3D();
     }
 }
