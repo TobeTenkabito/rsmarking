@@ -114,6 +114,11 @@ export class AnnotationModule {
             case 'rectangle':
                 this.currentHandler = new L.Draw.Rectangle(this.map, options);
                 break;
+            case 'polyline':
+            this.currentHandler = new L.Draw.Polyline(this.map, {
+                shapeOptions: { color, weight: 3 }
+            });
+            break;
             case 'marker':
                 this.currentHandler = new L.Draw.Marker(this.map);
                 break;

@@ -198,18 +198,37 @@
                                         <button onclick="RS.exitEditMode()" class="text-[10px] text-blue-600 hover:underline">退出</button>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-3 gap-2">
-                                    <!-- 事件名统一采用 handleSetDrawMode -->
+                                <div class="grid grid-cols-4 gap-2">
+                                    <!-- 多边形 -->
                                     <button onclick="RS.setDrawMode('polygon')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l-8 5 3 10h10l3-10-8-5z"></path></svg>
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l-8 5 3 10h10l3-10-8-5z"/>
+                                        </svg>
                                         <span class="text-[10px] font-medium">多边形</span>
                                     </button>
+
+                                    <!-- 矩形 -->
                                     <button onclick="RS.setDrawMode('rectangle')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v12H4z"></path></svg>
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v12H4z"/>
+                                        </svg>
                                         <span class="text-[10px] font-medium">矩形</span>
                                     </button>
+
+                                    <!-- 线段 -->
+                                    <button onclick="RS.setDrawMode('polyline')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20L20 4"/>
+                                        </svg>
+                                        <span class="text-[10px] font-medium">线段</span>
+                                    </button>
+
+                                    <!-- 打点 -->
                                     <button onclick="RS.setDrawMode('marker')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
                                         <span class="text-[10px] font-medium">打点</span>
                                     </button>
                                 </div>
