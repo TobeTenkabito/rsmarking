@@ -26,26 +26,32 @@ export class AnnotationModule {
             const { layerType, layer } = e;
             const geojson = layer.toGeoJSON();
             const activeLayerId = Store.state.activeVectorLayerId;
+
             if (!activeLayerId) {
                 this.map.removeLayer(layer);
                 console.warn("[Annotation] 未选择目标图层，放弃保存");
                 return;
             }
+
             this.app.ui.showGlobalLoader(true);
             try {
+                const extraProps = {};
+                if (layerType === 'circle' && typeof layer.getRadius === 'function') {
+                    extraProps.radius_meters = layer.getRadius();
+            }
+
                 const newFeature = await VectorAPI.createFeature(
                     activeLayerId,
-                    geojson.geometry,
-                    {
+                    geojson.geometry, {
                         category: "manual_annotation",
                         draw_type: layerType,
                         source: "web_editor",
                         created_at: new Date().toISOString(),
-                        color: Store.state.drawColor
+                        color: Store.state.drawColor,
+                        ...extraProps
                     }
                 );
                 console.log("[Annotation] 要素保存成功:", newFeature);
-                // 计算面积并写入
                 AreaAutoFill.run(activeLayerId, newFeature.id, geojson.geometry);
 
                 this.map.removeLayer(layer);
@@ -98,10 +104,11 @@ export class AnnotationModule {
 
         this.currentType = mode;
         const color = Store.state.drawColor;
-        const options = {
+
+        const shapeOptions = {
             shapeOptions: {
                 color: color,
-                fillcolor: color,
+                fillColor: color,
                 fillOpacity: 0.2,
                 weight: 3
             }
@@ -109,18 +116,31 @@ export class AnnotationModule {
 
         switch (mode) {
             case 'polygon':
-                this.currentHandler = new L.Draw.Polygon(this.map, options);
+                this.currentHandler = new L.Draw.Polygon(this.map, shapeOptions);
                 break;
             case 'rectangle':
-                this.currentHandler = new L.Draw.Rectangle(this.map, options);
+                this.currentHandler = new L.Draw.Rectangle(this.map, shapeOptions);
                 break;
             case 'polyline':
-            this.currentHandler = new L.Draw.Polyline(this.map, {
+                this.currentHandler = new L.Draw.Polyline(this.map, {
                 shapeOptions: { color, weight: 3 }
-            });
+                });
             break;
             case 'marker':
                 this.currentHandler = new L.Draw.Marker(this.map);
+                break;
+            case 'circle':
+                this.currentHandler = new L.Draw.Circle(this.map, shapeOptions);
+                break;
+            case 'circlemarker':
+                this.currentHandler = new L.Draw.CircleMarker(this.map, {
+                    shapeOptions: {
+                        color,
+                        fillColor: color,
+                        fillOpacity: 0.8,
+                        weight: 2
+                    }
+                });
                 break;
             default:
                 console.warn("[Annotation] 不支持的绘制模式:", mode);
@@ -173,17 +193,38 @@ export class AnnotationModule {
      * 更新工具栏按钮激活状态
      */
     updateUI(activeMode) {
-        const buttons = document.querySelectorAll('.draw-btn');
-        buttons.forEach(btn => {
-            const onclickAttr = btn.getAttribute('onclick') || "";
-            const isMatch = activeMode && onclickAttr.includes(`'${activeMode}'`);
-            if (isMatch) {
-                btn.classList.add('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
-            } else {
-                btn.classList.remove('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
-            }
-        });
+    // 原有：更新 draw-btn 高亮
+    const buttons = document.querySelectorAll('.draw-btn');
+    buttons.forEach(btn => {
+        const onclickAttr = btn.getAttribute('onclick') || "";
+        const isMatch = activeMode && onclickAttr.includes(`'${activeMode}'`);
+        if (isMatch) {
+            btn.classList.add('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
+        } else {
+            btn.classList.remove('ring-2', 'ring-indigo-600', 'bg-indigo-50', 'border-indigo-500');
+        }
+    });
+
+    const label = document.getElementById('draw-active-label');
+    if (!label) return;
+
+    const labelMap = {
+        polygon:      '多边形',
+        rectangle:    '矩形',
+        circle:       '圆形',
+        polyline:     '线段',
+        marker:       '标记点',
+        circlemarker: '采样点',
+    };
+
+    if (activeMode && labelMap[activeMode]) {
+        label.textContent = `绘制中：${labelMap[activeMode]}`;
+        label.closest('#draw-active-indicator')?.classList.replace('text-slate-400', 'text-indigo-600');
+    } else {
+        label.textContent = '未选择工具';
+        label.closest('#draw-active-indicator')?.classList.replace('text-indigo-600', 'text-slate-400');
     }
+}
 
     /**
      * 切换编辑工具栏显隐

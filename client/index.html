@@ -185,53 +185,125 @@
                                 <!-- 动态注入示例：<div class="flex items-center px-2 py-1.5 bg-white border border-slate-100 rounded">...</div> -->
                             </div>
 
-                            <!-- 编辑过的标注工具栏 -->
+                            <!-- 编辑标注工具栏 -->
                             <div id="drawing-toolbar" class="hidden border-t border-indigo-100 pt-3 mt-2">
+                                <!-- 顶部操作栏 -->
                                 <div class="flex items-center justify-between mb-2">
                                     <div class="flex items-center space-x-2">
                                         <span class="text-[11px] font-bold text-slate-500">绘图工具箱</span>
-                                        <input type="color" id="draw-color-picker" value="#4f46e5" onchange="RS.setDrawColor(this.value)" class="w-5 h-5 p-0 border-0 rounded cursor-pointer">
+                                        <input type="color" id="draw-color-picker" value="#4f46e5"
+                                               onchange="RS.setDrawColor(this.value)"
+                                               class="w-5 h-5 p-0 border-0 rounded cursor-pointer">
                                     </div>
                                     <div class="flex items-center space-x-2">
-                                        <button id="btn-delete-feature" onclick="RS.deleteSelectedFeature()" class="hidden text-[10px] bg-red-50 text-red-400 px-2 py-1 rounded border border-red-200 hover:bg-red-100 hover:text-red-600 transition-colors">撤销</button>
+                                        <button id="btn-delete-feature" onclick="RS.deleteSelectedFeature()"
+                                                class="hidden text-[10px] bg-red-50 text-red-400 px-2 py-1 rounded border border-red-200 hover:bg-red-100 hover:text-red-600 transition-colors">
+                                            撤销
+                                        </button>
                                         <button onclick="RS.cancelDraw(null)" class="text-[10px] text-blue-500 hover:underline">取消</button>
                                         <button onclick="RS.exitEditMode()" class="text-[10px] text-blue-600 hover:underline">退出</button>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-4 gap-2">
-                                    <!-- 多边形 -->
-                                    <button onclick="RS.setDrawMode('polygon')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l-8 5 3 10h10l3-10-8-5z"/>
+                                <!-- 工具触发行：当前激活工具展示 + 打开弹窗按钮 -->
+                                <div class="flex items-center gap-2">
+                                    <!-- 当前激活工具展示区（无激活时显示占位） -->
+                                    <div id="draw-active-indicator"
+                                         class="flex-1 flex items-center gap-1.5 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-400 text-[11px]">
+                                        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H8v-2.414a2 2 0 01.586-1.414z"/>
                                         </svg>
-                                        <span class="text-[10px] font-medium">多边形</span>
-                                    </button>
-
-                                    <!-- 矩形 -->
-                                    <button onclick="RS.setDrawMode('rectangle')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v12H4z"/>
+                                        <span id="draw-active-label">未选择工具</span>
+                                    </div>
+                                    <!-- 打开工具箱弹窗按钮 -->
+                                    <button id="btn-open-toolbox"
+                                            onclick="document.getElementById('draw-toolbox-popup').classList.toggle('hidden')"
+                                            class="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-600 text-[11px] font-medium hover:bg-indigo-100 transition-colors">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M4 6h16M4 12h16M4 18h16"/>
                                         </svg>
-                                        <span class="text-[10px] font-medium">矩形</span>
-                                    </button>
-
-                                    <!-- 线段 -->
-                                    <button onclick="RS.setDrawMode('polyline')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20L20 4"/>
-                                        </svg>
-                                        <span class="text-[10px] font-medium">线段</span>
-                                    </button>
-
-                                    <!-- 打点 -->
-                                    <button onclick="RS.setDrawMode('marker')" class="draw-btn flex flex-col items-center justify-center p-2 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600">
-                                        <svg class="w-5 h-5 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                        </svg>
-                                        <span class="text-[10px] font-medium">打点</span>
+                                        工具
                                     </button>
                                 </div>
+                                <!-- ===== 工具箱弹窗浮层 ===== -->
+                                <div id="draw-toolbox-popup"
+                                     class="hidden absolute z-50 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg p-3 space-y-3">
+                                    <!-- 关闭按钮 -->
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-[11px] font-bold text-slate-500">选择绘制工具</span>
+                                        <button onclick="document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                class="text-slate-400 hover:text-slate-600">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <!-- 分组：面 -->
+                                    <div>
+                                        <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1.5">面</p>
+                                        <div class="grid grid-cols-2 gap-1.5">
+                                            <button onclick="RS.setDrawMode('polygon'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l-8 5 3 10h10l3-10-8-5z"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">多边形</span>
+                                            </button>
+                                            <button onclick="RS.setDrawMode('rectangle'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16v12H4z"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">矩形</span>
+                                            </button>
+                                            <button onclick="RS.setDrawMode('circle'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="9" stroke-width="2"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">圆形</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 分组：线 -->
+                                    <div>
+                                        <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1.5">线</p>
+                                        <div class="grid grid-cols-2 gap-1.5">
+                                            <button onclick="RS.setDrawMode('polyline'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20L20 4"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">线段</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- 分组：点 -->
+                                    <div>
+                                        <p class="text-[10px] text-slate-400 font-semibold uppercase tracking-wide mb-1.5">点</p>
+                                        <div class="grid grid-cols-2 gap-1.5">
+                                            <button onclick="RS.setDrawMode('marker'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">标记点</span>
+                                            </button>
+                                            <button onclick="RS.setDrawMode('circlemarker'); document.getElementById('draw-toolbox-popup').classList.add('hidden')"
+                                                    class="draw-btn flex items-center gap-2 px-2 py-1.5 bg-white border border-slate-200 rounded-lg hover:border-indigo-500 hover:text-indigo-600 transition-all text-slate-600 text-left">
+                                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <circle cx="12" cy="12" r="4" stroke-width="2"/>
+                                                    <circle cx="12" cy="12" r="9" stroke-width="1.5" stroke-dasharray="3 2"/>
+                                                </svg>
+                                                <span class="text-[10px] font-medium">采样点</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                             </div>
 
                         </div>

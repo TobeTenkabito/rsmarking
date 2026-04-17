@@ -141,6 +141,7 @@ export class MapEngine {
     updateVectorLayer(layerId, geojson, selectedId) {
         if (!this.isReady || !this.map) return;
         let vectorLayer = this.vectorLayers.get(layerId);
+
         const getFeatureStyle = (feature) => {
             const fid = feature.id || feature.properties?.id;
             const isSelected = fid && fid === selectedId;
@@ -154,10 +155,37 @@ export class MapEngine {
                 className: 'vector-polygon-blend'
             };
         };
+
+        const pointToLayer = (feature, latlng) => {
+            const props = feature.properties || {};
+            const drawType = props.draw_type;
+
+            if (drawType === 'circle' && typeof props.radius_meters === 'number') {
+                return L.circle(latlng, {
+                    radius: props.radius_meters,
+                    ...getFeatureStyle(feature)
+                });
+            }
+            if (drawType === 'circlemarker') {
+                return L.circleMarker(latlng, {
+                    radius: 6,
+                    ...getFeatureStyle(feature)
+                });
+            }
+        return L.marker(latlng);
+    };
+
+    if (vectorLayer && typeof vectorLayer.options.pointToLayer !== 'function') {
+        this.map.removeLayer(vectorLayer);
+        this.vectorLayers.delete(layerId);
+        vectorLayer = null;
+    }
+
         if (!vectorLayer) {
             console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
             vectorLayer = L.geoJSON(geojson, {
                 style: getFeatureStyle,
+                pointToLayer,
                 onEachFeature: (feature, layer) => {
                     layer.on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
@@ -177,7 +205,6 @@ export class MapEngine {
             }
             return;
         }
-
         const newFeaturesMap = new Map();
         const featuresToAdd = [];
         const layerIndexById = new Map();
@@ -229,6 +256,7 @@ export class MapEngine {
         } else if (featuresToAdd.length === 0) {
             vectorLayer.setStyle(getFeatureStyle);
         }
+
         if (this._is3D) {
             this._syncSingleVectorToCesium(layerId);
         }

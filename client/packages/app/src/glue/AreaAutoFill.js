@@ -19,6 +19,7 @@ const WGS84_A = 6378.137;             // 长半轴，单位：千米
 const WGS84_B = 6356.752314245;       // 短半轴，单位：千米
 const E2 = 1 - (WGS84_B * WGS84_B) / (WGS84_A * WGS84_A); // 偏心率平方
 const E = Math.sqrt(E2);              // 第一偏心率
+const AREA_FIELD_NAME = 'area';
 
 /**
  * 计算 WGS84 等面积积分 q(phi)
