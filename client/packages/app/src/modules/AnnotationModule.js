@@ -4,7 +4,7 @@
  */
 import { VectorAPI } from '../api/vector.js';
 import { Store } from '../store/index.js';
-import { AreaAutoFill } from '../glue/AreaAutoFill.js';
+import { AreaAutoFill } from '../utils/AreaAutoFill.js';
 
 export class AnnotationModule {
     constructor(app) {
@@ -52,7 +52,15 @@ export class AnnotationModule {
                     }
                 );
                 console.log("[Annotation] 要素保存成功:", newFeature);
-                AreaAutoFill.run(activeLayerId, newFeature.id, geojson.geometry);
+                const geojsonFeature = layer.toGeoJSON();
+                await AreaAutoFill.run(
+                activeLayerId,
+                newFeature.id,
+                geojson.geometry, {
+                draw_type: layerType,
+                ...extraProps
+                }
+            );
 
                 this.map.removeLayer(layer);
                 if (this.app.mapController && this.app.mapController.refreshVectorLayer) {

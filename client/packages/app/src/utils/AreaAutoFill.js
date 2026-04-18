@@ -177,6 +177,17 @@ async function writeAreaToFeature(featureId, areaKm2) {
     });
 }
 
+/**
+ * 计算圆的球面面积（球冠公式，基于等面积球半径 R_Q）
+ * @param {number} radiusMeters - 圆半径，单位：米
+ * @returns {number} 面积，单位：平方千米
+ */
+function computeCircleAreaKm2(radiusMeters) {
+    const r = radiusMeters / 1000; // 转换为千米
+    // 球冠面积公式：A = 2πR²(1 - cos(r/R))
+    return 2 * Math.PI * R_Q * R_Q * (1 - Math.cos(r / R_Q));
+}
+
 export const AreaAutoFill = {
 
     /**
@@ -193,32 +204,37 @@ export const AreaAutoFill = {
      * @param {Object} geometry    - GeoJSON Geometry（来自 layer.toGeoJSON().geometry）
      * @returns {Promise<void>}
      */
-    async run(layerId, featureId, geometry) {
+    async run(layerId, featureId, geometry, properties = {}) {
     console.log('[DEBUG] AreaAutoFill.run 已进入', layerId, featureId, geometry);
-        try {
-            // Step 1: 计算球面面积
-            const areaKm2 = computeSphericalAreaKm2(geometry);
+    try {
+        let areaKm2 = 0;
 
-            // 非面类型（点、线）直接跳过，不写入
-            if (areaKm2 === 0) {
-                console.log('[AreaAutoFill] 非面类型要素，跳过面积写入');
-                return;
-            }
+        const isCircle =
+            geometry?.type === 'Point' &&
+            properties?.draw_type === 'circle' &&
+            typeof properties?.radius_meters === 'number';
 
-            // 保留 6 位有效数字，避免浮点噪声
-            const areaRounded = parseFloat(areaKm2.toFixed(6));
-
-            // Step 2: 确保 area 字段存在（幂等操作）
-            await ensureAreaField(layerId);
-
-            // Step 3: 将面积写入要素属性
-            await writeAreaToFeature(featureId, areaRounded);
-
-            console.log(`[AreaAutoFill] 面积写入成功 → featureId=${featureId}, area=${areaRounded} km²`);
-
-        } catch (err) {
-            // 面积写入失败不阻断主流程
-            console.warn('[AreaAutoFill] 面积自动填充失败（不影响要素保存）:', err);
+        if (isCircle) {
+            areaKm2 = computeCircleAreaKm2(properties.radius_meters);
+        } else {
+            areaKm2 = computeSphericalAreaKm2(geometry);
         }
+
+        // 非面类型（普通点、线）直接跳过
+        if (areaKm2 === 0) {
+            console.log('[AreaAutoFill] 非面类型要素，跳过面积写入');
+            return;
+        }
+
+        const areaRounded = parseFloat(areaKm2.toFixed(6));
+
+        await ensureAreaField(layerId);
+        await writeAreaToFeature(featureId, areaRounded);
+
+        console.log(`[AreaAutoFill] 面积写入成功 → featureId=${featureId}, area=${areaRounded} km²`);
+
+    } catch (err) {
+        console.warn('[AreaAutoFill] 面积自动填充失败（不影响要素保存）:', err);
     }
+}
 };

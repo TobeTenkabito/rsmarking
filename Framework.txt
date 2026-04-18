@@ -7,8 +7,6 @@ rsmarking
 │   │   │   ├── change.js  # 時序比較api
 │   │   │   ├── raster.js  # 栅格api
 │   │   │   └── vector.js  # 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
-│   │   ├── /glue/  # 胶水层，负责整合已有组件实现微功能
-│   │   │   └── AreaAutoFill.js  # 自动填写面积
 │   │   ├── /modules/  # 功能模块
 │   │   │   ├── AIModule.js  # ai模块
 │   │   │   ├── AnalysisModule.js  # 负责光谱指数计算逻辑
@@ -31,6 +29,9 @@ rsmarking
 │   │   │   └── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
 │   │   ├── /store
 │   │   │   └── index.js     # 核心状态管理中心
+│   │   ├── /utils 工具组件
+│   │   │   ├── AreaAutoFill.js  # 自动填写面积
+│   │   │   └── geometry.js # 将 bounds_wgs84 数组转为 GeoJSON Polygon Geometry
 │   │   └── main.js         # 全局方法暴露
 │   ├── /packages/core/src  # 地图核心渲染接口
 │   │   └── map.js
