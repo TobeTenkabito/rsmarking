@@ -3,7 +3,7 @@ import { UIManager } from './core/UIManager.js';
 import { GlobalBridge } from './core/GlobalBridge.js';
 import { GlobalEvents } from './core/GlobalEvents.js';
 
-import { MapController } from './modules/MapController.js';
+import { MapController } from './core/MapController.js';
 import { AnalysisModule } from './modules/AnalysisModule.js';
 import { ExtractionModule } from './modules/ExtractionModule.js';
 import { AnnotationModule } from './modules/AnnotationModule.js';

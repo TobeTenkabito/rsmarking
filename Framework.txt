@@ -17,16 +17,16 @@ rsmarking
 │   │   │   ├── ConversionModule.js #矢量转栅格
 │   │   │   ├── ExtractionModule.js # 负责对象提取计算逻辑
 │   │   │   ├── ExportModule.js  # 导出当前视图为地图
-│   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
 │   │   │   ├── AnnotationModule.js  # 负责矢量标注的模块
 │   │   │   ├── RasterModule.js   # 负责栅格的加载、删除、波段合成
 │   │   │   ├── ProjectModule.js  # 负责矢量项目/图层的增删改查
 │   │   │   ├── ScriptModule.js  # 脚本逻辑
 │   │   │   └── WelcomeModule.js  # 初始页面
 │   │   ├── /core/  # 全局模块
-│   │   │   ├── UIManager.js      # 负责所有 DOM 注入和显隐状态
 │   │   │   ├── GlobalBridge.js   # 负责挂载 window.RS
-│   │   │   └── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
+│   │   │   ├── GlobalEvents.js   # 负责统筹键盘、地图、DOM 点击等事件监听
+│   │   │   ├── MapController.js  # 负责地图引擎与业务状态（Store/UI）的深度联动
+│   │   │   └── UIManager.js      # 负责所有 DOM 注入和显隐状态
 │   │   ├── /store
 │   │   │   └── index.js     # 核心状态管理中心
 │   │   ├── /utils 工具组件

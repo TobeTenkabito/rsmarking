@@ -1,4 +1,4 @@
-import { Store } from '../store/index.js';
+import { Store } from '../store';
 import { VectorAPI } from '../api/vector.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
 
