@@ -9,10 +9,6 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("ai_gateway.context_builder")
 
 
-# ------------------------------------------------------------------
-# 前端传入的地图上下文 Schema（扩展 AIRequestPayload 使用）
-# ------------------------------------------------------------------
-
 class MapViewport(BaseModel):
     """当前地图视野"""
     zoom: Optional[float]   = Field(None, description="当前缩放级别")
@@ -42,11 +38,6 @@ class MapContext(BaseModel):
     extra: Optional[Dict[str, Any]] = Field(
         None, description="其他前端自定义上下文"
     )
-
-
-# ------------------------------------------------------------------
-# 核心函数：将 MapContext 格式化为 Prompt 片段
-# ------------------------------------------------------------------
 
 def build_map_context_prompt(ctx: Optional[MapContext]) -> str:
     """

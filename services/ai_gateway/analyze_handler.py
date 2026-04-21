@@ -19,12 +19,9 @@ async def handle_analyze(
     db: AsyncSession,
     vector_db: AsyncSession,
     model_name: str,
-    # ── 新增参数（均有默认值，向后兼容旧调用方） ──
-    history: List[Dict[str, Any]] = None,
     map_context_str: str = "",
 ) -> Dict[str, Any]:
 
-    history = history or []
 
     # 1. 提取数据上下文
     if payload.data_type == DataType.RASTER:
@@ -59,7 +56,6 @@ async def handle_analyze(
     # 4. 拼接完整 messages：system + 历史记忆 + 本轮 user
     messages = (
         [{"role": "system", "content": system_prompt}]
-        + history
         + [{"role": "user", "content": user_prompt}]
     )
 

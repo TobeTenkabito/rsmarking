@@ -23,11 +23,8 @@ async def handle_modify(
     db: AsyncSession,
     vector_db: AsyncSession,
     model_name: str,
-    history: List[Dict[str, Any]] = None,
     map_context_str: str = "",
 ) -> Dict[str, Any]:
-
-    history = history or []
 
     # 1. 提取数据上下文
     if payload.data_type == DataType.RASTER:
@@ -61,7 +58,6 @@ async def handle_modify(
     #    最终写库依据的是本轮 validated_data，不受历史影响。
     messages = (
         [{"role": "system", "content": system_prompt}]
-        + history
         + [{"role": "user", "content": user_prompt}]
     )
 
