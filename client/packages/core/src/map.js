@@ -298,7 +298,8 @@ export class MapEngine {
 
     _initCesium() {
         if (this._cesiumViewer) return;
-
+        const container = document.getElementById('cesium-container');
+        container.style.display = 'block';
         this._cesiumViewer = new Cesium.Viewer('cesium-container', {
             terrainProvider:      new Cesium.EllipsoidTerrainProvider(),
             baseLayerPicker:      false,
@@ -324,11 +325,9 @@ export class MapEngine {
         );
 
         this._cesiumViewer.cesiumWidget.creditContainer.style.display = 'none';
-
-        // 使用 EllipsoidTerrainProvider（无真实地形）时，
-        // 开启深度测试会导致矢量要素被栅格瓦片遮挡，
-        // 尤其是线段在叠加影像图层后完全不可见。
         this._cesiumViewer.scene.globe.depthTestAgainstTerrain = false;
+
+        container.style.display = 'none';
 
         console.log('[MapEngine] 🌐 Cesium 3D 引擎已就绪');
     }
@@ -336,34 +335,30 @@ export class MapEngine {
     switchTo3D() {
         if (this._is3D) return;
         this._initCesium();
-
         const center = this.map.getCenter();
         const zoom   = this.map.getZoom();
         const height = 40000000 / Math.pow(2, zoom);
-
-        this._cesiumViewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(center.lng, center.lat, height),
-            duration: 1.2
-        });
-
-        this._syncRastersToCesium();
-        this._syncVectorsToCesium();
-
         document.getElementById('cesium-container').style.display = 'block';
-        document.getElementById('map').style.visibility           = 'hidden';
-
+        document.getElementById('map').style.visibility = 'hidden';
+        setTimeout(() => {
+            this._cesiumViewer.resize();
+            this._cesiumViewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(center.lng, center.lat, height),
+                duration: 1.2
+            });
+            this._syncRastersToCesium();
+            this._syncVectorsToCesium();
+        }, 50);  // 50ms 等待 reflow
         const btn   = document.getElementById('globe-toggle-btn');
         const label = document.getElementById('globe-btn-label');
         if (btn)   btn.classList.add('is-3d');
         if (label) label.textContent = '2D';
-
         this._is3D = true;
         console.log('[MapEngine] 🌐 已切换到 3D 球形视图');
     }
 
     switchTo2D() {
         if (!this._is3D) return;
-
         if (this._cesiumViewer) {
             const pos  = this._cesiumViewer.camera.positionCartographic;
             const lng  = Cesium.Math.toDegrees(pos.longitude);
@@ -371,16 +366,13 @@ export class MapEngine {
             const zoom = Math.round(Math.log2(40000000 / pos.height));
             this.map.setView([lat, lng], Math.max(2, Math.min(zoom, 18)));
         }
-
         document.getElementById('cesium-container').style.display = 'none';
-        document.getElementById('map').style.visibility           = 'visible';
+        document.getElementById('map').style.visibility = 'visible';
         this.map.invalidateSize();
-
         const btn   = document.getElementById('globe-toggle-btn');
         const label = document.getElementById('globe-btn-label');
         if (btn)   btn.classList.remove('is-3d');
         if (label) label.textContent = '3D';
-
         this._is3D = false;
         console.log('[MapEngine] 🗺️ 已切换回 2D 平面视图');
     }
