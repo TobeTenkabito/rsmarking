@@ -14,10 +14,12 @@ export const calculatorModal = `
             <div id="calc-help-panel" class="hidden mb-4 p-4 bg-purple-50 rounded-2xl border border-purple-100 text-[11px] text-purple-800 leading-relaxed animate-in fade-in slide-in-from-top-2">
                 <p class="font-bold mb-1">💡 语法说明：</p>
                 <ul class="list-disc list-inside space-y-1 opacity-80">
-                    <li>使用 <code class="bg-purple-200 px-1 rounded">A, B, C...</code> 代表下方绑定的影像图层</li>
+                    <li>使用 <code class="bg-purple-200 px-1 rounded">A, B</code> 代表绑定影像的全部波段</li>
+                    <li>使用 <code class="bg-purple-200 px-1 rounded">A_2</code> 代表 A 的第 2 波段（单波段输出）</li>
+                    <li>使用 <code class="bg-purple-200 px-1 rounded">A_2_3_4</code> 代表 A 的第 2、3、4 波段</li>
                     <li>条件运算：<code class="bg-purple-200 px-1 rounded">where(条件, 真值, 假值)</code></li>
-                    <li>示例：<code class="bg-purple-200 px-1 rounded">where(A > 0.5, A * 1.2, 0)</code></li>
-                    <li>支持：<code class="bg-purple-200 px-1 rounded">sin, cos, log, exp, sqrt, abs</code></li>
+                    <li>NDVI 示例：<code class="bg-purple-200 px-1 rounded">(A_4 - A_3) / (A_4 + A_3)</code></li>
+                    <li>全波段归一化：<code class="bg-purple-200 px-1 rounded">(A - B) / (A + B)</code></li>
                 </ul>
             </div>
             

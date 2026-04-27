@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 import numpy as np
 import numexpr as ne
 import rasterio
@@ -118,36 +119,154 @@ class RasterProcessor:
         build_raster_overviews(output_path)
 
     @staticmethod
-    def run_raster_calculator(path_mapping: dict[str, str], expression: str, output_path: str) -> None:
+    def _parse_var_tokens(expression: str) -> dict[str, tuple[str, list[int]]]:
         """
-        执行自定义栅格代数运算
-        :param path_mapping: 变量名到文件路径的映射，如 {"A": "path_to_a.tif", "B": "path_to_b.tif"}
-        :param expression: 数学表达式，如 "(A - B) / (A + B)"
-        :param output_path: 结果保存路径
+        解析表达式中所有变量 token，返回：
+        {
+          "A_2_3": ("A", [2, 3]),
+          "B":     ("B", []),   # 空列表 = 全波段
+        }
+        排除 numexpr 保留关键字。
+        """
+        RESERVED = {
+            'sin','cos','tan','arcsin','arccos','arctan','arctan2',
+            'sinh','cosh','tanh','exp','log','log10','sqrt','abs',
+            'where','pi','e','expm1','log1p','real','imag','conj',
+            'complex'
+        }
+        pattern = re.compile(r'\b([A-Za-z][A-Za-z0-9]*)(?:_(\d+(?:_\d+)*))?(?=\s*[^(]|$)')
+        tokens = {}
+        for m in re.finditer(r'\b([A-Za-z][A-Za-z0-9]*(?:_\d+)*)\b', expression):
+            token = m.group(1)
+            parts = token.split('_')
+            split_pos = len(parts)
+            for i, p in enumerate(parts):
+                if p.isdigit():
+                    split_pos = i
+                    break
+            var_name = '_'.join(parts[:split_pos])
+            indices = [int(p) for p in parts[split_pos:]]
+            if var_name.lower() in RESERVED:
+                continue
+            if not var_name:
+                continue
+            tokens[token] = (var_name, indices)
+        return tokens
+
+    @staticmethod
+    def _load_bands(path: str, indices: list[int]) -> np.ndarray:
+        """
+        从文件加载指定波段，返回 shape=(n_bands, H, W) 的 float32 数组。
+        indices 为空时加载全部波段。
+        """
+        with rasterio.open(path) as src:
+            total = src.count
+            if not indices:
+                bands_to_read = list(range(1, total + 1))
+            else:
+                for idx in indices:
+                    if idx < 1 or idx > total:
+                        raise ValueError(
+                            f"文件 {path} 共 {total} 个波段，请求的波段索引 {idx} 越界"
+                        )
+                bands_to_read = indices
+            data = src.read(bands_to_read).astype("float32")  # (n, H, W)
+        return data
+
+    @staticmethod
+    def _resolve_output_bands(token_arrays: dict[str, np.ndarray]) -> int:
+        """
+        按三级优先级校验并返回输出波段数：
+        1. 维度对等 → 逐波段
+        2. 单位维广播 → 广播
+        3. 多维不等 → 报错
+        """
+        band_counts = [arr.shape[0] for arr in token_arrays.values()]
+        unique = set(band_counts)
+        if len(unique) == 1:
+            return unique.pop()
+        non_one = [c for c in unique if c != 1]
+        if len(non_one) == 1:
+            return non_one[0]
+        raise ValueError(
+            f"波段维度不兼容，无法广播：{sorted(unique)}。"
+            f"仅支持「全部相等」或「一方为1波段」两种情况。"
+        )
+
+    @staticmethod
+    def run_raster_calculator(
+        path_mapping: dict[str, str],
+        expression: str,
+        output_path: str
+    ) -> None:
+        """
+        执行多波段栅格代数运算。
+        path_mapping: 基础变量名 -> 文件路径，如 {"A": "a.tif", "B": "b.tif"}
+        expression:   支持 A、A_2、A_2_3_4 三种变量形式
+        output_path:  结果 GeoTiff 路径
         """
         if not path_mapping:
-            raise ValueError("No input variables provided.")
-        arrays_dict = {}
+            raise ValueError("未提供输入变量。")
+        token_map = RasterProcessor._parse_var_tokens(expression)
+
+        # 校验所有基础变量名都在 path_mapping 中
+        for token, (var_name, _) in token_map.items():
+            if var_name not in path_mapping:
+                raise ValueError(f"表达式中的变量 '{var_name}' 未在映射中提供对应文件路径")
         meta = None
-        height, width = None, None
+        ref_height, ref_width = None, None
+        first_path = next(iter(path_mapping.values()))
+        with rasterio.open(first_path) as src:
+            meta = src.meta.copy()
+            ref_height, ref_width = src.height, src.width
+
+        # 校验所有文件空间维度一致
         for var_name, path in path_mapping.items():
             with rasterio.open(path) as src:
-                if meta is None:
-                    meta = src.meta.copy()
-                    meta.update({"dtype": "float32", "count": 1, "driver": "GTiff"})
-                    height, width = src.height, src.width
-                elif src.height != height or src.width != width:
-                    raise ValueError(f"波段 {var_name} 的维度与其他波段不一致！")
-                arrays_dict[var_name] = src.read(1).astype("float32")
-        try:
-            with np.errstate(divide="ignore", invalid="ignore"):
-                result = ne.evaluate(expression, local_dict=arrays_dict)
-            result = np.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
+                if src.height != ref_height or src.width != ref_width:
+                    raise ValueError(
+                        f"变量 '{var_name}' 的空间维度 ({src.height}×{src.width}) "
+                        f"与基准 ({ref_height}×{ref_width}) 不一致"
+                    )
+        token_arrays: dict[str, np.ndarray] = {}
+        for token, (var_name, indices) in token_map.items():
+            token_arrays[token] = RasterProcessor._load_bands(
+                path_mapping[var_name], indices
+            )
+        output_bands = RasterProcessor._resolve_output_bands(token_arrays)
+        results = []
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for band_idx in range(output_bands):
+                local_dict = {}
+                for token, arr in token_arrays.items():
+                    if arr.shape[0] == 1:
+                        local_dict[token] = arr[0]
+                    else:
+                        local_dict[token] = arr[band_idx]
 
-        except Exception as e:
-            raise ValueError(f"表达式解析或计算失败: {str(e)}")
+                safe_expr = expression
+                safe_dict = {}
+                for token in local_dict:
+                    safe_name = f"_v{abs(hash(token)) % 100000}"
+                    safe_expr = re.sub(rf'\b{re.escape(token)}\b', safe_name, safe_expr)
+                    safe_dict[safe_name] = local_dict[token]
+
+                band_result = ne.evaluate(safe_expr, local_dict=safe_dict)
+                band_result = np.nan_to_num(
+                    band_result.astype("float32"),
+                    nan=0.0, posinf=1.0, neginf=-1.0
+                )
+                results.append(band_result)
+
+        output_array = np.stack(results, axis=0)
+
+        meta.update({
+            "dtype": "float32",
+            "count": output_bands,
+            "driver": "GTiff"
+        })
         with rasterio.open(output_path, "w", **meta) as dest:
-            dest.write(result, 1)
+            dest.write(output_array)
 
         build_raster_overviews(output_path)
 

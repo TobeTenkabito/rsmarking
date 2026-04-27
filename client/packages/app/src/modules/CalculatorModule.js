@@ -23,23 +23,33 @@ export class CalculatorModule {
         document.getElementById('calc-expression-input').value = '';
         document.getElementById('calc-variables-container').innerHTML = '';
     }
-
-    // 监听输入框，利用正则动态提取 A, B, C 等变量并生成下拉框
+    
     handleExpressionChange() {
-        const expression = document.getElementById('calc-expression-input').value;
-        const reservedKeywords = [
-        'sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'arctan2',
-        'sinh', 'cosh', 'tanh', 'exp', 'log', 'log10', 'sqrt', 'abs',
-        'where', 'pi', 'e', 'expm1', 'log1p'
-        ];
-        const words = expression.match(/[a-zA-Z]+/g) || [];
-        const variables = [...new Set(
-            words
-                .filter(word => !reservedKeywords.includes(word.toLowerCase())) // 核心修复：排除函数名
-                .map(word => word.toUpperCase())
-        )].sort();
-        this.currentVariables = variables;
-        this.renderVariableMappers();}
+    const expression = document.getElementById('calc-expression-input').value;
+    const RESERVED = new Set([
+        'sin','cos','tan','arcsin','arccos','arctan','arctan2',
+        'sinh','cosh','tanh','exp','log','log10','sqrt','abs',
+        'where','pi','e','expm1','log1p'
+    ]);
+    const tokenPattern = /\b([A-Za-z][A-Za-z0-9]*(?:_\d+)*)\b/g;
+    const baseVarSet = new Set();
+
+    let match;
+    while ((match = tokenPattern.exec(expression)) !== null) {
+        const token = match[1];
+        const parts = token.split('_');
+        let splitPos = parts.length;
+        for (let i = 0; i < parts.length; i++) {
+            if (/^\d+$/.test(parts[i])) { splitPos = i; break; }
+        }
+        const varName = parts.slice(0, splitPos).join('_');
+
+        if (!varName || RESERVED.has(varName.toLowerCase())) continue;
+        baseVarSet.add(varName.toUpperCase());
+    }
+    this.currentVariables = [...baseVarSet].sort();
+    this.renderVariableMappers();
+}
 
     renderVariableMappers() {
         const container = document.getElementById('calc-variables-container');

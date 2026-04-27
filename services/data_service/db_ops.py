@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import re
+import rasterio
 from uuid import UUID
 from fastapi import HTTPException, Request
 from typing import List, Callable
@@ -142,18 +143,16 @@ async def process_extraction_task(db: AsyncSession, band_ids: List[int], new_nam
 
 
 async def process_calculator_task(
-        db: AsyncSession,
-        var_mapping: dict[str, int],
-        expression: str,
-        new_name: str,
-        prefix: str
+    db: AsyncSession,
+    var_mapping: dict[str, int],
+    expression: str,
+    new_name: str,
+    prefix: str
 ):
     try:
-        # 获取所有相关 raster_id 的路径
         raster_ids = list(var_mapping.values())
         paths = await _get_band_paths(db, raster_ids)
 
-        # 将 var_name -> raster_id 转换为 var_name -> file_path
         path_mapping = {
             var_name: paths[raster_ids.index(r_id)]
             for var_name, r_id in var_mapping.items()
@@ -167,7 +166,14 @@ async def process_calculator_task(
         RasterProcessor.run_raster_calculator(path_mapping, expression, tmp_path)
         RasterProcessor.convert_to_cog(tmp_path, cog_path)
 
-        return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        return await save_to_db(
+            db, task_id, new_name, tmp_path,
+            cog_filename, cog_path, prefix,
+            bands_count=actual_bands
+        )
 
     except Exception as e:
         logger.error(f"栅格计算器任务失败: {str(e)}")
