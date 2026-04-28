@@ -25,12 +25,15 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
     4. 自动解析元数据并持久化到数据库
     """
     # 1. 准备输入：将数据库 ID 映射为宿主机物理文件名
-    input_filenames = []
+    input_files_payload = []
     for r_id in raster_ids:
         raster = await RasterCRUD.get_raster_by_index_id(db, r_id)
         if not raster:
-            raise HTTPException(status_code=404, detail=f"影像 ID {r_id} 在库中未找到")
-        input_filenames.append(os.path.basename(raster.file_path))
+            raise HTTPException(status_code=404, detail=f"影像 ID {r_id} 未找到")
+        input_files_payload.append({
+            "path": raster.file_path,
+            "name": os.path.basename(raster.file_path)
+        })
 
     task_id = str(uuid.uuid4())
     prefix = "script"
@@ -40,9 +43,10 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
     async with httpx.AsyncClient(timeout=600.0) as client:
         try:
             payload = {
-                "script_content": script,
-                "input_filenames": input_filenames,
-                "output_filename": raw_output_filename
+                "script_id": task_id,
+                "script": script,
+                "input_files": input_files_payload,
+                "output_name": raw_output_filename
             }
             response = await client.post(EXECUTOR_URL, json=payload)
             response.raise_for_status()
