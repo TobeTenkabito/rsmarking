@@ -5,7 +5,6 @@ from services.data_service.models import RasterField
 from services.data_service.raster_field import RasterFieldCreate, RasterFieldUpdate
 from sqlalchemy import update as sa_update
 
-# 文件属性 Python 类型 → field_type 字符串映射
 _PYTHON_TYPE_MAP = {
     str:   "string",
     int:   "number",
@@ -18,8 +17,6 @@ class RasterFieldCRUD:
 
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    # ── 查询 ────────────────────────────────────────────────────────────────
 
     async def get_by_raster(self, raster_index_id: int) -> List[RasterField]:
         """获取某栅格的全部字段定义，按 field_order 排序"""
@@ -35,8 +32,6 @@ class RasterFieldCRUD:
             select(RasterField).where(RasterField.id == field_id)
         )
         return result.scalar_one_or_none()
-
-    # ── 创建（用户手动） ─────────────────────────────────────────────────────
 
     async def create(self, raster_index_id: int, schema: RasterFieldCreate) -> RasterField:
         """用户在前端点击「新增字段」时调用"""
@@ -64,8 +59,6 @@ class RasterFieldCRUD:
         await self.db.commit()
         await self.db.refresh(field)
         return field
-
-    # ── 自动导入（影像入库时调用） ────────────────────────────────────────────
 
     async def ingest_from_metadata(
         self,
@@ -104,8 +97,6 @@ class RasterFieldCRUD:
 
         return fields_to_add
 
-    # ── 更新 ────────────────────────────────────────────────────────────────
-
     async def update(self, field_id: int, schema: RasterFieldUpdate) -> Optional[RasterField]:
         """修改别名、类型、顺序等，系统字段同样可修改显示属性"""
         field = await self.get_by_id(field_id)
@@ -124,8 +115,6 @@ class RasterFieldCRUD:
         await self.db.commit()
         await self.db.refresh(field)
         return field
-
-    # ── 删除 ────────────────────────────────────────────────────────────────
 
     async def delete(self, field_id: int) -> bool:
         """仅允许删除非系统字段"""

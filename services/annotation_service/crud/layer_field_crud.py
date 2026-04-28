@@ -3,13 +3,12 @@ from uuid import UUID
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete
 
 from ..models.feature import LayerField
-from ..schemas.layer_field import LayerFieldCreate, LayerFieldUpdate, LayerFieldIngest
+from ..schemas.layer_field import LayerFieldCreate, LayerFieldUpdate
 
 
-# 文件属性类型 → LayerField.field_type 的映射
 PYTHON_TYPE_MAP = {
     str: "string",
     int: "number",
