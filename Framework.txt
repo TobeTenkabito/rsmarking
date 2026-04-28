@@ -40,8 +40,9 @@ rsmarking
 │   │   │   ├── Modal.js    # 负责所有弹出层内容的 HTML 模板渲染
 │   │   │   ├── Sidebar.js  # 处理左侧影像资源列表的渲染
 │   │   └── /templates
+│   │   │   ├── Modals/     # 存放所有大型 HTML 骨架片段
 │   │       ├── Welcome.js  # 初始化页面渲染
-│   │       └── Modals.js    # 存放所有大型 HTML 骨架片段
+│   │       └── Modals.js    # 存放所有大型 HTML 骨架片段入口
 │   └── /packages/plugins   # AI 工具插件 (SAM, YOLO, OCR)  "未实现"
 ├── /services               # 后端微服务化
 │   ├── /auth_service       # RBAC 权限管理：标注员、审核员、管理员权限 "未实现"

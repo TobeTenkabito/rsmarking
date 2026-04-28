@@ -19,18 +19,14 @@ import { ClipModule } from "./modules/ClipModule.js";
 import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
 import { ConversionModule } from "./modules/ConversionModule.js";
 
-/**
- * App Class - 纯粹的系统调度与依赖注入中心
- */
+
 class App {
     constructor() {
         WelcomeModule.init();
 
-        // 核心支持层
         this.ui = new UIManager(this);
         this.mapEngine = null;
 
-        // 业务模块层
         this.mapController = null;
         this.analysis = null;
         this.extraction = null;
@@ -48,13 +44,10 @@ class App {
 
     async init() {
         try {
-            // 1. 注入 HTML 骨架
             this.ui.injectModals();
 
-            // 2. 初始化核心引擎
             this.mapEngine = new MapEngine('map');
 
-            // 3. 实例化子模块
             this.mapController = new MapController(this.mapEngine);
             this.analysis = new AnalysisModule(this);
             this.calculator = new CalculatorModule(this);
@@ -70,11 +63,9 @@ class App {
             this.change = new ChangeDetectionModule(this);
             this.conversion = new ConversionModule(this);
 
-            // 4. 挂载全局方法与绑定事件
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();
 
-            // 5. 初始数据拉取
             await this.raster.refreshData();
             await this.project.refreshProjects();
 
@@ -85,6 +76,5 @@ class App {
     }
 }
 
-// 实例化应用
 const app = new App();
 window.addEventListener('load', () => app.init());
