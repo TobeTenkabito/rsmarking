@@ -101,7 +101,7 @@ export class ExtractionModule {
             } else if (this.currentType === 'WATER') {
                 await RasterAPI.extractWater(bandIds, name, threshold, mode );
             } else if (this.currentType === 'BUILDING') {
-                await RasterAPI.extractBuildings(bandIds, name, mode);
+                await RasterAPI.extractBuildings(bandIds, name, threshold, mode);
             } else if (this.currentType === 'CLOUD') {
                 await RasterAPI.extractClouds(bandIds, name, threshold, mode);
             }
