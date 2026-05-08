@@ -34,11 +34,19 @@ export class AttributeTable {
         this._count     = null;
         this._expandBtn = null;
         this._addColBtn = null;
+        this._toolbar   = null;
+
+        this._layoutStorageKey = 'rsmarking_attr_table_layout';
+        this._minWidth = 360;
+        this._minHeight = 180;
+        this._viewportMargin = 8;
+        this._floatingBound = false;
     }
 
     _initDom() {
         if (this._panel) return;
         this._panel     = document.getElementById('attr-table-panel');
+        this._toolbar   = document.getElementById('attr-toolbar');
         this._thead     = document.getElementById('attr-table-head');
         this._tbody     = document.getElementById('attr-table-body');
         this._title     = document.getElementById('attr-table-title');
@@ -47,7 +55,8 @@ export class AttributeTable {
         this._expandBtn = document.getElementById('attr-expand-btn');
         this._addColBtn = document.getElementById('attr-add-col-btn');
         this._modeBadge = document.getElementById('attr-mode-badge');
-        this._bindDragResize();
+        this._restoreLayout();
+        this._bindFloatingControls();
     }
 
     /** 打开矢量属性表 */
@@ -58,6 +67,7 @@ export class AttributeTable {
         this.layerName = layerName;
         this._syncToolbar();
         this._panel.classList.remove('hidden');
+        this._clampPanelToViewport();
         this._setTitle(layerName);
         await this.refresh();
     }
@@ -71,6 +81,7 @@ export class AttributeTable {
         this.rasterMeta  = rasterMeta;
         this._syncToolbar();
         this._panel.classList.remove('hidden');
+        this._clampPanelToViewport();
         this._setTitle(rasterName);
         await this.refresh();
     }
@@ -78,9 +89,9 @@ export class AttributeTable {
     close() {
         this._initDom();
         this.layerId = null;
+        this._persistLayout();
         this._panel.classList.add('hidden');
         this._hideCtxMenu();
-        this._setExpanded(false);
     }
 
     async refresh() {
@@ -231,7 +242,12 @@ export class AttributeTable {
     _setExpanded(expanded) {
         this._expanded = expanded;
         if (!this._panel) return;
-        this._panel.style.height = expanded ? '460px' : '280px';
+        const layout = this._clampLayout({
+            ...this._getPanelLayout(),
+            height: expanded ? 460 : 280,
+        });
+        this._applyLayout(layout);
+        this._persistLayout();
         if (this._expandBtn) {
             this._expandBtn.textContent = expanded ? '⬇ 收起' : '⬆ 展开';
         }
@@ -575,36 +591,213 @@ export class AttributeTable {
         }
     }
 
-    _bindDragResize() {
-        const handle = document.getElementById('attr-drag-handle');
-        if (!handle || !this._panel) return;
+    _bindFloatingControls() {
+        if (!this._panel || this._floatingBound) return;
+        this._floatingBound = true;
 
-        let startY = 0;
-        let startH = 0;
-
-        handle.addEventListener('mousedown', e => {
-            startY = e.clientY;
-            startH = this._panel.offsetHeight;
-            document.body.style.userSelect = 'none';
-
-            const onMove = mv => {
-                const delta = startY - mv.clientY;
-                const newH  = Math.min(Math.max(startH + delta, 160), window.innerHeight * 0.8);
-                this._panel.style.height = `${newH}px`;
-                this._expanded = newH > 320;
-                if (this._expandBtn) {
-                    this._expandBtn.textContent = this._expanded ? '⬇ 收起' : '⬆ 展开';
-                }
-            };
-            const onUp = () => {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                document.body.style.userSelect = '';
-            };
-
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
+        this._toolbar?.addEventListener('mousedown', e => {
+            if (e.button !== 0) return;
+            if (e.target.closest('button,input,select,textarea,a,[data-attr-resize]')) return;
+            this._startPanelDrag(e);
         });
+
+        this._panel.querySelectorAll('[data-attr-resize]').forEach(handle => {
+            handle.addEventListener('mousedown', e => {
+                if (e.button !== 0) return;
+                e.stopPropagation();
+                this._startPanelResize(e, handle.dataset.attrResize);
+            });
+        });
+
+        window.addEventListener('resize', () => {
+            if (!this._panel || this._panel.classList.contains('hidden')) return;
+            this._clampPanelToViewport();
+            this._persistLayout();
+        });
+    }
+
+    _startPanelDrag(e) {
+        e.preventDefault();
+        const start = this._getPanelLayout();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        this._beginPanelInteraction();
+
+        const onMove = mv => {
+            const next = this._clampLayout({
+                ...start,
+                left: start.left + mv.clientX - startX,
+                top: start.top + mv.clientY - startY,
+            });
+            this._applyLayout(next);
+        };
+        const onUp = () => this._finishPanelInteraction(onMove, onUp);
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    _startPanelResize(e, direction) {
+        e.preventDefault();
+        const start = this._getPanelLayout();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        this._beginPanelInteraction();
+
+        const onMove = mv => {
+            const dx = mv.clientX - startX;
+            const dy = mv.clientY - startY;
+            const next = { ...start };
+            const limits = this._getLayoutLimits();
+
+            if (direction.includes('e')) next.width = start.width + dx;
+            if (direction.includes('s')) next.height = start.height + dy;
+            if (direction.includes('w')) {
+                next.left = start.left + dx;
+                next.width = start.width - dx;
+                if (next.width < limits.minWidth) {
+                    next.width = limits.minWidth;
+                    next.left = start.left + start.width - limits.minWidth;
+                }
+                if (next.width > limits.maxWidth) {
+                    next.width = limits.maxWidth;
+                    next.left = start.left + start.width - limits.maxWidth;
+                }
+            }
+            if (direction.includes('n')) {
+                next.top = start.top + dy;
+                next.height = start.height - dy;
+                if (next.height < limits.minHeight) {
+                    next.height = limits.minHeight;
+                    next.top = start.top + start.height - limits.minHeight;
+                }
+                if (next.height > limits.maxHeight) {
+                    next.height = limits.maxHeight;
+                    next.top = start.top + start.height - limits.maxHeight;
+                }
+            }
+
+            this._applyLayout(this._clampLayout(next));
+            this._syncExpandedStateFromHeight();
+        };
+        const onUp = () => this._finishPanelInteraction(onMove, onUp);
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    _beginPanelInteraction() {
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'grabbing';
+        this._panel?.classList.add('is-moving');
+    }
+
+    _finishPanelInteraction(onMove, onUp) {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        this._panel?.classList.remove('is-moving');
+        this._syncExpandedStateFromHeight();
+        this._persistLayout();
+    }
+
+    _getPanelLayout() {
+        const rect = this._panel.getBoundingClientRect();
+        const fallback = this._defaultLayout();
+        return {
+            left: Number.isFinite(rect.left) && rect.width ? rect.left : this._readPxStyle('left', fallback.left),
+            top: Number.isFinite(rect.top) && rect.height ? rect.top : this._readPxStyle('top', fallback.top),
+            width: rect.width || this._readPxStyle('width', fallback.width),
+            height: rect.height || this._readPxStyle('height', fallback.height),
+        };
+    }
+
+    _readPxStyle(prop, fallback) {
+        const value = parseFloat(this._panel?.style?.[prop]);
+        return Number.isFinite(value) ? value : fallback;
+    }
+
+    _defaultLayout() {
+        const margin = this._viewportMargin;
+        const width = Math.min(920, Math.max(this._minWidth, window.innerWidth - margin * 2));
+        const height = 280;
+        return {
+            left: margin + 4,
+            top: Math.max(margin, window.innerHeight - height - margin - 4),
+            width,
+            height,
+        };
+    }
+
+    _restoreLayout() {
+        const saved = this._loadLayout();
+        this._applyLayout(this._clampLayout(saved || this._defaultLayout()));
+        this._syncExpandedStateFromHeight();
+    }
+
+    _loadLayout() {
+        try {
+            const raw = localStorage.getItem(this._layoutStorageKey);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            const keys = ['left', 'top', 'width', 'height'];
+            if (!keys.every(key => Number.isFinite(Number(parsed[key])))) return null;
+            return Object.fromEntries(keys.map(key => [key, Number(parsed[key])]));
+        } catch {
+            return null;
+        }
+    }
+
+    _persistLayout() {
+        if (!this._panel) return;
+        try {
+            localStorage.setItem(this._layoutStorageKey, JSON.stringify(this._getPanelLayout()));
+        } catch {
+            // Ignore storage failures in private or restricted browser modes.
+        }
+    }
+
+    _clampPanelToViewport() {
+        this._applyLayout(this._clampLayout(this._getPanelLayout()));
+    }
+
+    _clampLayout(layout) {
+        const limits = this._getLayoutLimits();
+        const width = Math.min(Math.max(layout.width, limits.minWidth), limits.maxWidth);
+        const height = Math.min(Math.max(layout.height, limits.minHeight), limits.maxHeight);
+        const left = Math.min(Math.max(layout.left, limits.margin), Math.max(limits.margin, window.innerWidth - width - limits.margin));
+        const top = Math.min(Math.max(layout.top, limits.margin), Math.max(limits.margin, window.innerHeight - height - limits.margin));
+
+        return { left, top, width, height };
+    }
+
+    _getLayoutLimits() {
+        const margin = this._viewportMargin;
+        const maxWidth = Math.max(120, window.innerWidth - margin * 2);
+        const maxHeight = Math.max(120, window.innerHeight - margin * 2);
+        const minWidth = Math.min(this._minWidth, maxWidth);
+        const minHeight = Math.min(this._minHeight, maxHeight);
+
+        return { margin, minWidth, minHeight, maxWidth, maxHeight };
+    }
+
+    _applyLayout(layout) {
+        if (!this._panel) return;
+        this._panel.style.left = `${Math.round(layout.left)}px`;
+        this._panel.style.top = `${Math.round(layout.top)}px`;
+        this._panel.style.width = `${Math.round(layout.width)}px`;
+        this._panel.style.height = `${Math.round(layout.height)}px`;
+        this._panel.style.right = 'auto';
+        this._panel.style.bottom = 'auto';
+    }
+
+    _syncExpandedStateFromHeight() {
+        const height = this._getPanelLayout().height;
+        this._expanded = height > 340;
+        if (this._expandBtn) {
+            this._expandBtn.textContent = this._expanded ? '⬇ 收起' : '⬆ 展开';
+        }
     }
 
     _makeEditor(fieldType, rawValue) {

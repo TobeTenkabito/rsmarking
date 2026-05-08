@@ -1,19 +1,28 @@
 export const attributeTablePanel = `
       <div id="attr-table-panel"
-           class="hidden fixed bottom-0 left-0 right-0 bg-white border-t-2 border-slate-200
-                  shadow-[0_-6px_24px_rgba(0,0,0,0.08)] z-[2000] flex flex-col
-                  transition-all duration-200"
-           style="height:280px">
+           class="hidden fixed bg-white border border-slate-200 rounded-md
+                  shadow-[0_12px_36px_rgba(15,23,42,0.16)] z-[2000] flex flex-col
+                  transition-shadow duration-150 attr-floating-panel"
+           style="width:min(920px, calc(100vw - 24px)); height:280px; left:12px; top:calc(100vh - 292px);">
+
+          <div class="attr-resize-handle attr-resize-n"  data-attr-resize="n"></div>
+          <div class="attr-resize-handle attr-resize-e"  data-attr-resize="e"></div>
+          <div class="attr-resize-handle attr-resize-s"  data-attr-resize="s"></div>
+          <div class="attr-resize-handle attr-resize-w"  data-attr-resize="w"></div>
+          <div class="attr-resize-handle attr-resize-ne" data-attr-resize="ne"></div>
+          <div class="attr-resize-handle attr-resize-nw" data-attr-resize="nw"></div>
+          <div class="attr-resize-handle attr-resize-se" data-attr-resize="se"></div>
+          <div class="attr-resize-handle attr-resize-sw" data-attr-resize="sw"></div>
 
           <!-- 工具栏 -->
           <div id="attr-toolbar"
                class="flex items-center justify-between px-3 py-1.5
-                      bg-slate-50 border-b border-slate-200 shrink-0 select-none">
+                      bg-slate-50 border-b border-slate-200 shrink-0 select-none cursor-move rounded-t-md">
 
               <!-- 左侧：标题 + 模式徽章 + 状态 -->
               <div class="flex items-center gap-2">
                   <!-- 拖拽纹理 -->
-                  <div class="flex flex-col gap-[3px] opacity-25 mr-1 cursor-row-resize"
+                  <div class="flex flex-col gap-[3px] opacity-25 mr-1 cursor-move"
                        id="attr-drag-handle">
                       <div class="w-5 h-px bg-slate-500"></div>
                       <div class="w-5 h-px bg-slate-500"></div>
@@ -85,6 +94,51 @@ export const attributeTablePanel = `
                 transition: background .15s, color .15s;
             }
             .attr-toolbar-btn:hover { background: #e2e8f0; }
+
+            .attr-floating-panel {
+                min-width: 360px;
+                min-height: 180px;
+                max-width: calc(100vw - 12px);
+                max-height: calc(100vh - 12px);
+                box-sizing: border-box;
+            }
+            .attr-floating-panel.is-moving {
+                box-shadow: 0 18px 42px rgba(15,23,42,0.22);
+            }
+            .attr-resize-handle {
+                position: absolute;
+                z-index: 3;
+                background: transparent;
+            }
+            .attr-resize-n,
+            .attr-resize-s {
+                left: 10px;
+                right: 10px;
+                height: 8px;
+                cursor: ns-resize;
+            }
+            .attr-resize-n { top: -4px; }
+            .attr-resize-s { bottom: -4px; }
+            .attr-resize-e,
+            .attr-resize-w {
+                top: 10px;
+                bottom: 10px;
+                width: 8px;
+                cursor: ew-resize;
+            }
+            .attr-resize-e { right: -4px; }
+            .attr-resize-w { left: -4px; }
+            .attr-resize-ne,
+            .attr-resize-nw,
+            .attr-resize-se,
+            .attr-resize-sw {
+                width: 14px;
+                height: 14px;
+            }
+            .attr-resize-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+            .attr-resize-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+            .attr-resize-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+            .attr-resize-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
 
             .attr-th {
                 position: sticky; top: 0; z-index: 1;
