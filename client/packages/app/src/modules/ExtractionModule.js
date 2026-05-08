@@ -103,7 +103,7 @@ export class ExtractionModule {
             } else if (this.currentType === 'BUILDING') {
                 await RasterAPI.extractBuildings(bandIds, name, mode);
             } else if (this.currentType === 'CLOUD') {
-                await RasterAPI.extractClouds(bandIds, name, mode);
+                await RasterAPI.extractClouds(bandIds, name, threshold, mode);
             }
             else {
                 console.log("执行多波段提取:", bandIds);
