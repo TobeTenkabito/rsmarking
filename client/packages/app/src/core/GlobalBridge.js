@@ -88,6 +88,7 @@ export class GlobalBridge {
             attrRefresh         : ()                    => this.app.attributeTable?.refresh(),
             attrToggleExpand    : ()                    => this.app.attributeTable?.toggleExpand(),
             attrAddColumn       : ()                    => this.app.attributeTable?.addColumn(),
+            attrExportCsv       : ()                    => this.app.attributeTable?.exportCsv(),
             attrRenameColumn    : (fid, alias)          => this.app.attributeTable?.renameColumn(fid, alias),
             attrDeleteColumn    : (fid, name)           => this.app.attributeTable?.deleteColumn(fid, name),
             attrColumnMenu      : (e, fid, fname, sys)  => this.app.attributeTable?.showColumnMenu(e, fid, fname, sys),

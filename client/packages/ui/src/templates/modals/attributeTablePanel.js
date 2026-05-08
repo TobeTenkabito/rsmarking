@@ -46,6 +46,9 @@ export const attributeTablePanel = `
                                  hover:bg-indigo-100 border border-indigo-200">
                       + 新增列
                   </button>
+                  <button onclick="RS.attrExportCsv()"
+                          title="导出 CSV"
+                          class="attr-toolbar-btn">CSV</button>
                   <button onclick="RS.attrRefresh()"
                           title="刷新数据"
                           class="attr-toolbar-btn">↻ 刷新</button>

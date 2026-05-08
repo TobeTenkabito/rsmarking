@@ -133,15 +133,15 @@ export class AttributeTable {
     if (!meta) return [];
 
     const schema = [
-        { field_name: 'file_name',  field_alias: '文件名',    field_type: 'string' },
-        { field_name: 'width',      field_alias: '宽度 (px)', field_type: 'number' },
-        { field_name: 'height',     field_alias: '高度 (px)', field_type: 'number' },
-        { field_name: 'bands',      field_alias: '波段数',    field_type: 'number' },
-        { field_name: 'crs',        field_alias: '坐标系',    field_type: 'string' },
-        { field_name: 'data_type',  field_alias: '数据类型',  field_type: 'string' },
-        { field_name: 'nodata',     field_alias: 'NoData 值', field_type: 'string' },
-        { field_name: 'resolution', field_alias: '分辨率',    field_type: 'string' },
-        { field_name: 'bundle_id',  field_alias: '数据包 ID', field_type: 'string' },
+        { field_name: 'file_name',  field_alias: '文件名',      field_type: 'string' },
+        { field_name: 'width',      field_alias: '宽度 (px)',   field_type: 'number' },
+        { field_name: 'height',     field_alias: '高度 (px)',   field_type: 'number' },
+        { field_name: 'bands',      field_alias: '波段数',      field_type: 'number' },
+        { field_name: 'crs',        field_alias: '坐标系',      field_type: 'string' },
+        { field_name: 'data_type',  field_alias: '数据类型',    field_type: 'string' },
+        { field_name: 'nodata',     field_alias: 'NoData 值',   field_type: 'string' },
+        { field_name: 'resolution', field_alias: '分辨率',      field_type: 'string' },
+        { field_name: 'bundle_id',  field_alias: '数据包 ID',   field_type: 'string' },
     ];
 
     return schema
@@ -279,6 +279,84 @@ export class AttributeTable {
         } catch (err) {
             alert(`删除列失败：${err.message}`);
         }
+    }
+
+    exportCsv() {
+        const rows = this.mode === 'raster'
+            ? this._buildRasterCsvRows()
+            : this._buildVectorCsvRows();
+
+        if (rows.length <= 1) {
+            alert('暂无属性数据可导出。');
+            return;
+        }
+
+        const csv = rows
+            .map(row => row.map(v => this._csvCell(v)).join(','))
+            .join('\r\n');
+        const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this._csvFileName();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    _buildVectorCsvRows() {
+        const header = [
+            'feature_id',
+            ...this.fields.map(f => f.field_alias || f.field_name),
+        ];
+        const rows = this.features.map(feature => [
+            feature.id ?? '',
+            ...this.fields.map(f => feature.properties?.[f.field_name] ?? ''),
+        ]);
+
+        return [header, ...rows];
+    }
+
+    _buildRasterCsvRows() {
+        const header = ['field_name', 'display_name', 'type', 'value', 'scope'];
+        const rows = this.rasterFields.map(field => [
+            field.field_name ?? '',
+            field.field_alias || field.field_name || '',
+            field.field_type ?? '',
+            field.default_val ?? '',
+            field.is_system ? 'system' : 'custom',
+        ]);
+
+        return [header, ...rows];
+    }
+
+    _csvCell(value) {
+        if (value === null || value === undefined) return '';
+
+        let text;
+        if (Array.isArray(value)) {
+            text = value.join('; ');
+        } else if (typeof value === 'object') {
+            text = JSON.stringify(value);
+        } else {
+            text = String(value);
+        }
+
+        if (/[",\r\n]/.test(text)) {
+            return `"${text.replace(/"/g, '""')}"`;
+        }
+        return text;
+    }
+
+    _csvFileName() {
+        const base = `${this.mode}_${this.layerName || this.layerId || 'attributes'}`
+            .trim()
+            .replace(/[\\/:*?"<>|]+/g, '_')
+            .replace(/\s+/g, '_')
+            .slice(0, 80) || 'attributes';
+
+        return `${base}_attributes.csv`;
     }
 
     showColumnMenu(event, fieldId, fieldName, isSystem) {
