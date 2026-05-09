@@ -16,6 +16,7 @@ RUN pip install --no-cache-dir \
     numpy \
     scipy \
     rasterio \
+    scikit-image \
     opencv-python-headless \
     numexpr
 

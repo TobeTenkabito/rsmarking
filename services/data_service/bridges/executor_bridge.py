@@ -1,81 +1,103 @@
-import httpx
+import logging
 import os
 import uuid
-import logging
-from typing import List, Dict, Any
-from uuid import UUID
+
+import httpx
+import rasterio
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.data_service.crud.raster_crud import RasterCRUD
-from services.data_service.db_ops import save_to_db, UPLOAD_DIR, COG_DIR
+from services.data_service.db_ops import COG_DIR, UPLOAD_DIR, save_to_db
 from services.data_service.processor import RasterProcessor
 
 logger = logging.getLogger("data_service.executor_bridge")
 
-# 执行服务的内部通信地址
-EXECUTOR_URL = "http://localhost:8004/execute"
+EXECUTOR_URL = os.getenv("EXECUTOR_SERVICE_URL", "http://localhost:8004/execute")
 
 
-async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[int], output_name: str):
-    """
-    中转站核心逻辑：
-    1. 转换 ID 为物理路径
-    2. 调用外部沙箱执行计算
-    3. 捕获输出文件并进行 COG 转换
-    4. 自动解析元数据并持久化到数据库
-    """
-    # 1. 准备输入：将数据库 ID 映射为宿主机物理文件名
+def _resolve_executor_input_path(raster) -> str:
+    candidates = [raster.file_path, raster.cog_path]
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+
+        if path and path.startswith("/data/"):
+            local_candidate = os.path.join(COG_DIR, os.path.basename(path))
+            if os.path.exists(local_candidate):
+                return local_candidate
+
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            f"Raster file is missing on disk for index_id={raster.index_id}. "
+            f"file_path={raster.file_path}, cog_path={raster.cog_path}"
+        ),
+    )
+
+
+async def dispatch_user_script(
+    db: AsyncSession,
+    script: str,
+    raster_ids: list[int],
+    output_name: str,
+):
     input_files_payload = []
-    for r_id in raster_ids:
-        raster = await RasterCRUD.get_raster_by_index_id(db, r_id)
+    for raster_id in raster_ids:
+        raster = await RasterCRUD.get_raster_by_index_id(db, raster_id)
         if not raster:
-            raise HTTPException(status_code=404, detail=f"影像 ID {r_id} 未找到")
+            raise HTTPException(status_code=404, detail=f"Raster ID {raster_id} was not found")
+
+        resolved_path = _resolve_executor_input_path(raster)
         input_files_payload.append({
-            "path": raster.file_path,
-            "name": os.path.basename(raster.file_path)
+            "path": resolved_path,
+            "name": os.path.basename(resolved_path),
         })
 
     task_id = str(uuid.uuid4())
     prefix = "script"
     raw_output_filename = f"{task_id}_{prefix}_raw.tif"
 
-    # 2. 调用沙箱执行服务
     async with httpx.AsyncClient(timeout=600.0) as client:
         try:
             payload = {
                 "script_id": task_id,
                 "script": script,
                 "input_files": input_files_payload,
-                "output_name": raw_output_filename
+                "output_name": raw_output_filename,
             }
             response = await client.post(EXECUTOR_URL, json=payload)
             response.raise_for_status()
             res_data = response.json()
         except httpx.ConnectError:
-            raise HTTPException(status_code=503, detail="无法连接到执行服务沙箱")
+            raise HTTPException(status_code=503, detail="Executor service is unavailable")
+        except httpx.HTTPStatusError as e:
+            detail = e.response.text if e.response is not None else str(e)
+            logger.error("Executor service returned an HTTP error: %s", detail)
+            raise HTTPException(status_code=502, detail=f"Executor service error: {detail}")
         except Exception as e:
-            logger.error(f"沙箱调用异常: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"执行服务故障: {str(e)}")
+            logger.error("Executor service call failed: %s", e)
+            raise HTTPException(status_code=500, detail=f"Executor dispatch failed: {e}")
 
     if res_data.get("status") != "success":
-        return {
-            "status": "error",
-            "message": "沙箱执行失败",
-            "logs": res_data.get("logs", "未知错误")
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=res_data.get("error") or res_data.get("logs") or "Sandbox execution failed",
+        )
 
-    # 3. 后处理：转换 COG
-    tmp_path = os.path.join(UPLOAD_DIR, raw_output_filename)
+    tmp_path = res_data.get("output_path") or os.path.join(UPLOAD_DIR, raw_output_filename)
     cog_filename = f"{task_id}_{prefix}.tif"
     cog_path = os.path.join(COG_DIR, cog_filename)
 
     if not os.path.exists(tmp_path):
-        raise HTTPException(status_code=500, detail="未找到生成的影像文件")
+        raise HTTPException(status_code=500, detail="Executor did not produce the output raster")
 
     try:
         RasterProcessor.convert_to_cog(tmp_path, cog_path)
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
 
-        # 4. 结果入库
         db_res = await save_to_db(
             db=db,
             task_id=task_id,
@@ -84,17 +106,17 @@ async def dispatch_user_script(db: AsyncSession, script: str, raster_ids: list[i
             cog_filename=cog_filename,
             cog_path=cog_path,
             prefix=prefix,
-            bands_count=1
+            bands_count=actual_bands,
         )
 
         return {
             "status": "success",
             "id": db_res.get("id"),
             "cog_url": db_res.get("cog_url"),
-            "logs": res_data.get("logs", "")
+            "logs": res_data.get("logs", ""),
         }
-
     except Exception as e:
-        logger.error(f"脚本结果后处理失败: {str(e)}")
-        if os.path.exists(tmp_path): os.remove(tmp_path)
-        raise HTTPException(status_code=500, detail=f"元数据入库失败: {str(e)}")
+        logger.error("Script result post-processing failed: %s", e)
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to persist executor output: {e}")
