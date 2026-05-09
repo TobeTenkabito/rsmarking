@@ -12,6 +12,7 @@ export class AIModule {
         // 用于"新建 vs 覆盖"二次确认流程
         this._pendingPayload = null;
         this._pendingResult  = null;
+        this._sessionId = this._createSessionId();
     }
 
     openModal() {
@@ -44,7 +45,12 @@ export class AIModule {
             return;
         }
 
-        const payload = { target_id: targetId, data_type: dataType, language, user_prompt: prompt };
+        const payload = this._buildRequestPayload({
+            targetId,
+            dataType,
+            language,
+            prompt,
+        });
 
         this._setLoading(true);
         this._clearResult();
@@ -105,7 +111,9 @@ export class AIModule {
             // ✅ 重新拉取数据并刷新侧边栏
             await this._refreshSidebar(this._pendingPayload.data_type);
 
-            const newId = this._pendingResult?.index_id
+            const newId = this._pendingResult?.new_index_id
+                ?? this._pendingResult?.new_layer_id
+                ?? this._pendingResult?.index_id
                 ?? this._pendingResult?.target_id
                 ?? '未知';
 
@@ -142,6 +150,105 @@ export class AIModule {
         } finally {
             this._setLoading(false);
         }
+    }
+
+    _buildRequestPayload({ targetId, dataType, language, prompt }) {
+        const mapContext = this._collectMapContext(targetId, dataType);
+
+        return {
+            target_id: targetId,
+            data_type: dataType,
+            language,
+            user_prompt: prompt,
+            session_id: this._sessionId,
+            map_context: mapContext,
+        };
+    }
+
+    _collectMapContext(targetId, dataType) {
+        const viewport = this._collectViewport();
+        const selectedFeatures = this._collectSelectedFeatures();
+        const activeLayers = [
+            ...Array.from(Store.state.activeLayerIds, (id) => `raster:${id}`),
+            ...Array.from(Store.state.visibleVectorLayerIds, (id) => `vector:${id}`),
+        ];
+
+        if (!viewport && selectedFeatures.length === 0 && activeLayers.length === 0) {
+            return null;
+        }
+
+        return {
+            viewport,
+            selected_features: selectedFeatures,
+            active_layers: activeLayers,
+            extra: {
+                target_id: String(targetId),
+                target_data_type: dataType,
+                active_project_id: Store.state.activeProject?.id ?? null,
+                active_vector_layer_id: Store.state.activeVectorLayerId ?? null,
+            },
+        };
+    }
+
+    _collectViewport() {
+        const map = this.app.mapEngine?.map || this.app.mapEngine;
+        if (!map?.getCenter || !map?.getBounds || !map?.getZoom) {
+            return null;
+        }
+
+        const center = map.getCenter();
+        const bounds = map.getBounds();
+
+        return {
+            zoom: map.getZoom(),
+            center_lng: center.lng,
+            center_lat: center.lat,
+            bbox: [
+                bounds.getWest(),
+                bounds.getSouth(),
+                bounds.getEast(),
+                bounds.getNorth(),
+            ],
+        };
+    }
+
+    _collectSelectedFeatures() {
+        const selectedId = Store.state.selectedFeatureId;
+        if (!selectedId) return [];
+
+        const features = Store.state.currentFeatures?.features ?? [];
+        const selectedFeature = features.find((feature) => {
+            const candidateId = feature?.id
+                ?? feature?.properties?.id
+                ?? feature?.properties?.feature_id;
+            return String(candidateId) === String(selectedId);
+        });
+
+        if (!selectedFeature) return [];
+
+        return [{
+            feature_id: String(
+                selectedFeature.id
+                ?? selectedFeature.properties?.id
+                ?? selectedFeature.properties?.feature_id
+                ?? selectedId
+            ),
+            layer_id: Store.state.activeVectorLayerId ?? null,
+            geometry_type: selectedFeature.geometry?.type ?? null,
+            properties: this._trimFeatureProperties(selectedFeature.properties),
+        }];
+    }
+
+    _trimFeatureProperties(properties = {}) {
+        return Object.fromEntries(Object.entries(properties).slice(0, 10));
+    }
+
+    _createSessionId() {
+        if (globalThis.crypto?.randomUUID) {
+            return globalThis.crypto.randomUUID();
+        }
+
+        return `ai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
     _setLoading(isLoading) {
