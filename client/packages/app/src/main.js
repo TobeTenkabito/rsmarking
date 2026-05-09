@@ -18,6 +18,7 @@ import { ExportModule } from "./modules/ExportModule.js";
 import { ClipModule } from "./modules/ClipModule.js";
 import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
 import { ConversionModule } from "./modules/ConversionModule.js";
+import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
 class App {
@@ -44,6 +45,7 @@ class App {
 
     async init() {
         try {
+            initializeI18n();
             this.ui.injectModals();
 
             this.mapEngine = new MapEngine('map');
@@ -66,8 +68,16 @@ class App {
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();
 
+            onLanguageChange(() => {
+                this.ui.refreshLanguage();
+                this.mapController?.updateUI();
+                this.annotation?.updateUI(this.annotation.currentType);
+            });
+
             await this.raster.refreshData();
             await this.project.refreshProjects();
+
+            this.ui.refreshLanguage();
 
             console.log("%c[RSMarking] 🟢 系统初始化成功", "color: #6366f1; font-weight: bold;");
         } catch (error) {

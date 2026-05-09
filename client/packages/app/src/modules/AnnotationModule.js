@@ -5,6 +5,7 @@
 import { VectorAPI } from '../api/vector.js';
 import { Store } from '../store/index.js';
 import { AreaAutoFill } from '../utils/AreaAutoFill.js';
+import { t } from '../i18n/index.js';
 
 export class AnnotationModule {
     constructor(app) {
@@ -217,19 +218,19 @@ export class AnnotationModule {
     if (!label) return;
 
     const labelMap = {
-        polygon:      '多边形',
-        rectangle:    '矩形',
-        circle:       '圆形',
-        polyline:     '线段',
-        marker:       '标记点',
-        circlemarker: '采样点',
+        polygon:      t('draw.tool.polygon'),
+        rectangle:    t('draw.tool.rectangle'),
+        circle:       t('draw.tool.circle'),
+        polyline:     t('draw.tool.polyline'),
+        marker:       t('draw.tool.marker'),
+        circlemarker: t('draw.tool.circlemarker'),
     };
 
     if (activeMode && labelMap[activeMode]) {
-        label.textContent = `绘制中：${labelMap[activeMode]}`;
+        label.textContent = t('draw.active', { tool: labelMap[activeMode] });
         label.closest('#draw-active-indicator')?.classList.replace('text-slate-400', 'text-indigo-600');
     } else {
-        label.textContent = '未选择工具';
+        label.textContent = t('draw.none');
         label.closest('#draw-active-indicator')?.classList.replace('text-indigo-600', 'text-slate-400');
     }
 }

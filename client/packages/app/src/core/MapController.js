@@ -1,6 +1,7 @@
 import { Store } from '../store/index.js';
 import { VectorAPI } from '../api/vector.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
+import { t } from '../i18n/index.js';
 
 /** 防抖工具函数 */
 function debounce(fn, delay) {
@@ -76,7 +77,7 @@ export class MapController {
             const totalActive =
                 Store.state.activeLayerIds.size +
                 (Store.state.activeVectorLayerId ? 1 : 0);
-            counter.innerText = `已激活图层: ${totalActive}`;
+            counter.innerText = t('nav.layerCounter', { count: totalActive });
         }
 
         const emptyHint = document.getElementById('empty-hint');

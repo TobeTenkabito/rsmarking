@@ -1,4 +1,5 @@
 import { Store } from '../store/index.js';
+import { t } from '../i18n/index.js';
 
 export class GlobalBridge {
     constructor(app) {
@@ -129,7 +130,7 @@ export class GlobalBridge {
                     const knifeId  = document.getElementById('clip-knife-layer-select')?.value || undefined;
                     const targetId = document.getElementById('clip-vector-layer-select')?.value || undefined;
                     if (!knifeId) {
-                        this.app.ui.showToast('请选择裁剪刀图层', 'warning');
+                        this.app.ui.showToast(t('clip.selectKnifeWarning'), 'warning');
                         return;
                     }
                     this.app.clip?.clipVectorByLayer(knifeId, targetId);

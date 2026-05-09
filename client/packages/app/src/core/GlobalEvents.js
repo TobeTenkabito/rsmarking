@@ -1,6 +1,7 @@
 import { Store } from '../store/index.js';
 import { RasterAPI } from '../api/raster.js';
 import { VectorAPI} from "../api/vector.js";
+import { t } from '../i18n/index.js';
 
 export class GlobalEvents {
     constructor(app) {
@@ -56,7 +57,11 @@ export class GlobalEvents {
             console.info(`全部上传成功 (${results.success.length} 个)`);
         } else {
             const failMsg = results.failed.map(f => `• ${f.name}: ${f.error}`).join('\n');
-            alert(`上传完成\n✅ 成功 ${results.success.length} 个\n❌ 失败 ${results.failed.length} 个:\n${failMsg}`);
+            alert(t('upload.summary.partial', {
+                success: results.success.length,
+                failed: results.failed.length,
+                details: failMsg,
+            }));
         }
     });
 
@@ -70,7 +75,7 @@ export class GlobalEvents {
         const required = ['.shp', '.shx', '.dbf'];
         const missing = required.filter(ext => !names.some(n => n.endsWith(ext)));
         if (missing.length > 0) {
-            alert(`缺少必要文件：${missing.join(', ')}`);
+            alert(t('upload.alert.missingFiles', { files: missing.join(', ') }));
             e.target.value = "";
             return;
         }
@@ -78,7 +83,7 @@ export class GlobalEvents {
         // 此处存的是 projectId
         const projectId = document.getElementById('shapefile-upload-input').dataset.layerId;
         if (!projectId) {
-            alert("请先选择目标项目");
+            alert(t('upload.alert.selectProjectFirst'));
             e.target.value = "";
             return;
         }
@@ -91,7 +96,10 @@ export class GlobalEvents {
         try {
             const newLayer = await VectorAPI.createLayer(projectId, layerName);
             const result = await VectorAPI.importShapefile(newLayer.id, files);
-            alert(`导入成功：${result.imported} 个要素，${result.fields_registered} 个字段`);
+            alert(t('upload.alert.importSuccess', {
+                imported: result.imported,
+                fields: result.fields_registered,
+            }));
             await this.app.project.refreshProjects();
             const layers = await VectorAPI.fetchLayers(projectId);
             Store.setVectorLayers(layers)

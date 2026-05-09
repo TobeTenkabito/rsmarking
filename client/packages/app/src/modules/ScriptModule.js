@@ -1,6 +1,7 @@
 import { Store } from '../store/index.js';
 import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
+import { applyTranslations, t } from '../i18n/index.js';
 
 export class ScriptModule {
     constructor(app) {
@@ -29,6 +30,7 @@ export class ScriptModule {
             this.selectedRasterIds,
             this.currentScript
         );
+        applyTranslations(content);
 
         // 显示弹窗
         modal.classList.remove('hidden');
@@ -135,6 +137,7 @@ export class ScriptModule {
                         const encodedCode = this.encodeBase64(t.code);
                         return `<option value="${encodedCode}">${t.name} - ${t.description}</option>`;
                     }).join('');
+                applyTranslations(selector);
 
                 selector.addEventListener('change', (e) => {
                     if (e.target.value) {
@@ -158,12 +161,12 @@ export class ScriptModule {
 
         // 验证输入
         if (!this.currentScript.trim()) {
-            alert('请输入Python脚本');
+            alert(t('script.validation.empty'));
             return;
         }
 
         if (this.selectedRasterIds.length === 0) {
-            alert('请选择至少一个输入影像');
+            alert(t('script.alert.selectRaster'));
             return;
         }
 
@@ -177,7 +180,7 @@ export class ScriptModule {
 
     try {
         // 显示进度
-        this.app.ui.showGlobalLoading('正在执行脚本...');
+        this.app.ui.showGlobalLoading(t('script.validation.running'));
 
         // 调用API
         const response = await RasterAPI.executeScript(
@@ -204,7 +207,7 @@ export class ScriptModule {
         console.log('[ScriptModule] 执行结果:', result);
 
         if (result.status === 'success') {
-            this.app.ui.showToast('脚本执行成功', 'success');
+            this.app.ui.showToast(t('script.toast.success'), 'success');
 
             // 显示执行日志（如果有）
             if (result.logs) {
@@ -224,7 +227,7 @@ export class ScriptModule {
         }
     } catch (error) {
         console.error('[ScriptModule] 执行失败:', error);
-        this.app.ui.showToast(`执行失败: ${error.message}`, 'error');
+        this.app.ui.showToast(t('script.toast.failed', { message: error.message }), 'error');
     } finally {
         this.isExecuting = false;
         this.updateExecutionUI(false);
@@ -241,7 +244,7 @@ export class ScriptModule {
 
         if (executeBtn) {
             executeBtn.disabled = isExecuting;
-            executeBtn.textContent = isExecuting ? '执行中...' : '执行脚本';
+            executeBtn.textContent = isExecuting ? t('script.execute.running') : t('script.execute.idle');
         }
 
         if (cancelBtn) {
@@ -259,7 +262,7 @@ export class ScriptModule {
         const script = this.currentScript.trim();
 
         if (!script) {
-            validationDiv.innerHTML = '<span class="text-gray-400">请输入脚本</span>';
+            validationDiv.innerHTML = `<span class="text-gray-400">${t('script.validation.empty')}</span>`;
             return;
         }
 
@@ -288,7 +291,7 @@ export class ScriptModule {
                 </div>
             `;
         } else {
-            validationDiv.innerHTML = '<span class="text-green-600 text-xs">✓ 语法检查通过</span>';
+            validationDiv.innerHTML = `<span class="text-green-600 text-xs">${t('script.validation.ok')}</span>`;
         }
     }
 
@@ -377,7 +380,7 @@ export class ScriptModule {
         if (!historyDiv) return;
 
         if (this.scriptHistory.length === 0) {
-            historyDiv.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">暂无历史记录</div>';
+            historyDiv.innerHTML = `<div class="text-gray-400 text-xs text-center py-4">${t('script.history.empty')}</div>`;
             return;
         }
 

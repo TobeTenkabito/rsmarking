@@ -1,6 +1,7 @@
 import { Store } from '../store/index.js';
 import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
+import { t } from '../i18n/index.js';
 
 export class RasterModule {
     constructor(app) {
@@ -18,7 +19,7 @@ export class RasterModule {
     }
 
     async handleDelete(id) {
-        if (!confirm("确定从工作站移除此影像？该操作不可恢复。")) return;
+        if (!confirm(t('raster.confirm.delete'))) return;
         await RasterAPI.delete(id);
         this.app.mapEngine?.removeLayer(id);
         Store.removeActiveLayer(id);
@@ -26,7 +27,7 @@ export class RasterModule {
     }
 
     handleClearDatabase() {
-        if (confirm("🚨 注意：这将清空所有存储的遥感数据，确定吗？")) {
+        if (confirm(t('raster.confirm.clearDatabase'))) {
             RasterAPI.clearDB().then(() => window.location.reload());
         }
     }
@@ -54,7 +55,7 @@ export class RasterModule {
 
     async handleExecuteMerge() {
         const ids = Store.getMergeSelection();
-        const name = prompt("请输入合成影像名称", `Stacked_Image_${Date.now()}`);
+        const name = prompt(t('raster.prompt.mergeName'), `Stacked_Image_${Date.now()}`);
         if (!name) return;
 
         this.app.ui.showGlobalLoader(true);
@@ -63,7 +64,7 @@ export class RasterModule {
             document.getElementById('merge-modal')?.classList.add('hidden');
             await this.refreshData();
         } catch (e) {
-            alert("合成失败，请检查波段兼容性");
+            alert(t('raster.alert.mergeFailed'));
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -118,7 +119,7 @@ export class RasterModule {
     async handleExecuteExtract() {
         const rasterId = Store.getExtractSource();
         const indices = Store.getExtractSelection();
-        const name = prompt("请输入提取影像名称", `Extracted_Band_${Date.now()}`);
+        const name = prompt(t('raster.prompt.extractName'), `Extracted_Band_${Date.now()}`);
         if (!name) return;
 
         this.app.ui.showGlobalLoader(true);
@@ -127,7 +128,7 @@ export class RasterModule {
             document.getElementById('extract-modal')?.classList.add('hidden');
             await this.refreshData();
         } catch (e) {
-            alert("提取失败，请检查波段索引是否合法");
+            alert(t('raster.alert.extractFailed'));
         } finally {
             this.app.ui.showGlobalLoader(false);
         }

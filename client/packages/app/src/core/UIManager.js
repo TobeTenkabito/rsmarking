@@ -1,11 +1,13 @@
 import { Store } from '../store/index.js';
 import { ModalTemplates } from '../../../ui/src/templates/Modals.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
+import { applyTranslations, t } from '../i18n/index.js';
 
 export class UIManager {
     constructor(app) {
         this.app = app;
         this.loadingCount = 0;
+        this.currentDetailRaster = null;
     }
 
     injectModals() {
@@ -35,6 +37,7 @@ export class UIManager {
         document.body.appendChild(attrDiv);
 
         this._initClipModalEvents();
+        applyTranslations(document);
     }
 
     showGlobalLoader(show) {
@@ -47,7 +50,7 @@ export class UIManager {
     /**
      * 显示全局加载提示
      */
-    showGlobalLoading(message = '处理中...') {
+    showGlobalLoading(message = t('ui.loading.default')) {
         this.loadingCount++;
 
         let loader = document.getElementById('global-loader');
@@ -67,6 +70,7 @@ export class UIManager {
         `;
 
         loader.classList.remove('hidden');
+        applyTranslations(loader);
     }
 
     /**
@@ -116,12 +120,15 @@ export class UIManager {
     showDetail(raster) {
         const panel = document.getElementById('detail-panel');
         if (!panel || !raster) return;
+        this.currentDetailRaster = raster;
         document.getElementById('detail-title').innerText = raster.file_name;
         document.getElementById('detail-content').innerHTML = ModalComponent.renderDetail(raster);
+        applyTranslations(panel);
         panel.classList.remove('hidden');
     }
 
     hideDetail() {
+        this.currentDetailRaster = null;
         document.getElementById('detail-panel')?.classList.add('hidden');
     }
 
@@ -154,9 +161,9 @@ export class UIManager {
             const ids = Store.state.activeLayerIds;
             const activeId = ids.size ? [...ids][0] : null;
             const raster = activeId ? Store.state.rasters.find(r => r.id == activeId) : null;
-            rasterInfoEl.innerHTML = raster ? `<span class="font-bold text-slate-700">当前影像：</span>
-                                     ${raster.name ?? raster.file_name}` : `
-                                     <span class="text-amber-500">⚠ 当前未加载任何栅格影像</span>`;
+            rasterInfoEl.innerHTML = raster
+                ? `<span class="font-bold text-slate-700">${t('clip.currentRaster')}</span> ${raster.name ?? raster.file_name}`
+                : `<span class="text-amber-500">⚠ ${t('clip.noActiveRaster')}</span>`;
         }
         const layers     = Store.state.vectorLayers;
         const layerOpts  = layers.map(l =>
@@ -165,13 +172,14 @@ export class UIManager {
         const targetSelect = document.getElementById('clip-vector-layer-select');
         if (targetSelect) {
             targetSelect.innerHTML =
-                `<option value="">— 使用当前激活图层 —</option>${layerOpts}`;
+                `<option value="">${t('clip.useActiveLayer')}</option>${layerOpts}`;
         }
         const knifeSelect = document.getElementById('clip-knife-layer-select');
         if (knifeSelect) {
             knifeSelect.innerHTML =
-                `<option value="">— 请选择裁剪刀图层 —</option>${layerOpts}`;
+                `<option value="">${t('clip.selectKnifeLayer')}</option>${layerOpts}`;
         }
+        applyTranslations(modal);
         modal.classList.remove('hidden');
     }
 
@@ -179,5 +187,17 @@ export class UIManager {
     document.getElementById('clip-modal')?.classList.add('hidden');
     // 若用户直接关弹窗而不是点取消，也要退出绘制模式
     this.app.clip?.cancel();
+    }
+
+    refreshLanguage() {
+        applyTranslations(document);
+
+        if (this.currentDetailRaster && !document.getElementById('detail-panel')?.classList.contains('hidden')) {
+            this.showDetail(this.currentDetailRaster);
+        }
+
+        if (!document.getElementById('clip-modal')?.classList.contains('hidden')) {
+            this.openClipModal();
+        }
     }
 }

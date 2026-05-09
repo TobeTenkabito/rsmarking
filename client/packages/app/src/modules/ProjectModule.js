@@ -1,5 +1,6 @@
 import { Store } from '../store/index.js';
 import { VectorAPI } from '../api/vector.js';
+import { t } from '../i18n/index.js';
 
 export class ProjectModule {
     constructor(app) {
@@ -16,7 +17,7 @@ export class ProjectModule {
     }
 
     async handleCreateProject() {
-        const name = prompt("请输入新矢量项目名称：", "默认标注项目");
+        const name = prompt(t('project.prompt.projectName'), t('project.prompt.projectDefault'));
         if (!name) return;
         this.app.ui.showGlobalLoader(true);
         try {
@@ -53,10 +54,10 @@ export class ProjectModule {
     async handleCreateLayer() {
         const activeProj = Store.state.activeProject;
         if (!activeProj) {
-            alert("请先选择或创建一个矢量项目！");
+            alert(t('project.alert.selectProjectFirst'));
             return;
         }
-        const name = prompt("请输入新标注图层名称：", "建筑物标注");
+        const name = prompt(t('project.prompt.layerName'), t('project.prompt.layerDefault'));
         if (!name) return;
 
         const activeRasters = Array.from(Store.state.activeLayerIds);
@@ -83,7 +84,7 @@ export class ProjectModule {
 
     handleSetDrawMode(mode) {
         if (!Store.state.activeVectorLayerId) {
-            alert("请先在左侧选择或创建一个目标标注图层");
+            alert(t('project.alert.selectLayerFirst'));
             return;
         }
         if (this.app.annotation && typeof this.app.annotation.startDrawing === 'function') {
@@ -106,7 +107,7 @@ export class ProjectModule {
     async handleDeleteSelectedFeature() {
         const targetId = Store.state.selectedFeatureId;
         if (!targetId) return;
-        if (confirm('确认删除该标注？')) {
+        if (confirm(t('project.confirm.deleteFeature'))) {
             try {
                 await VectorAPI.deleteFeature(targetId);
                 Store.setSelectedFeatureId(null);
@@ -118,7 +119,7 @@ export class ProjectModule {
                 }
             } catch (err) {
                 console.error('删除失败', err);
-                alert('删除失败，请检查网络或控制台');
+                alert(t('project.alert.deleteFailed'));
             }
         }
     }
@@ -126,7 +127,7 @@ export class ProjectModule {
     async handleDeleteSelectedLayer(layerId) {
         const targetId = layerId ?? Store.state.selectedVectorLayerId;
         if (!targetId) return;
-        if (confirm("确认删除图层?")) {
+        if (confirm(t('project.confirm.deleteLayer'))) {
             try {
                 await VectorAPI.deleteLayer(targetId);
                 Store.removeVectorLayer(targetId);
@@ -140,7 +141,7 @@ export class ProjectModule {
                 if (delBtn) delBtn.classList.add('hidden');
             } catch (err) {
                 console.error('删除失败', err);
-                alert('删除失败，请检查网络或控制台');
+                alert(t('project.alert.deleteFailed'));
             }
         }
     }
@@ -149,7 +150,7 @@ export class ProjectModule {
      * 【调试/管理】删除所有项目并重置 UI 状态
      */
     async handleDeleteAllProjects() {
-        const isConfirmed = confirm("确定要删除所有项目及其关联的所有图层、要素吗？此操作不可撤销！");
+        const isConfirmed = confirm(t('project.confirm.deleteAll'));
         if (!isConfirmed) return;
         this.app.ui.showGlobalLoader(true);
         try {
@@ -158,7 +159,7 @@ export class ProjectModule {
             Store.setVectorLayers([]);
             Store.setProjects([]);
             await this.refreshProjects();
-            alert("所有矢量项目已清空");
+            alert(t('project.alert.allCleared'));
         } catch (e) {
             console.error("[ProjectModule] 清空项目失败:", e);
             alert(`清空项目失败: ${e.message}`);

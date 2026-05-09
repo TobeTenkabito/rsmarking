@@ -2,6 +2,7 @@ import { AIAPI } from '../api/ai.js';
 import { Store } from '../store/index.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
+import { t } from '../i18n/index.js';
 
 export class AIModule {
     constructor(app) {
@@ -39,7 +40,7 @@ export class AIModule {
         const prompt    = document.getElementById('ai-prompt-input')?.value?.trim();
 
         if (!targetId || !prompt) {
-            this._showError('请选择目标数据并输入指令');
+            this._showError(t('ai.error.missingTargetPrompt'));
             return;
         }
 
@@ -108,7 +109,7 @@ export class AIModule {
                 ?? this._pendingResult?.target_id
                 ?? '未知';
 
-            this._showSuccess(`已新建数据，ID: ${newId}`);
+            this._showSuccess(t('ai.success.created', { id: newId }));
             this._resetState();
             setTimeout(() => this.closeModal(), 1200);
 
@@ -122,7 +123,7 @@ export class AIModule {
     async confirmOverwrite() {
         if (!this._pendingPayload) return;
 
-        const confirmed = window.confirm('确认覆盖原始数据？此操作不可撤销。');
+        const confirmed = window.confirm(t('ai.confirm.overwrite'));
         if (!confirmed) return;
 
         this._setLoading(true);
@@ -132,7 +133,7 @@ export class AIModule {
             // ✅ 重新拉取数据并刷新侧边栏
             await this._refreshSidebar(this._pendingPayload.data_type);
 
-            this._showSuccess('已成功覆盖原始数据');
+            this._showSuccess(t('ai.success.overwritten'));
             this._resetState();
             setTimeout(() => this.closeModal(), 1200);
 
