@@ -32,6 +32,8 @@ rsmarking
 │   │   ├── /utils 工具组件
 │   │   │   ├── AreaAutoFill.js  # 自动填写面积
 │   │   │   └── geometry.js # 将 bounds_wgs84 数组转为 GeoJSON Polygon Geometry
+│   │   ├── /i18n
+│   │   │   └── index.js 翻译文本对照
 │   │   └── main.js         # 全局方法暴露
 │   ├── /packages/core/src  # 地图核心渲染接口
 │   │   └── map.js
