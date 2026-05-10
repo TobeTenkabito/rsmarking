@@ -23,5 +23,45 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rsmarking-rabbitmq
+    restart: unless-stopped
+
+    environment:
+      RABBITMQ_DEFAULT_USER: rs_admin
+      RABBITMQ_DEFAULT_PASS: rs_password
+      RABBITMQ_DEFAULT_VHOST: rsmarking_vhost
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: rsmarking-redis
+    restart: unless-stopped
+
+    command: ["redis-server", "--appendonly", "yes"]
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - rsmarking_redisdata:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   rsmarking_pgdata:
+  rsmarking_redisdata:

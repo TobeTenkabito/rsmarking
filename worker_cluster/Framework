@@ -1,30 +1,22 @@
-/worker_cluster
-├── celeryconfig.py          # Celery + RabbitMQ 配置
-├── worker.py                # Worker 启动入口
-├── /tasks
-│   ├── __init__.py
-│   ├── base.py              # 基础任务类（统一状态回写、错误处理）
-│   ├── /preprocess
-│   │   ├── __init__.py
-│   │   ├── pyramid.py       # 金字塔构建任务
-│   │   ├── reproject.py     # 重投影任务
-│   │   └── statistics.py    # 统计计算任务（直方图、波段统计）
-│   └── /export
-│       ├── __init__.py
-│       ├── geojson.py       # 异步导出 GeoJSON
-│       ├── coco.py          # 异步导出 COCO
-│       └── tfrecord.py      # 异步导出 TFRecord
-├── /bridge
-│   ├── db_sync.py           # 同步数据库会话（Worker 专用）
-│   └── status_reporter.py   # 任务状态回写到 data_service
-└── /infrastructure/docker
-    └── worker.Dockerfile
+worker_cluster quick map
+========================
 
+Key files
+- `app.py`: Celery application entrypoint.
+- `celeryconfig.py`: broker, backend, queue, timeout, and retry settings.
+- `producer.py`: helper for submitting tasks and creating optional `task_jobs` rows.
+- `bridge/db_sync.py`: sync SQLAlchemy session for worker processes.
+- `bridge/status_reporter.py`: Redis status writes plus optional `task_jobs` updates.
+- `tasks/base.py`: shared task base with progress reporting.
+- `tasks/preprocess/pipeline.py`: COG, overviews, reproject, statistics.
+- `tasks/index/spectral.py`: NDVI, NDWI, NDBI, MNDWI, calculator.
+- `tasks/export/geojson.py`: GeoJSON export.
 
-┌─────────────────────────────────────────────────────┐
-│  data_service  →  enqueue task  →  RabbitMQ         │
-│                                        ↓            │
-│  Worker 消费任务  →  调用 functions/  →  写回 DB       │
-│                                        ↓            │
-│  前端轮询 /task/{id}/status  ←  data_service          │
-└─────────────────────────────────────────────────────┘
+How it is meant to work
+1. A producer submits a Celery task into RabbitMQ.
+2. A worker started from `worker_cluster.app.celery_app` consumes the task.
+3. The task updates progress in Redis through `BaseRasterTask.report(...)`.
+4. On success or failure, the worker writes final status to Redis and, when a
+   `job_id` header is present, also updates the `task_jobs` table.
+
+Detailed setup and usage examples live in `worker_cluster/README.md`.
