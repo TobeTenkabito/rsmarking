@@ -13,6 +13,10 @@ export class AIModule {
         this._pendingPayload = null;
         this._pendingResult  = null;
         this._sessionId = this._createSessionId();
+        this._functionCatalog = [];
+        this._selectedFunction = null;
+        this._functionsLoading = false;
+        this._functionCatalogError = '';
     }
 
     openModal() {
@@ -24,6 +28,11 @@ export class AIModule {
         const Layers = Store.getVectorLayers();
         document.getElementById('ai-target-select').innerHTML =
             ModalComponent.renderAITargetOptions(rasters, Layers);
+
+        this._bindModalEvents();
+        this._syncDataTypeWithTarget();
+        this._renderFunctionCatalog();
+        void this.loadFunctionCatalog();
 
         modal.classList.remove('hidden');
     }
@@ -152,6 +161,88 @@ export class AIModule {
         }
     }
 
+    async loadFunctionCatalog({ force = false } = {}) {
+        if (this._functionsLoading) return;
+        if (this._functionCatalog.length && !force) {
+            this._renderFunctionCatalog();
+            return;
+        }
+
+        this._functionsLoading = true;
+        this._functionCatalogError = '';
+        this._renderFunctionCatalog();
+
+        try {
+            const response = await AIAPI.listFunctions('catalog');
+            this._functionCatalog = response.functions ?? [];
+            this._selectedFunction = this._selectedFunction
+                ? this._functionCatalog.find(fn => fn.name === this._selectedFunction.name) ?? this._functionCatalog[0] ?? null
+                : this._functionCatalog[0] ?? null;
+            this._renderFunctionCatalog();
+            this.resetFunctionArgs();
+        } catch (err) {
+            this._functionCatalogError = err.message || 'Failed to load backend functions';
+            this._renderFunctionCatalog();
+        } finally {
+            this._functionsLoading = false;
+            this._renderFunctionCatalog();
+        }
+    }
+
+    async reloadFunctions() {
+        await this.loadFunctionCatalog({ force: true });
+    }
+
+    selectFunction(name) {
+        const fn = this._functionCatalog.find(item => item.name === name);
+        if (!fn) return;
+
+        this._selectedFunction = fn;
+        this._renderFunctionCatalog();
+        this.resetFunctionArgs();
+    }
+
+    resetFunctionArgs() {
+        if (!this._selectedFunction) return;
+
+        const argsInput = document.getElementById('ai-function-args-input');
+        if (!argsInput) return;
+
+        const skeleton = this._buildFunctionArgumentSkeleton(this._selectedFunction);
+        argsInput.value = JSON.stringify(skeleton, null, 2);
+    }
+
+    async runSelectedFunction() {
+        if (!this._selectedFunction) {
+            this._showError('Please select a backend function first.');
+            return;
+        }
+
+        const argsInput = document.getElementById('ai-function-args-input');
+        let args = {};
+
+        try {
+            args = JSON.parse(argsInput?.value?.trim() || '{}');
+        } catch (err) {
+            this._showError(`Arguments must be valid JSON: ${err.message}`);
+            return;
+        }
+
+        this._setFunctionLoading(true);
+        this._clearResult();
+
+        try {
+            const result = await AIAPI.invokeFunction(this._selectedFunction.name, args);
+            this._showFunctionResult(result);
+            await this._refreshAfterFunctionRun();
+            this._showSuccess(`Function completed: ${this._selectedFunction.name}`);
+        } catch (err) {
+            this._showError(err.message);
+        } finally {
+            this._setFunctionLoading(false);
+        }
+    }
+
     _buildRequestPayload({ targetId, dataType, language, prompt }) {
         const mapContext = this._collectMapContext(targetId, dataType);
 
@@ -163,6 +254,340 @@ export class AIModule {
             session_id: this._sessionId,
             map_context: mapContext,
         };
+    }
+
+    _bindModalEvents() {
+        const targetSelect = document.getElementById('ai-target-select');
+        if (targetSelect && targetSelect.dataset.aiBound !== 'true') {
+            targetSelect.dataset.aiBound = 'true';
+            targetSelect.addEventListener('change', () => {
+                this._syncDataTypeWithTarget();
+                this.resetFunctionArgs();
+            });
+        }
+    }
+
+    _syncDataTypeWithTarget() {
+        const targetSelect = document.getElementById('ai-target-select');
+        const dataTypeSelect = document.getElementById('ai-datatype-select');
+        const selectedOption = targetSelect?.selectedOptions?.[0];
+        const selectedType = selectedOption?.dataset?.type;
+
+        if (dataTypeSelect && selectedType) {
+            dataTypeSelect.value = selectedType;
+        }
+    }
+
+    _renderFunctionCatalog() {
+        const statusEl = document.getElementById('ai-function-status');
+        const buttonsEl = document.getElementById('ai-function-buttons');
+
+        if (statusEl) {
+            const statusText = this._functionsLoading
+                ? 'Loading backend functions...'
+                : this._functionCatalogError
+                    ? this._functionCatalogError
+                    : `${this._functionCatalog.length} backend functions available`;
+
+            statusEl.textContent = statusText;
+            statusEl.classList.toggle('text-red-500', Boolean(this._functionCatalogError));
+            statusEl.classList.toggle('text-slate-400', !this._functionCatalogError);
+        }
+
+        if (buttonsEl) {
+            buttonsEl.innerHTML = ModalComponent.renderAIFunctionButtons(
+                this._functionCatalog,
+                this._selectedFunction?.name,
+            );
+        }
+
+        this._renderFunctionDetails();
+    }
+
+    _renderFunctionDetails() {
+        const detailEl = document.getElementById('ai-function-detail');
+        const summaryEl = document.getElementById('ai-function-summary');
+
+        if (!detailEl || !summaryEl) return;
+
+        detailEl.classList.toggle('hidden', !this._selectedFunction);
+        if (this._selectedFunction) {
+            summaryEl.innerHTML = ModalComponent.renderAIFunctionSummary(this._selectedFunction);
+        }
+    }
+
+    _buildFunctionArgumentSkeleton(fn) {
+        const schemaDefaults = {};
+        const properties = fn.parameters?.properties ?? {};
+
+        for (const [name, schema] of Object.entries(properties)) {
+            schemaDefaults[name] = this._buildDefaultArgument(name, schema, fn);
+        }
+
+        return {
+            ...schemaDefaults,
+            ...this._getFunctionSpecificDefaults(fn.name),
+        };
+    }
+
+    _buildDefaultArgument(name, schema = {}, fn = {}) {
+        if (Object.prototype.hasOwnProperty.call(schema, 'default')) {
+            return schema.default;
+        }
+        if (Array.isArray(schema.enum) && schema.enum.length) {
+            return schema.enum[0];
+        }
+
+        const type = this._getSchemaType(schema);
+        const primaryRasterId = this._getPrimaryRasterId();
+
+        if (name === 'new_name') {
+            return this._defaultNewName(fn.name);
+        }
+        if (name === 'band_ids') {
+            return this._getRasterIds().slice(0, 2);
+        }
+        if (name === 'geometries') {
+            const geometry = this._viewportGeometry();
+            return geometry ? [geometry] : [];
+        }
+        if (name === 'clip_geometry') {
+            return this._viewportGeometry() ?? {};
+        }
+        if (name === 'features') {
+            return this._collectSelectedFeatureObjects();
+        }
+        if (name === 'var_mapping') {
+            const rasterIds = this._getRasterIds();
+            return {
+                A: rasterIds[0] ?? primaryRasterId,
+                B: rasterIds[1] ?? primaryRasterId,
+            };
+        }
+        if (name === 'expression') {
+            return '(A - B) / (A + B)';
+        }
+        if (name === 'src_vector_crs') {
+            return 'EPSG:4326';
+        }
+        if (name === 'threshold_mode') {
+            return 'abs';
+        }
+        if (name === 'index_type') {
+            return 'ndvi';
+        }
+        if (name === 'mode') {
+            return fn.name === 'clip_vector_by_raster' ? 'intersects' : '';
+        }
+        if (name === 'raster_id' || name.endsWith('_id') || name.includes('index_id')) {
+            return primaryRasterId;
+        }
+
+        if (type === 'array') return [];
+        if (type === 'object') return {};
+        if (type === 'boolean') return false;
+        if (type === 'integer' || type === 'number') return 0;
+        if (type === 'null') return null;
+        return '';
+    }
+
+    _getSchemaType(schema = {}) {
+        if (schema.type) return schema.type;
+        const unionTypes = schema.anyOf ?? schema.oneOf;
+        const concreteType = unionTypes?.find(item => item.type && item.type !== 'null');
+        return concreteType?.type ?? 'string';
+    }
+
+    _getFunctionSpecificDefaults(name) {
+        const rasterIds = this._getRasterIds();
+        const primary = this._getPrimaryRasterId();
+        const secondary = this._getSecondaryRasterId();
+        const third = rasterIds[2] ?? primary;
+        const fourth = rasterIds[3] ?? secondary;
+        const viewportGeometry = this._viewportGeometry();
+
+        const indexDefaults = {
+            calculate_ndvi: { red_id: primary, nir_id: secondary, new_name: this._defaultNewName('NDVI') },
+            calculate_ndwi: { green_id: primary, nir_id: secondary, new_name: this._defaultNewName('NDWI') },
+            calculate_ndbi: { swir_id: primary, nir_id: secondary, new_name: this._defaultNewName('NDBI') },
+            calculate_mndwi: { green_id: primary, swir_id: secondary, new_name: this._defaultNewName('MNDWI') },
+        };
+
+        if (indexDefaults[name]) return indexDefaults[name];
+
+        if (name === 'run_raster_calculator') {
+            return {
+                expression: '(A - B) / (A + B)',
+                new_name: this._defaultNewName('raster_calculator'),
+                var_mapping: {
+                    A: primary,
+                    B: secondary,
+                },
+            };
+        }
+
+        const extractionDefaults = {
+            extract_vegetation: { threshold: 0.3, mode: 'ndvi' },
+            extract_water: { threshold: 0.0, mode: 'mndwi' },
+            extract_buildings: { threshold: 0.1, mode: 'ndbi' },
+            extract_clouds: { threshold: 0.5, mode: 'cloud' },
+        };
+
+        if (extractionDefaults[name]) {
+            return {
+                band_ids: rasterIds.slice(0, 2),
+                new_name: this._defaultNewName(name),
+                ...extractionDefaults[name],
+            };
+        }
+
+        if (name === 'clip_raster_by_vector') {
+            return {
+                raster_id: primary,
+                new_name: this._defaultNewName('clip_raster'),
+                geometries: viewportGeometry ? [viewportGeometry] : [],
+                src_vector_crs: 'EPSG:4326',
+                crop: true,
+                nodata: null,
+                all_touched: false,
+            };
+        }
+
+        if (name === 'clip_vector_by_raster') {
+            return {
+                clip_geometry: viewportGeometry ?? {},
+                features: this._collectSelectedFeatureObjects(),
+                src_vector_crs: 'EPSG:4326',
+                mode: 'intersects',
+            };
+        }
+
+        if (name === 'detect_band_diff') {
+            return {
+                index_id_t1: primary,
+                index_id_t2: secondary,
+                band_idx: 1,
+                threshold: 0.1,
+                threshold_mode: 'abs',
+                output_mask: true,
+            };
+        }
+
+        if (name === 'detect_band_ratio') {
+            return {
+                index_id_t1: primary,
+                index_id_t2: secondary,
+                band_idx: 1,
+                threshold: 0.2,
+                output_mask: true,
+            };
+        }
+
+        if (name === 'detect_index_diff') {
+            return {
+                index_id_t1_b1: primary,
+                index_id_t1_b2: secondary,
+                index_id_t2_b1: third,
+                index_id_t2_b2: fourth,
+                index_type: 'ndvi',
+                threshold: 0.15,
+                threshold_mode: 'abs',
+                output_mask: true,
+            };
+        }
+
+        return {};
+    }
+
+    _getRasterIds() {
+        return Store.getRasters()
+            .map(raster => raster.index_id ?? raster.id)
+            .filter(id => id !== null && id !== undefined)
+            .map(id => Number(id))
+            .filter(id => Number.isFinite(id));
+    }
+
+    _getPrimaryRasterId() {
+        const target = this._getSelectedTarget();
+        if (target.dataType === 'raster' && target.targetId) {
+            const numericTargetId = Number(target.targetId);
+            if (Number.isFinite(numericTargetId)) return numericTargetId;
+        }
+
+        return this._getRasterIds()[0] ?? null;
+    }
+
+    _getSecondaryRasterId() {
+        const primary = this._getPrimaryRasterId();
+        return this._getRasterIds().find(id => id !== primary) ?? primary;
+    }
+
+    _getSelectedTarget() {
+        const targetSelect = document.getElementById('ai-target-select');
+        const dataTypeSelect = document.getElementById('ai-datatype-select');
+        const selectedOption = targetSelect?.selectedOptions?.[0];
+
+        return {
+            targetId: targetSelect?.value ?? '',
+            dataType: selectedOption?.dataset?.type ?? dataTypeSelect?.value ?? 'raster',
+        };
+    }
+
+    _defaultNewName(prefix = 'ai_result') {
+        const safePrefix = String(prefix)
+            .replace(/^calculate_/, '')
+            .replace(/^run_/, '')
+            .replace(/[^a-z0-9]+/gi, '_')
+            .replace(/^_+|_+$/g, '')
+            || 'ai_result';
+
+        return `${safePrefix}_${Date.now()}.tif`;
+    }
+
+    _viewportGeometry() {
+        const bbox = this._collectViewport()?.bbox;
+        if (!bbox || bbox.length !== 4) return null;
+
+        const [west, south, east, north] = bbox;
+        return {
+            type: 'Polygon',
+            coordinates: [[
+                [west, south],
+                [east, south],
+                [east, north],
+                [west, north],
+                [west, south],
+            ]],
+        };
+    }
+
+    _collectSelectedFeatureObjects() {
+        const selectedId = Store.state.selectedFeatureId;
+        if (!selectedId) return [];
+
+        const features = Store.state.currentFeatures?.features ?? [];
+        const selectedFeature = features.find((feature) => {
+            const candidateId = feature?.id
+                ?? feature?.properties?.id
+                ?? feature?.properties?.feature_id;
+            return String(candidateId) === String(selectedId);
+        });
+
+        return selectedFeature ? [selectedFeature] : [];
+    }
+
+    _showFunctionResult(result) {
+        const reportEl = document.getElementById('ai-result-content');
+        if (reportEl) reportEl.textContent = JSON.stringify(result, null, 2);
+        document.getElementById('ai-result-section')?.classList.remove('hidden');
+    }
+
+    async _refreshAfterFunctionRun() {
+        if (!this._selectedFunction || this._selectedFunction.name === 'clip_vector_by_raster') {
+            return;
+        }
+
+        await this._refreshSidebar('raster');
     }
 
     _collectMapContext(targetId, dataType) {
@@ -258,9 +683,18 @@ export class AIModule {
         if (spinner) spinner.classList.toggle('hidden', !isLoading);
     }
 
+    _setFunctionLoading(isLoading) {
+        const btn = document.getElementById('ai-function-run-btn');
+        if (!btn) return;
+        btn.disabled = isLoading;
+        btn.textContent = isLoading ? 'Running...' : 'Run Function';
+    }
+
     _clearResult() {
         const resultEl = document.getElementById('ai-result-content');
         if (resultEl) resultEl.textContent = '';
+        document.getElementById('ai-error-msg')?.classList.add('hidden');
+        document.getElementById('ai-success-msg')?.classList.add('hidden');
         document.getElementById('ai-result-section')?.classList.add('hidden');
         document.getElementById('ai-confirm-section')?.classList.add('hidden');
         document.getElementById('ai-download-btn')?.classList.add('hidden');

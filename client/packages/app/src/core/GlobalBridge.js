@@ -82,6 +82,10 @@ export class GlobalBridge {
             aiExecute:          ()  => this.app.ai?.execute(),
             aiConfirmCreate:    ()  => this.app.ai?.confirmCreate(),
             aiConfirmOverwrite: ()  => this.app.ai?.confirmOverwrite(),
+            aiReloadFunctions:  ()  => this.app.ai?.reloadFunctions(),
+            aiSelectFunction:   (name) => this.app.ai?.selectFunction(name),
+            aiResetFunctionArgs: () => this.app.ai?.resetFunctionArgs(),
+            aiRunSelectedFunction: () => this.app.ai?.runSelectedFunction(),
 
             // --- 属性表 ---
             openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),

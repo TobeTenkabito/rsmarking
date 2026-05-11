@@ -1,6 +1,6 @@
 export const aiModal =`
     <div id="ai-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+    <div class="bg-white w-full max-w-4xl rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
 
         <!-- 顶部色条 -->
         <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 to-indigo-500"></div>
@@ -104,6 +104,48 @@ export const aiModal =`
                     class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 
                     placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all resize-none"> 
                 </textarea> 
+            </div>
+
+            <!-- Backend function launcher -->
+            <div class="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-sky-50/40 p-4 space-y-3">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <label class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Backend Functions</label>
+                        <p class="mt-1 text-[10px] leading-relaxed text-slate-400">
+                            Select a registered AI gateway function, edit its JSON arguments, then run it directly.
+                        </p>
+                    </div>
+                    <button type="button" onclick="RS.aiReloadFunctions()"
+                        class="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:border-sky-300 hover:text-sky-600 transition-all">
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="ai-function-status"
+                    class="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    Loading backend functions...
+                </div>
+
+                <div id="ai-function-buttons" class="grid grid-cols-2 md:grid-cols-3 gap-2"></div>
+
+                <div id="ai-function-detail" class="hidden rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                    <div id="ai-function-summary"></div>
+                    <div class="space-y-1.5">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-slate-400">Arguments JSON</label>
+                        <textarea id="ai-function-args-input" rows="8" spellcheck="false"
+                            class="w-full font-mono text-[11px] leading-relaxed bg-slate-950 text-slate-100 border border-slate-800 rounded-2xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-400 transition-all resize-y"></textarea>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button" onclick="RS.aiResetFunctionArgs()"
+                            class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all active:scale-[0.98]">
+                            Reset Args
+                        </button>
+                        <button id="ai-function-run-btn" type="button" onclick="RS.aiRunSelectedFunction()"
+                            class="w-full rounded-2xl bg-sky-600 py-3 text-xs font-bold text-white shadow-lg shadow-sky-600/20 hover:bg-sky-700 transition-all active:scale-[0.98]">
+                            Run Function
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <!-- 错误 / 成功提示 -->
