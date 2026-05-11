@@ -1,466 +1,290 @@
-# RSMarking · High-Performance Remote Sensing Annotation System
-智能遥感影像高性能标注系统
+# RSMarking
 
-[English](#english) | [中文](#中文)
+RSMarking is a remote-sensing annotation and raster analysis workspace. It combines a browser map UI, FastAPI microservices, PostGIS-backed vector storage, GDAL/rasterio processing utilities, an AI gateway, and an optional Celery worker layer for longer-running jobs.
 
----
+The repository is currently most useful as a local development stack for GeoTIFF upload, raster metadata management, on-the-fly map tiles, vector annotation, raster/vector analysis tools, AI-assisted analysis or metadata edits, and Docker-isolated custom Python scripts.
 
-## English
+## Features
 
-### Introduction
+- Browser map client with Leaflet and Cesium-based 2D/3D viewing.
+- GeoTIFF metadata ingestion with raw and COG storage directories.
+- On-the-fly raster tile rendering from stored raster records.
+- Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.
+- Vector tile service using PostGIS `ST_AsMVT`.
+- Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, rasterization, clipping, and change detection.
+- Extraction algorithms for vegetation, water, buildings, and clouds.
+- AI gateway built around LiteLLM with analyze/modify modes and a callable function registry for analysis tools.
+- Docker-isolated Python script executor with shared access to `storage/raw`.
+- Optional Celery worker cluster for offline preprocessing, index calculation, and GeoJSON export jobs.
 
-**RSMarking** is a microservice-based remote sensing image annotation platform designed for **massive GeoTIFF datasets** and **complex vector geometries** — with zero heavy pre-processing required.
+## Architecture
 
----
+```text
+client/index.html
+  |
+  | HTTP
+  v
++----------------------+      +-----------------------+
+| annotation_service   |      | data_service          |
+| :8001                |      | :8002                 |
+| projects/layers/     |      | uploads/metadata/     |
+| features/fields      |      | raster algorithms     |
++----------+-----------+      +-----------+-----------+
+           |                              |
+           |                              |
+           v                              v
++----------------------+      +-----------------------+
+| vtile_service        |      | tile_service          |
+| :8003                |      | :8005                 |
+| PostGIS MVT tiles    |      | raster XYZ PNG tiles  |
++----------------------+      +-----------------------+
 
-### Core Features
++----------------------+      +-----------------------+
+| executor_service     |      | ai_gateway            |
+| :8004                |      | :8006                 |
+| Docker sandbox       |      | LiteLLM + validators  |
++----------------------+      +-----------------------+
 
-#### ⚡ Cython-Accelerated On-the-Fly Rendering
-The built-in **TileEngine** uses C/Cython extensions (`fast_stretch_and_stack`) combined with `rasterio` window reads to generate map tiles dynamically from raw raster files.  
-**No pre-tiling, no pyramid generation** — saving disk space and preprocessing time.
-
-#### 🎨 Dynamic Multi-Band Stretching
-Automatic **2%–98% linear stretching** and hardware-accelerated normalization for **16-bit / 32-bit multi-spectral imagery**, with an optimized fallback strategy for outlier statistics.
-
-#### 🏗️ Distributed Microservices Architecture
-Fully decoupled services (**Tile / Data / Annotation / AI Gateway / Executor**) built on **FastAPI**, horizontally scalable via **Kubernetes**.
-
-#### 🤖 AI Spatial Data Gateway
-A dedicated microservice accepting natural language instructions to **analyze or modify** raster/vector GIS data.  
-Powered by **LiteLLM** (supports DeepSeek, OpenAI, Azure, etc.) with a strict **Pydantic anti-tamper contract layer** that physically blocks AI from overwriting read-only spatial statistics.
-
-> **vs. QGIS 4.0** — No built-in AI Agent; RSMarking leads in AI-assisted geospatial workflows.  
-> **vs. ArcGIS Pro** — ArcGIS Assistant offers deeper analytics, but is commercial; RSMarking is **open and free**.
-
-#### 🗺️ Professional Map Export Module
-A fully client-side export pipeline built on the **Canvas 2D API** — no server round-trip required.
-
-| Capability | Detail |
-|---|---|
-| Formats | PNG (lossless) · JPEG (adjustable quality) · SVG (vector) |
-| Resolution | 1x / 2x / 3x / **4x ultra-HD** |
-| Layer control | Basemap · Raster · Vector · Decorations (independently toggleable) |
-| Graticule | Lat/lon grid lines, **solid or dashed** |
-| Frame labels | Cartographic-style coordinate ticks outside map boundary |
-| Decorations | Auto scale bar · North arrow · Timestamp watermark |
-
-#### 🐍 Sandboxed Script Executor
-Users can submit custom Python 3 scripts that run in **Docker-isolated containers**, with shared `/storage` access and full lifecycle management.
-
----
-
-### Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   client (SPA)                      │
-│  map.js · modules/ · store/ · UI components         │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTP / REST
-     ┌───────────────┼───────────────────┐
-     ▼               ▼                   ▼
-tile_service    data_service      annotation_service
-(Cython OTF)   (Raster Meta)      (PostGIS Vector)
-     │               │                   │
-     └───────────────┼───────────────────┘
-                     │
-            ┌────────┴────────┐
-            ▼                 ▼
-       ai_gateway      executor_service
-      (LiteLLM +       (Docker sandbox)
-       Pydantic)
-            │
-   PostgreSQL/PostGIS + Redis
+PostgreSQL/PostGIS, Redis, and RabbitMQ are provided by infrastructure/docker/docker-compose.yml.
+worker_cluster is optional and consumes RabbitMQ tasks while reporting status through Redis.
 ```
 
----
+## Repository Map
 
-### Development Setup
+```text
+client/                         Static browser client
+  index.html                    Main app shell
+  packages/app/src/             App modules, API adapters, state, i18n
+  packages/core/src/map.js      Leaflet/Cesium map engine
+  packages/ui/src/              Modal and sidebar templates/components
 
-#### Prerequisites
-- Docker & Docker Compose
-- Python 3.12+
-- Node.js 24+
+services/
+  annotation_service/           Vector projects, layers, features, fields
+  data_service/                 Raster metadata, uploads, algorithms, bridges
+  tile_service/                 Raster tile engine and Cython extensions
+  vtile_service/                PostGIS vector tile endpoint
+  executor_service/             Docker sandbox for custom Python scripts
+  ai_gateway/                   AI analyze/modify gateway and tool registry
 
-#### Step 1 — Infrastructure
+functions/
+  implement/                    Core raster, vector, index, extraction algorithms
+  common/                       Shared helpers such as Snowflake-style IDs
 
-```bash
+worker_cluster/                 Optional Celery worker layer
+infrastructure/docker/          PostgreSQL/PostGIS, RabbitMQ, Redis compose file
+infrastructure/*_migrations/    Alembic migrations for raster and vector DBs
+storage/raw/                    Uploaded/original rasters and script outputs
+storage/cog/                    Cloud-optimized GeoTIFF outputs
+tests/                          Pytest, Vitest, and benchmark tests
+resources/                      README screenshots and benchmark images
+```
+
+## Services
+
+| Service | Port | Entry point | Main responsibility |
+|---|---:|---|---|
+| Annotation service | 8001 | `services.annotation_service.main:app` | Projects, layers, vector features, fields, shapefile import |
+| Data service | 8002 | `services.data_service.main:app` | Raster metadata, uploads, spectral indices, extraction, clipping, scripts |
+| Vector tile service | 8003 | `services.vtile_service.main:app` | MVT tiles from PostGIS |
+| Executor service | 8004 | `services.executor_service.main:app` | Docker-isolated Python script execution |
+| Tile service | 8005 | `services.tile_service.main:app` | Raster XYZ PNG tiles |
+| AI gateway | 8006 | `services.ai_gateway.main:app` | AI analyze/modify requests and callable algorithm tools |
+
+## Prerequisites
+
+- Docker Desktop or Docker Engine with Compose.
+- Conda or Mamba.
+- Python 3.12. The checked-in `environment.yml` creates a Python 3.12 environment named `rsmarking`.
+- A browser. The frontend is currently a static app; the committed `client/package.json` files are empty, so there is no working `npm run dev` script in this revision.
+- Optional: Node.js if you want to add/restore frontend package scripts and run Vitest.
+
+## Quick Start
+
+From the repository root:
+
+```powershell
+conda env create -f environment.yml
+conda activate rsmarking
+```
+
+Start infrastructure:
+
+```powershell
 cd infrastructure/docker
-docker-compose up -d
+docker compose up -d
+cd ../..
 ```
 
-#### Step 2 — Database Migrations
+The compose file creates the `rsmarking` database. The annotation and vector tile services default to a separate `vector_db` database, so create it once:
 
-```bash
-cd infrastructure/db_migrations && alembic upgrade head
-cd ../annot_migrations          && alembic upgrade head
+```powershell
+docker exec rsmarking-postgres createdb -U rs_admin vector_db
+docker exec rsmarking-postgres psql -U rs_admin -d rsmarking -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+docker exec rsmarking-postgres psql -U rs_admin -d vector_db -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 ```
 
-#### Step 3 — Backend Services
+If `vector_db` already exists, the first command can fail harmlessly.
 
-```bash
-conda env create -f environment.yml && conda activate <env>
+Run database migrations:
 
-python services/tile_service/main.py
-python services/data_service/main.py
-python services/annotation_service/main.py
-python services/ai_gateway/main.py
-python services/executor_service/main.py
+```powershell
+cd infrastructure/db_migrations
+alembic upgrade head
+cd ../annot_migrations
+alembic upgrade head
+cd ../..
 ```
 
-#### Step 4 — AI Gateway Environment
+Build the executor sandbox image if you plan to use custom scripts:
 
-Create `.env` in the project root:
+```powershell
+docker build -t rs-worker-python:latest -f services/executor_service/runtime/python_base.Dockerfile services/executor_service/runtime
+```
+
+Start services in separate terminals from the repository root:
+
+```powershell
+python -m uvicorn services.annotation_service.main:app --host 0.0.0.0 --port 8001 --reload
+python -m uvicorn services.data_service.main:app --host 0.0.0.0 --port 8002 --reload
+python -m uvicorn services.vtile_service.main:app --host 0.0.0.0 --port 8003 --reload
+python -m uvicorn services.executor_service.main:app --host 0.0.0.0 --port 8004 --reload
+python -m uvicorn services.tile_service.main:app --host 0.0.0.0 --port 8005 --reload
+python -m uvicorn services.ai_gateway.main:app --host 0.0.0.0 --port 8006 --reload
+```
+
+Open the client through the data service static mount:
+
+```text
+http://localhost:8002/client/index.html
+```
+
+You can also serve the repository root with any static file server and open `/client/index.html`.
+
+## AI Gateway Configuration
+
+The AI gateway loads `.env` from the repository root and calls LiteLLM. A minimal DeepSeek-style configuration looks like this:
 
 ```env
 AI_MODEL=deepseek/deepseek-chat
 AI_NAME=deepseek/deepseek-chat
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx
+DEEPSEEK_API_KEY=sk-...
 ```
 
-> Switch to any LiteLLM-compatible provider (OpenAI, Azure, etc.) by changing `AI_MODEL`.
+Use any LiteLLM-supported provider by changing `AI_MODEL`/`AI_NAME` and setting the provider-specific API key expected by LiteLLM.
 
-#### Step 5 — Frontend
+Core endpoints:
 
-```bash
-cd client && npm install && npm run dev
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/ai/process` | Analyze or modify a raster/vector target |
+| `GET` | `/ai/functions?format=openai` | Return callable tools in OpenAI tool schema format |
+| `GET` | `/ai/functions?format=catalog` | Return a readable function catalog |
+| `POST` | `/ai/functions/invoke` | Invoke a registered algorithm function directly |
+
+`/ai/process` accepts `target_id`, `data_type` (`raster` or `vector`), `mode` (`analyze` or `modify`), `language`, `user_prompt`, optional `overwrite`, optional `session_id`, and optional `map_context`.
+
+In modify mode, the Pydantic layer only accepts currently modifiable fields such as raster/vector `name`; read-only spatial statistics and metadata are not written back from model output.
+
+Registered AI-callable functions include spectral indices, raster calculator, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
+
+## API Quick Reference
+
+Data service (`:8002`):
+
+- `POST /upload`
+- `GET /list`
+- `DELETE /raster/{raster_id}`
+- `POST /merge-bands`
+- `POST /extract-bands`
+- `POST /calculate-ndvi`, `/calculate-ndwi`, `/calculate-ndbi`, `/calculate-mndwi`
+- `POST /extract-vegetation`, `/extract-water`, `/extract-buildings`, `/extract-clouds`
+- `POST /clip-raster-by-vector`
+- `POST /raster-calculator`
+- `GET /raster/{raster_id}/spectrum`
+- `POST /execute-script`
+- `POST /change/band-diff`, `/change/band-ratio`, `/change/index-diff`
+- `POST /rasterize/layer-to-raster`
+
+Annotation service (`:8001`):
+
+- `POST /projects`, `GET /projects`, `DELETE /projects`
+- `POST /projects/{project_id}/layers`, `GET /projects/{project_id}/layers`
+- `POST /layers/{layer_id}/features`, `GET /layers/{layer_id}/features`
+- `GET/PATCH/DELETE /features/{feature_id}`
+- `POST /layers/{layer_id}/bulk`
+- `GET/POST/PATCH/DELETE /layers/{layer_id}/fields`
+- `POST /spatial/clip-vector-by-raster`
+
+Tile services:
+
+- `GET :8005/tile/{index_id}/{z}/{x}/{y}.png?bands=1,2,3`
+- `GET :8003/tiles/{layer_id}/{z}/{x}/{y}.pbf`
+
+Executor service (`:8004`):
+
+- `POST /execute`
+- `GET /health`
+
+## Optional Worker Cluster
+
+`worker_cluster` contains Celery tasks for offline raster/vector jobs. It is implemented, but most current `data_service` routes still call processing functions synchronously, so the worker is an optional integration path rather than the default product path.
+
+Start a worker after RabbitMQ and Redis are running:
+
+```powershell
+celery -A worker_cluster.app.celery_app worker --loglevel=info --concurrency=4 -Q preprocess,index,export
 ```
 
----
+See `worker_cluster/README.md` for task names, producer examples, Redis status tracking, and the recommended integration path.
 
-### Project Structure
+## Testing
 
-```
-.
-├── client/                    # Frontend SPA (Vanilla JS + Leaflet)
-│   └── packages/
-│       ├── app/src/
-│       │   ├── modules/       # Feature modules (AI, Export, Annotation, Raster…)
-│       │   ├── core/          # UIManager · GlobalBridge · GlobalEvents
-│       │   ├── store/         # Central state management
-│       │   └── api/           # Service API adapters
-│       ├── core/src/map.js    # Map rendering interface
-│       └── ui/src/            # Business components & templates
-├── services/                  # Backend microservices (FastAPI)
-│   ├── tile_service/          # Cython OTF tile engine + LRU cache
-│   ├── data_service/          # Raster metadata & band management
-│   ├── annotation_service/    # Vector CRUD + PostGIS spatial index
-│   ├── ai_gateway/            # LiteLLM adapter + Pydantic anti-tamper
-│   └── executor_service/      # Docker-sandboxed script runner
-├── functions/                 # Algorithm library
-│   └── implement/             # Spectral indices · Extraction · Raster ops
-├── infrastructure/            # IaC
-│   ├── docker/                # Dockerfiles & Compose
-│   ├── kubernetes/            # K8s manifests
-│   └── *_migrations/          # Alembic migration scripts
-├── storage/
-│   ├── cog/                   # Servable COG rasters
-│   └── raw/                   # Original imagery
-└── tests/                     # Pytest · Vitest · Playwright (planned)
+Python unit tests:
+
+```powershell
+python -m pytest tests/unit/functions
+python -m pytest tests/unit/services
 ```
 
----
+Benchmarks are opt-in:
 
-### Feature Preview
-
-#### Multi-spectral OTF Rendering
-Direct rendering of 16-bit GeoTIFF with dynamic band stretching.
-
-![Rendering Example](resources/5_1.png)
-
-#### Interactive Vector Annotation
-Complex polygon annotation with undo/redo and topology constraints.
-
-![Vector Annotation](resources/5_2.png)
-
-#### AI Gateway — Analyze Mode
-Submit a natural language query to receive a professional spatial analysis report.
-
-![AI Analyze](resources/5_4_1.png)
-
-#### AI Gateway — Modify Mode
-Issue a natural language instruction; AI returns a Pydantic-validated JSON diff for confirmation before committing to DB.
-
-![AI Modify](resources/5_4_2.png)
-
-#### Map Export Module
-Export the live map view as a high-resolution image with cartographic decorations.
-
-![Export Preview](resources/8_1.png)
-
----
-
-### Performance Highlights
-
-#### Concurrency Test
-![Concurrency](resources/6_1_1.png)
-*Band count vs. latency under high concurrency*
-
-#### Rendering Benchmark
-![Rendering](resources/6_1_2.png)
-*Rendering latency vs. tile size (3 bands, 128–4096 px)*
-
----
-
-### AI Gateway — Architecture Deep Dive
-
-#### Request Flow
-
-```
-POST /ai/process  { target_id, data_type, mode, language, user_prompt, overwrite }
-    │
-    ▼
-router.py → translator.py
-    ├─ 1. Extract Context  (RasterContextData | VectorContextData)
-    ├─ 2. Build Prompt     (ANALYZE: free-form | MODIFY: strict JSON Schema)
-    ├─ 3. Call LLM         (LiteLLM acompletion + auto-retry)
-    └─ 4. Validate & Write
-           ├── ANALYZE → plain text report
-           └── MODIFY  → schema_validator.py (Pydantic anti-tamper)
-                             ├── overwrite=true  → UPDATE DB
-                             └── overwrite=false → CREATE new record
+```powershell
+$env:RS_RUN_BENCHMARKS = "1"
+python -m pytest tests/benchmark -m benchmark
 ```
 
-#### API — `POST /ai/process`
+Frontend tests are configured in `vitest.config.js`, but the frontend package manifests in this revision are empty. Restore or add the required JS dependencies and scripts before running Vitest.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `target_id` | `int \| str` | ✅ | Raster `index_id` or Vector Layer UUID |
-| `data_type` | `raster \| vector` | ✅ | Data type |
-| `mode` | `analyze \| modify` | ✅ | Task mode |
-| `language` | `zh \| en \| ja` | — | Response language (default: `zh`) |
-| `user_prompt` | `string` | ✅ | Natural language instruction (2–2000 chars) |
-| `overwrite` | `bool` | — | Overwrite original record (default: `false`) |
+## Screenshots
 
-![AI Gateway Architecture](resources/7_1.png)
+### Raster Rendering
 
----
+![Raster rendering](resources/5_1.png)
 
-## 中文
+### Vector Annotation
 
-### 简介
+![Vector annotation](resources/5_2.png)
 
-**RSMarking** 是一个基于**微服务架构**的遥感影像标注平台，专为处理**海量 GeoTIFF 栅格数据**与**复杂矢量几何**而设计，无需繁重预处理即可实现高性能交互式标注。
+### AI Analyze Mode
 
----
+![AI analyze](resources/5_4_1.png)
 
-### 核心特性
+### AI Modify Mode
 
-#### ⚡ Cython 加速即时渲染 (OTF)
-内置 **TileEngine** 通过 `rasterio` 窗口读取结合 **C/Cython 扩展 (`fast_stretch_and_stack`)**，直接在内存中动态生成瓦片。  
-**零预切片、零金字塔构建**，极大节省磁盘空间与数据准备时间。
+![AI modify](resources/5_4_2.png)
 
-#### 🎨 动态多波段拉伸
-自动执行 **16位 / 32位影像**的 **2%–98% 线性拉伸**或归一化映射，并在统计异常时触发优化降级策略。
+### Map Export
 
-#### 🏗️ 分布式微服务架构
-**瓦片 / 数据 / 标注 / AI 网关 / 脚本执行**服务完全解耦，基于 **FastAPI** 提供高并发支持，可通过 **Kubernetes** 横向扩展。
+![Map export](resources/8_1.png)
 
-#### 🤖 AI 空间数据智能网关
-独立微服务，接受自然语言指令对栅格/矢量 GIS 数据执行**智能分析**或**结构化修改**。  
-通过 **LiteLLM** 统一适配多种大模型，并以严格的 **Pydantic 契约层**物理拦截 AI 对只读空间统计字段的篡改。
+## Current Caveats
 
-> **对比 QGIS 4.0** — 尚无内置 AI Agent；RSMarking 在 AI 辅助遥感工作流上具备先发优势。  
-> **对比 ArcGIS Pro** — ArcGIS Assistant 分析深度更强，但属商业付费软件；RSMarking **开源免费**。
+- Some older comments and docs in the repository are mojibaked. This README is ASCII-only to avoid adding more encoding damage.
+- `client/package.json`, `client/packages/app/package.json`, `client/packages/core/package.json`, and `client/pnpm_workspace.yaml` are empty placeholders in this revision.
+- The helper start scripts under `services/` are not the most reliable source of truth. Prefer the explicit `uvicorn` commands above while developing.
+- `worker_cluster` is optional until the synchronous `data_service` processing paths are replaced with Celery submissions.
+- Do not commit real `.env` API keys.
 
-#### 🗺️ 专业地图视图导出模块
-基于 **Canvas 2D API** 的全客户端导出管线，无需任何服务端请求。
+## License
 
-| 能力 | 说明 |
-|---|---|
-| 导出格式 | PNG（无损）· JPEG（可调质量）· SVG（矢量） |
-| 分辨率 | 1x / 2x / 3x / **4x 超高清** |
-| 图层控制 | 底图 · 栅格 · 矢量 · 装饰元素（独立开关） |
-| 经纬网格 | 全图覆盖，支持**实线 / 虚线** |
-| 外框标注 | 专业制图风格的经纬度刻度，与网格独立控制 |
-| 内置装饰 | 自动比例尺 · 指北针 · 时间戳水印 |
-
-#### 🐍 沙箱脚本执行器
-用户可提交自定义 Python 3 脚本，在 **Docker 容器隔离**环境中运行，支持共享 `/storage` 访问与完整生命周期管理。
-
----
-
-### 架构概览
-
-```
-┌─────────────────────────────────────────────────────┐
-│                前端单页应用 (SPA)                    │
-│  map.js · modules/ · store/ · UI 组件               │
-└────────────────────┬────────────────────────────────┘
-                     │ HTTP / REST
-     ┌───────────────┼───────────────────┐
-     ▼               ▼                   ▼
-tile_service    data_service      annotation_service
-(Cython OTF)  (栅格元数据管理)    (PostGIS 矢量标注)
-     │               │                   │
-     └───────────────┼───────────────────┘
-                     │
-            ┌────────┴────────┐
-            ▼                 ▼
-       ai_gateway      executor_service
-      (LiteLLM +       (Docker 沙箱)
-       Pydantic)
-            │
-   PostgreSQL/PostGIS + Redis
-```
-
----
-
-### 开发环境快速开始
-
-#### 预需求
-- Docker & Docker Compose
-- Python 3.12+
-- Node.js 24+
-
-#### 第一步 — 启动基础设施
-
-```bash
-cd infrastructure/docker
-docker-compose up -d
-```
-
-#### 第二步 — 数据库迁移
-
-```bash
-cd infrastructure/db_migrations && alembic upgrade head
-cd ../annot_migrations          && alembic upgrade head
-```
-
-#### 第三步 — 启动后端服务
-
-```bash
-conda env create -f environment.yml && conda activate <env>
-
-python services/tile_service/main.py
-python services/data_service/main.py
-python services/annotation_service/main.py
-python services/ai_gateway/main.py
-python services/executor_service/main.py
-```
-
-#### 第四步 — 配置 AI 网关环境变量
-
-在项目根目录创建 `.env`：
-
-```env
-AI_MODEL=deepseek/deepseek-chat
-AI_NAME=deepseek/deepseek-chat
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx
-```
-
-> 仅需修改 `AI_MODEL` 即可切换至 DeepSeek、OpenAI、Azure OpenAI 等任意 LiteLLM 兼容提供商。
-
-#### 第五步 — 启动前端
-
-```bash
-cd client && npm install && npm run dev
-```
-
----
-
-### 项目结构
-
-```
-.
-├── client/                    # 前端单页应用 (Vanilla JS + Leaflet)
-│   └── packages/
-│       ├── app/src/
-│       │   ├── modules/       # 功能模块 (AI · 导出 · 标注 · 栅格…)
-│       │   ├── core/          # UIManager · GlobalBridge · GlobalEvents
-│       │   ├── store/         # 核心状态管理
-│       │   └── api/           # 各服务 API 适配层
-│       ├── core/src/map.js    # 地图渲染核心接口
-│       └── ui/src/            # 业务组件与 HTML 模板
-├── services/                  # 后端微服务 (FastAPI)
-│   ├── tile_service/          # Cython OTF 渲染引擎 + LRU 缓存
-│   ├── data_service/          # 栅格元数据与波段管理
-│   ├── annotation_service/    # 矢量 CRUD + PostGIS 空间索引
-│   ├── ai_gateway/            # LiteLLM 适配 + Pydantic 防篡改
-│   └── executor_service/      # Docker 沙箱脚本执行器
-├── functions/                 # 算法函数库
-│   └── implement/             # 光谱指数 · 目标提取 · 栅格运算
-├── infrastructure/            # 基础设施即代码 (IaC)
-│   ├── docker/                # Dockerfile & Compose
-│   ├── kubernetes/            # K8s 部署配置
-│   └── *_migrations/          # Alembic 迁移脚本
-├── storage/
-│   ├── cog/                   # 可服务 COG 栅格
-│   └── raw/                   # 原始影像
-└── tests/                     # Pytest · Vitest · Playwright（规划中）
-```
-
----
-
-### 功能预览
-
-#### 多光谱影像即时渲染
-直接渲染 16 位 GeoTIFF，动态波段拉伸。
-
-![渲染示例](resources/5_1.png)
-
-#### 交互式矢量标注
-支持撤销/重做与拓扑约束的复杂多边形标注。
-
-![矢量标注](resources/5_2.png)
-
-#### AI 网关 — 分析模式
-提交自然语言问题，获取专业空间数据分析报告。
-
-![AI 分析](resources/5_4_1.png)
-
-#### AI 网关 — 修改模式
-自然语言指令驱动元数据修改，AI 返回经 Pydantic 校验的 JSON 差异供确认后落库。
-
-![AI 修改](resources/5_4_2.png)
-
-#### 地图视图导出
-将当前地图视图导出为高分辨率图像，支持专业制图装饰元素。
-
-![导出预览](resources/8_1.png)
-
----
-
-### 性能结果
-
-#### 高并发争抢测试
-![并发测试](resources/6_1_1.png)
-*高并发下波段数与延迟的关系*
-
-#### 渲染性能测试
-![渲染测试](resources/6_1_2.png)
-*渲染延迟随 Tile 尺寸增加的趋势（3 波段，128–4096 像素）*
-
----
-
-### AI 网关架构详解
-
-#### 请求流程
-
-```
-POST /ai/process  { target_id, data_type, mode, language, user_prompt, overwrite }
-    │
-    ▼
-router.py → translator.py
-    ├─ 1. 提取上下文  (RasterContextData | VectorContextData)
-    ├─ 2. 构建 Prompt (ANALYZE: 自由报告 | MODIFY: 严格 JSON Schema)
-    ├─ 3. 调用 LLM   (LiteLLM acompletion + 自动重试)
-    └─ 4. 校验与写入
-           ├── ANALYZE → 返回纯文本报告
-           └── MODIFY  → schema_validator.py (Pydantic 防篡改)
-                             ├── overwrite=true  → UPDATE DB
-                             └── overwrite=false → CREATE 新记录
-```
-
-#### 接口说明 — `POST /ai/process`
-
-| 字段 | 类型 | 必填 | 说明 |
-|---|---|---|---|
-| `target_id` | `int \| str` | ✅ | 栅格 `index_id` 或矢量图层 UUID |
-| `data_type` | `raster \| vector` | ✅ | 数据类型 |
-| `mode` | `analyze \| modify` | ✅ | 任务模式 |
-| `language` | `zh \| en \| ja` | — | 响应语言（默认 `zh`） |
-| `user_prompt` | `string` | ✅ | 自然语言指令（2–2000 字符） |
-| `overwrite` | `bool` | — | 是否覆盖原记录（默认 `false`，创建新记录） |
-
-![AI 网关架构图](resources/7_1.png)
+MIT. See `LICENSE`.
