@@ -13,6 +13,7 @@ import { AITemplate }           from './modal/templates/AITemplate.js';
 import { VectorAttrTemplate }   from './modal/templates/VectorAttrTemplate.js';
 import { RasterAttrTemplate }   from './modal/templates/RasterAttrTemplate.js';
 import { DetailTemplate }       from './modal/templates/DetailTemplate.js';
+import { RasterStatisticsTemplate } from './modal/templates/RasterStatisticsTemplate.js';
 import {
     esc,
     attrBadgeCls,
@@ -39,6 +40,9 @@ export const ModalComponent = {
     renderRasterFieldTableHead:  ()     => RasterAttrTemplate.renderRasterFieldTableHead(),
     renderRasterFieldTableBody:  (...a) => RasterAttrTemplate.renderRasterFieldTableBody(...a),
     renderDetail:                (...a) => DetailTemplate.renderDetail(...a),
+    renderRasterStatistics:      (...a) => RasterStatisticsTemplate.render(...a),
+    renderRasterStatisticsLoading: (...a) => RasterStatisticsTemplate.renderLoading(...a),
+    renderRasterStatisticsError: (...a) => RasterStatisticsTemplate.renderError(...a),
     renderSelectOptions,
     renderActionLoading,
     _esc:          esc,

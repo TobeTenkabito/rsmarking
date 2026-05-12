@@ -17,6 +17,7 @@ import { exportModal }            from './modals/exportModal.js';
 import { clipModal }              from './modals/clipModal.js';
 import { changeModal }            from './modals/changeModal.js';
 import { conversionModal }        from './modals/conversionModal.js';
+import { statisticsModal }        from './modals/statisticsModal.js';
 
 export const ModalTemplates = {
     indexModal,
@@ -32,4 +33,5 @@ export const ModalTemplates = {
     clipModal,
     changeModal,
     conversionModal,
+    statisticsModal,
 };

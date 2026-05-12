@@ -200,6 +200,7 @@ Data service (`:8002`):
 - `POST /extract-vegetation`, `/extract-water`, `/extract-buildings`, `/extract-clouds`
 - `POST /clip-raster-by-vector`
 - `POST /raster-calculator`
+- `GET /raster/{raster_id}/statistics`
 - `GET /raster/{raster_id}/spectrum`
 - `POST /execute-script`
 - `POST /change/band-diff`, `/change/band-ratio`, `/change/index-diff`

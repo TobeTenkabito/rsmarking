@@ -9,15 +9,16 @@ import { ExtractionModule } from './modules/ExtractionModule.js';
 import { AnnotationModule } from './modules/AnnotationModule.js';
 import { RasterModule } from './modules/RasterModule.js';
 import { ProjectModule } from './modules/ProjectModule.js';
-import { CalculatorModule } from "./modules/CalculatorModule.js" ;
+import { CalculatorModule } from './modules/CalculatorModule.js';
 import { ScriptModule } from './modules/ScriptModule.js';
-import { AIModule } from "./modules/AIModule.js";
+import { AIModule } from './modules/AIModule.js';
 import { WelcomeModule } from './modules/WelcomeModule.js';
-import { AttributeTable }   from './modules/AttributeTable.js';
-import { ExportModule } from "./modules/ExportModule.js";
-import { ClipModule } from "./modules/ClipModule.js";
+import { AttributeTable } from './modules/AttributeTable.js';
+import { ExportModule } from './modules/ExportModule.js';
+import { ClipModule } from './modules/ClipModule.js';
 import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
-import { ConversionModule } from "./modules/ConversionModule.js";
+import { ConversionModule } from './modules/ConversionModule.js';
+import { RasterStatisticsModule } from './modules/RasterStatisticsModule.js';
 import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
@@ -41,6 +42,7 @@ class App {
         this.clip = null;
         this.change = null;
         this.conversion = null;
+        this.rasterStatistics = null;
     }
 
     async init() {
@@ -64,6 +66,7 @@ class App {
             this.clip = new ClipModule(this);
             this.change = new ChangeDetectionModule(this);
             this.conversion = new ConversionModule(this);
+            this.rasterStatistics = new RasterStatisticsModule(this);
 
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();
@@ -79,9 +82,9 @@ class App {
 
             this.ui.refreshLanguage();
 
-            console.log("%c[RSMarking] 🟢 系统初始化成功", "color: #6366f1; font-weight: bold;");
+            console.log("%c[RSMarking] initialized", "color: #6366f1; font-weight: bold;");
         } catch (error) {
-            console.error("[App] ❌ 初始化流程中断:", error);
+            console.error("[App] initialization failed", error);
         }
     }
 }

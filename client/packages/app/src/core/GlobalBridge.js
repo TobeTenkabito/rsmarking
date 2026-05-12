@@ -19,6 +19,10 @@ export class GlobalBridge {
             closeIndexModal: () => this.app.analysis?.closeModal(),
             executeIndexCalculation: () => this.app.analysis?.execute(),
             showSpectrumMode:   (index_id)=>this.app.analysis?.toggleSpectrumMode(index_id),
+            openRasterStatistics: (indexId) => this.app.rasterStatistics?.open(indexId),
+            closeRasterStatistics: () => this.app.rasterStatistics?.close(),
+            refreshRasterStatistics: () => this.app.rasterStatistics?.refresh(),
+            selectRasterStatisticsBand: (bandIndex) => this.app.rasterStatistics?.selectBand(bandIndex),
 
             // --- 要素提取 ---
             openExtractionModal: (type) => this.app.extraction?.openModal(type),
