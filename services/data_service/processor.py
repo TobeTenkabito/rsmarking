@@ -38,7 +38,7 @@ from functions.implement.extraction import (
     extract_building,
     extract_cloud,
 )
-from functions.implement.rasterize_ops import vector_to_raster
+from functions.implement.rasterize_ops import raster_to_vector, vector_to_raster
 
 logger = logging.getLogger("data_service.processor")
 
@@ -525,3 +525,22 @@ class RasterProcessor:
         )
 
         return output_path
+
+    @staticmethod
+    def run_vectorization(
+        raster_path: str,
+        band_index: int = 1,
+        skip_nodata: bool = True,
+        skip_zero: bool = True,
+        max_features: int = 10000,
+        simplify_tolerance: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        return raster_to_vector(
+            raster_path=raster_path,
+            band_index=band_index,
+            dst_crs="EPSG:4326",
+            skip_nodata=skip_nodata,
+            skip_zero=skip_zero,
+            max_features=max_features,
+            simplify_tolerance=simplify_tolerance,
+        )

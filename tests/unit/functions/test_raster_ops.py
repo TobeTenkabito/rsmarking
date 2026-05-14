@@ -7,7 +7,7 @@ from rasterio.transform import from_origin
 from shapely.geometry import box
 
 from functions.implement.manipulation import extract_raster_bands, merge_raster_bands
-from functions.implement.rasterize_ops import vector_to_raster
+from functions.implement.rasterize_ops import raster_to_vector, vector_to_raster
 
 
 def _write_raster(path, data, dtype="float32"):
@@ -94,3 +94,23 @@ def test_vector_to_raster_burns_values_from_shapely_geometry(tmp_path):
         assert result.crs.to_string() == "EPSG:3857"
         assert arr.max() == 5
         assert arr.sum() > 0
+
+
+def test_raster_to_vector_polygonizes_nonzero_pixels(tmp_path):
+    raster_path = tmp_path / "classes.tif"
+    data = np.array(
+        [
+            [0, 0, 0, 0],
+            [0, 2, 2, 0],
+            [0, 2, 2, 0],
+            [0, 0, 0, 3],
+        ],
+        dtype=np.uint8,
+    )
+    _write_raster(raster_path, data, dtype="uint8")
+
+    features = raster_to_vector(str(raster_path), skip_zero=True)
+
+    values = sorted(feature["properties"]["raster_value"] for feature in features)
+    assert values == [2, 3]
+    assert all(feature["geometry"]["type"] == "Polygon" for feature in features)

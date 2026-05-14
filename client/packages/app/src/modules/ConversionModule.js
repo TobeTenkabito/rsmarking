@@ -1,6 +1,19 @@
 import { Store } from '../store/index.js';
 import { ConversionAPI } from '../api/conversion.js';
 
+const esc = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+const rasterDisplayName = (raster) =>
+    raster?.file_name ?? raster?.name ?? `Raster_${raster?.index_id ?? ''}`;
+
+const defaultVectorName = (raster) =>
+    `${rasterDisplayName(raster).replace(/\.[^.]+$/, '')}_vectorized_${Date.now()}`;
+
 /**
  * ConversionModule - 矢量转栅格功能模块
  *
@@ -21,6 +34,7 @@ export class ConversionModule {
         // 内部状态：两步选择的暂存
         this._selectedLayerId  = null;
         this._selectedRefId    = null;   // 参考栅格的 index_id
+        this._selectedRasterId = null;
     }
 
     /** 打开矢量转栅格 Modal，重置到 Step 1 */
@@ -42,6 +56,49 @@ export class ConversionModule {
 
     closeModal() {
         document.getElementById('conversion-modal')?.classList.add('hidden');
+    }
+
+    openRasterToVectorModal(rasterId = null) {
+        const modal = document.getElementById('raster-vector-modal');
+        if (!modal) return;
+
+        this._selectedRasterId = rasterId ? Number(rasterId) : null;
+        const project = Store.state.activeProject;
+        const projectInfo = document.getElementById('raster-vector-project');
+        if (projectInfo) {
+            projectInfo.textContent = project
+                ? `Target project: ${project.name}`
+                : 'Select or create a vector project first';
+            projectInfo.classList.toggle('text-amber-500', !project);
+            projectInfo.classList.toggle('text-slate-400', !!project);
+        }
+
+        const list = document.getElementById('raster-vector-list');
+        if (list) {
+            list.innerHTML = this._buildRasterVectorList(Store.state.rasters);
+        }
+
+        const bandInput = document.getElementById('raster-vector-band-input');
+        if (bandInput) bandInput.value = '1';
+
+        const maxInput = document.getElementById('raster-vector-max-input');
+        if (maxInput) maxInput.value = '10000';
+
+        const skipZeroInput = document.getElementById('raster-vector-skip-zero-input');
+        if (skipZeroInput) skipZeroInput.checked = true;
+
+        const selectedRaster = this._findRasterByIndexId(this._selectedRasterId);
+        const nameInput = document.getElementById('raster-vector-name-input');
+        if (nameInput) {
+            nameInput.value = selectedRaster ? defaultVectorName(selectedRaster) : '';
+        }
+
+        this._updateRasterVectorConfirmBtn();
+        modal.classList.remove('hidden');
+    }
+
+    closeRasterToVectorModal() {
+        document.getElementById('raster-vector-modal')?.classList.add('hidden');
     }
 
     /** 用户点击某个矢量图层卡片 */
@@ -103,6 +160,29 @@ export class ConversionModule {
         this._updateConfirmBtn();
     }
 
+    handleRasterVectorNameInput() {
+        this._updateRasterVectorConfirmBtn();
+    }
+
+    handleSelectRaster(indexId) {
+        this._selectedRasterId = Number(indexId);
+
+        document.querySelectorAll('[data-raster-vector-source]').forEach(el => {
+            const isActive = el.dataset.rasterVectorSource === String(indexId);
+            el.classList.toggle('ring-2', isActive);
+            el.classList.toggle('ring-violet-500', isActive);
+            el.classList.toggle('bg-violet-50', isActive);
+        });
+
+        const raster = this._findRasterByIndexId(indexId);
+        const nameInput = document.getElementById('raster-vector-name-input');
+        if (nameInput && !nameInput.value.trim()) {
+            nameInput.value = defaultVectorName(raster);
+        }
+
+        this._updateRasterVectorConfirmBtn();
+    }
+
     async handleExecute() {
         const layerId  = this._selectedLayerId;
         const refId    = this._selectedRefId;
@@ -134,6 +214,61 @@ export class ConversionModule {
         } catch (err) {
             console.error('[ConversionModule] 矢量转栅格失败:', err);
             this.app.ui.showToast(`转换失败：${err.message}`, 'error');
+        } finally {
+            this.app.ui.showGlobalLoader(false);
+        }
+    }
+
+    async handleRasterToVectorExecute() {
+        const rasterId = this._selectedRasterId;
+        const activeProject = Store.state.activeProject;
+        const nameInput = document.getElementById('raster-vector-name-input');
+        const bandInput = document.getElementById('raster-vector-band-input');
+        const maxInput = document.getElementById('raster-vector-max-input');
+        const skipZeroInput = document.getElementById('raster-vector-skip-zero-input');
+
+        const newName = nameInput?.value?.trim();
+        const bandIndex = Math.max(1, Number(bandInput?.value) || 1);
+        const maxFeatures = Math.max(1, Number(maxInput?.value) || 10000);
+
+        if (!activeProject) {
+            this.app.ui.showToast('Select a vector project first', 'warning');
+            return;
+        }
+        if (!rasterId || !newName) {
+            this.app.ui.showToast('Select a raster and enter a layer name', 'warning');
+            return;
+        }
+
+        this.closeRasterToVectorModal();
+        this.app.ui.showGlobalLoader(true);
+
+        try {
+            const result = await ConversionAPI.rasterToVector(
+                rasterId,
+                activeProject.id,
+                newName,
+                {
+                    bandIndex,
+                    skipNodata: true,
+                    skipZero: skipZeroInput?.checked ?? true,
+                    maxFeatures,
+                },
+            );
+
+            await this.app.project?.handleSelectProject(activeProject.id);
+            if (result?.layer_id) {
+                Store.setActiveVectorLayer(result.layer_id);
+                await this.app.mapController?.refreshVectorLayer(result.layer_id);
+            }
+
+            this.app.ui.showToast(
+                `Vector layer created with ${result?.feature_count ?? 0} features`,
+                'success',
+            );
+        } catch (err) {
+            console.error('[ConversionModule] raster to vector failed:', err);
+            this.app.ui.showToast(`Vectorization failed: ${err.message}`, 'error');
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -203,6 +338,44 @@ export class ConversionModule {
         const hasName   = nameInput?.value?.trim().length > 0;
         const confirmBtn = document.getElementById('conversion-confirm-btn');
         if (confirmBtn) confirmBtn.disabled = !(this._selectedRefId && hasName);
+    }
+
+    _updateRasterVectorConfirmBtn() {
+        const nameInput = document.getElementById('raster-vector-name-input');
+        const hasName = nameInput?.value?.trim().length > 0;
+        const confirmBtn = document.getElementById('raster-vector-confirm-btn');
+        if (confirmBtn) {
+            confirmBtn.disabled = !(Store.state.activeProject && this._selectedRasterId && hasName);
+        }
+    }
+
+    _findRasterByIndexId(indexId) {
+        return Store.state.rasters.find(r => String(r.index_id) === String(indexId));
+    }
+
+    _buildRasterVectorList(rasters) {
+        if (!rasters.length) {
+            return `<p class="text-sm text-slate-400 text-center py-6">No rasters available</p>`;
+        }
+        return rasters.map((raster) => {
+            const active = String(raster.index_id) === String(this._selectedRasterId);
+            return `
+                <div
+                    data-raster-vector-source="${esc(raster.index_id)}"
+                    class="flex items-center gap-3 p-3 rounded-lg border border-slate-200
+                           cursor-pointer hover:bg-violet-50 hover:border-violet-300 transition-all
+                           ${active ? 'ring-2 ring-violet-500 bg-violet-50' : ''}"
+                    onclick="RS.handleRasterVectorSelectRaster(${raster.index_id})"
+                >
+                    <span class="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0"></span>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium text-slate-700 truncate">${esc(rasterDisplayName(raster))}</p>
+                        <p class="text-xs text-slate-400">${esc(raster.width ?? '?')} x ${esc(raster.height ?? '?')} px
+                           - ${esc(raster.bands ?? '?')} band(s)</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
 

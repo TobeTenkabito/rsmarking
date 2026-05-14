@@ -31,3 +31,31 @@ async def layer_to_raster_api(
         processor_func=RasterProcessor.run_rasterization,
         fetch_func=internal_fetch_features
     )
+
+
+@router.post("/raster-to-vector")
+async def raster_to_vector_api(
+    raster_index_id: int = Form(...),
+    project_id: UUID = Form(...),
+    new_name: str = Form(...),
+    band_index: int = Form(1),
+    skip_nodata: bool = Form(True),
+    skip_zero: bool = Form(True),
+    max_features: int = Form(10000),
+    simplify_tolerance: float = Form(0.0),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Polygonize a raster band and store the generated polygons in a new vector layer.
+    """
+    return await db_ops.process_raster_to_vector_task(
+        db=db,
+        raster_index_id=raster_index_id,
+        project_id=project_id,
+        new_name=new_name,
+        band_index=band_index,
+        skip_nodata=skip_nodata,
+        skip_zero=skip_zero,
+        max_features=max_features,
+        simplify_tolerance=simplify_tolerance,
+    )

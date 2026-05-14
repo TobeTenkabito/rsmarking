@@ -161,6 +161,11 @@ export class GlobalBridge {
             handleConversionExecute:   () => this.app.conversion?.handleExecute(),
             handleConversionSelectLayer: (id) => this.app.conversion?.handleSelectLayer(id),
             handleConversionSelectRef:   (id) => this.app.conversion?.handleSelectRef(id),
+            openRasterToVectorModal: (id) => this.app.conversion?.openRasterToVectorModal(id),
+            closeRasterToVectorModal: () => this.app.conversion?.closeRasterToVectorModal(),
+            handleRasterVectorNameInput: () => this.app.conversion?.handleRasterVectorNameInput(),
+            handleRasterVectorSelectRaster: (id) => this.app.conversion?.handleSelectRaster(id),
+            handleRasterToVectorExecute: () => this.app.conversion?.handleRasterToVectorExecute(),
 
 
             // 兼容性接口

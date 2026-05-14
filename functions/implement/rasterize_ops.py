@@ -1,7 +1,13 @@
+import math
+from typing import Any, Dict, Generator, List, Tuple
+
+import numpy as np
 import rasterio
-from rasterio.features import rasterize
+from pyproj import CRS, Transformer
+from rasterio.features import rasterize, shapes
+from shapely.geometry import mapping, shape
 from shapely.geometry.base import BaseGeometry
-from typing import List, Dict, Any, Generator, Tuple
+from shapely.ops import transform as shapely_transform, unary_union
 
 
 def vector_to_raster(
@@ -64,3 +70,141 @@ def vector_to_raster(
         dst.write(out_arr, 1)
 
     return out_path
+
+
+def _json_safe_value(value: Any) -> int | float | str:
+    if isinstance(value, np.generic):
+        value = value.item()
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return str(value)
+        if value.is_integer():
+            return int(value)
+        return value
+
+    if isinstance(value, (int, str)):
+        return value
+
+    return float(value)
+
+
+def _clean_polygon_geometry(geom: BaseGeometry) -> BaseGeometry | None:
+    if geom.is_empty:
+        return None
+
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+
+    if geom.is_empty:
+        return None
+
+    if geom.geom_type in {"Polygon", "MultiPolygon"}:
+        return geom
+
+    if geom.geom_type == "GeometryCollection":
+        polygons = [
+            part
+            for part in geom.geoms
+            if part.geom_type in {"Polygon", "MultiPolygon"} and not part.is_empty
+        ]
+        if not polygons:
+            return None
+        geom = unary_union(polygons)
+        if geom.geom_type in {"Polygon", "MultiPolygon"} and not geom.is_empty:
+            return geom
+
+    return None
+
+
+def raster_to_vector(
+    raster_path: str,
+    band_index: int = 1,
+    dst_crs: str = "EPSG:4326",
+    skip_nodata: bool = True,
+    skip_zero: bool = True,
+    max_features: int = 10000,
+    simplify_tolerance: float = 0.0,
+) -> List[Dict[str, Any]]:
+    """
+    Polygonize one raster band into GeoJSON features.
+
+    The function is intentionally tuned for mask/classification rasters:
+    NoData pixels are skipped by default, and zero-valued pixels are skipped
+    by default so extraction masks produce foreground polygons only.
+    """
+    if band_index < 1:
+        raise ValueError("band_index must be >= 1")
+    if max_features < 1:
+        raise ValueError("max_features must be >= 1")
+
+    features: List[Dict[str, Any]] = []
+
+    with rasterio.open(raster_path) as src:
+        if band_index > src.count:
+            raise ValueError(
+                f"Band index {band_index} is out of range for raster with {src.count} band(s)"
+            )
+
+        data = src.read(band_index)
+        if data.dtype.name not in {"int16", "int32", "uint8", "uint16", "float32"}:
+            data = data.astype("float32")
+        include_mask = np.ones(data.shape, dtype=bool)
+
+        if np.issubdtype(data.dtype, np.floating):
+            include_mask &= np.isfinite(data)
+
+        if skip_nodata and src.nodata is not None:
+            nodata = src.nodata
+            if isinstance(nodata, float) and math.isnan(nodata):
+                include_mask &= ~np.isnan(data)
+            else:
+                include_mask &= data != nodata
+
+        if skip_zero:
+            include_mask &= data != 0
+
+        transformer = None
+        source_crs = src.crs
+        if dst_crs and not source_crs:
+            raise ValueError("Raster CRS is required for vectorization into EPSG:4326")
+        if source_crs and dst_crs:
+            source = CRS.from_user_input(source_crs)
+            target = CRS.from_user_input(dst_crs)
+            if not source.equals(target):
+                transformer = Transformer.from_crs(source, target, always_xy=True)
+
+        for geom_json, value in shapes(data, mask=include_mask, transform=src.transform):
+            geom = _clean_polygon_geometry(shape(geom_json))
+            if geom is None:
+                continue
+
+            if simplify_tolerance > 0:
+                geom = geom.simplify(simplify_tolerance, preserve_topology=True)
+                geom = _clean_polygon_geometry(geom)
+                if geom is None:
+                    continue
+
+            if transformer is not None:
+                geom = shapely_transform(transformer.transform, geom)
+                geom = _clean_polygon_geometry(geom)
+                if geom is None:
+                    continue
+
+            raster_value = _json_safe_value(value)
+            if len(features) >= max_features:
+                raise ValueError(
+                    f"Raster vectorization exceeded max_features={max_features}. "
+                    "Use a classified/mask raster or raise the limit."
+                )
+            features.append({
+                "type": "Feature",
+                "geometry": mapping(geom),
+                "properties": {
+                    "raster_value": raster_value,
+                    "band_index": band_index,
+                    "category": f"value_{raster_value}",
+                },
+            })
+
+    return features

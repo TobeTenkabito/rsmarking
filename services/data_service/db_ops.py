@@ -24,6 +24,20 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "storage", "raw")
 COG_DIR = os.path.join(BASE_DIR, "storage", "cog")
 
 
+def resolve_raster_record_path(record: models.RasterMetadata) -> str | None:
+    candidates = [record.file_path, record.cog_path]
+    for path in candidates:
+        if not path:
+            continue
+        if os.path.exists(path):
+            return path
+        if path.startswith("/data/"):
+            local_path = os.path.join(COG_DIR, os.path.basename(path))
+            if os.path.exists(local_path):
+                return local_path
+    return None
+
+
 def run_conversion(input_path: str, output_path: str):
     try:
         RasterProcessor.convert_to_cog(input_path, output_path)
@@ -190,6 +204,98 @@ async def get_dynamic_band_ids(request: Request) -> List[int]:
         if re.match(r'^id_\d+$', k)]
     id_keys.sort(key=lambda x: int(x.split('_')[1]))
     return [int(form_data[k]) for k in id_keys]
+
+
+async def process_raster_to_vector_task(
+    db: AsyncSession,
+    raster_index_id: int,
+    project_id: UUID,
+    new_name: str,
+    band_index: int = 1,
+    skip_nodata: bool = True,
+    skip_zero: bool = True,
+    max_features: int = 10000,
+    simplify_tolerance: float = 0.0,
+):
+    from services.data_service.bridges.vector_bridge import (
+        internal_bulk_create_features,
+        internal_create_fields,
+        internal_create_layer,
+    )
+
+    try:
+        stmt = select(models.RasterMetadata).where(
+            models.RasterMetadata.index_id == raster_index_id
+        )
+        res = await db.execute(stmt)
+        raster_record = res.scalar_one_or_none()
+        if not raster_record:
+            raise HTTPException(status_code=404, detail="Raster not found")
+
+        raster_path = resolve_raster_record_path(raster_record)
+        if not raster_path:
+            raise HTTPException(status_code=404, detail="Raster file not found")
+
+        features = RasterProcessor.run_vectorization(
+            raster_path=raster_path,
+            band_index=band_index,
+            skip_nodata=skip_nodata,
+            skip_zero=skip_zero,
+            max_features=max_features,
+            simplify_tolerance=simplify_tolerance,
+        )
+        if not features:
+            raise HTTPException(
+                status_code=400,
+                detail="No vector features were generated from the selected raster band",
+            )
+
+        layer = await internal_create_layer(
+            project_id=project_id,
+            name=new_name,
+            source_raster_index_id=raster_record.index_id,
+        )
+        layer_id = layer["id"]
+
+        await internal_create_fields(
+            layer_id,
+            [
+                {
+                    "field_name": "raster_value",
+                    "field_alias": "Raster Value",
+                    "field_type": "number",
+                    "field_order": 0,
+                },
+                {
+                    "field_name": "band_index",
+                    "field_alias": "Band Index",
+                    "field_type": "number",
+                    "field_order": 1,
+                },
+                {
+                    "field_name": "category",
+                    "field_alias": "Category",
+                    "field_type": "string",
+                    "field_order": 2,
+                },
+            ],
+        )
+        imported_count = await internal_bulk_create_features(layer_id, features)
+
+        return {
+            "status": "success",
+            "layer_id": layer_id,
+            "layer": layer,
+            "feature_count": imported_count,
+            "source_raster_index_id": raster_record.index_id,
+        }
+
+    except Exception as e:
+        logger.error(f"raster-to-vector conversion failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 async def process_rasterize_task(

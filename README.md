@@ -205,6 +205,7 @@ Data service (`:8002`):
 - `POST /execute-script`
 - `POST /change/band-diff`, `/change/band-ratio`, `/change/index-diff`
 - `POST /rasterize/layer-to-raster`
+- `POST /rasterize/raster-to-vector`
 
 Annotation service (`:8001`):
 

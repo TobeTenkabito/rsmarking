@@ -34,5 +34,34 @@ export const ConversionAPI = {
             console.error("[AnalysisAPI] vectorToRaster Error:", error);
             throw error;
         }
+    },
+
+    async rasterToVector(rasterIndexId, projectId, newName, options = {}) {
+        try {
+            const formData = new FormData();
+            formData.append('raster_index_id', String(rasterIndexId));
+            formData.append('project_id', projectId);
+            formData.append('new_name', newName);
+            formData.append('band_index', String(options.bandIndex ?? 1));
+            formData.append('skip_nodata', String(options.skipNodata ?? true));
+            formData.append('skip_zero', String(options.skipZero ?? true));
+            formData.append('max_features', String(options.maxFeatures ?? 10000));
+            formData.append('simplify_tolerance', String(options.simplifyTolerance ?? 0));
+
+            const response = await fetch(`${BASE_URL}/rasterize/raster-to-vector`, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.detail ?? `Raster vectorization failed: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("[AnalysisAPI] rasterToVector Error:", error);
+            throw error;
+        }
     }
 };
