@@ -20,7 +20,7 @@ async def layer_to_raster_api(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    将指定的矢量图层根据参考影像的分辨率和范围进行栅格化
+    Rasterize the specified vector layer using the reference image's resolution and extent.
     """
     return await db_ops.process_rasterize_task(
         db=db,
