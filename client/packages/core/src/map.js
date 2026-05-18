@@ -17,6 +17,8 @@ export class MapEngine {
         console.groupEnd();
         this._cesiumViewer = null;
         this._is3D = false;
+        this._cesiumVectorDataSources = new Map();
+        this._cesiumVectorSyncTokens = new Map();
     }
 
     _initMap() {
@@ -68,18 +70,37 @@ export class MapEngine {
     }
 
 
-    _circleToPolygon(center, radiusMeters, sides = 64) {
+    _circleToPolygon(center, radiusMeters, sides = 72) {
         const [lng, lat] = center;
-        const latR = radiusMeters / 111320;
-        const lngR = radiusMeters / (111320 * Math.cos(lat * Math.PI / 180));
+        const earthRadiusMeters = 6378137;
+        const lat1 = lat * Math.PI / 180;
+        const lng1 = lng * Math.PI / 180;
+        const angularDistance = radiusMeters / earthRadiusMeters;
         const coords = [];
+
         for (let i = 0; i <= sides; i++) {
-            const angle = (i / sides) * 2 * Math.PI;
+            const bearing = (i / sides) * 2 * Math.PI;
+            const sinLat1 = Math.sin(lat1);
+            const cosLat1 = Math.cos(lat1);
+            const sinDistance = Math.sin(angularDistance);
+            const cosDistance = Math.cos(angularDistance);
+            const lat2 = Math.asin(
+                sinLat1 * cosDistance +
+                cosLat1 * sinDistance * Math.cos(bearing)
+            );
+            const lng2 = lng1 + Math.atan2(
+                Math.sin(bearing) * sinDistance * cosLat1,
+                cosDistance - sinLat1 * Math.sin(lat2)
+            );
+
+            const nextLng = ((((lng2 * 180 / Math.PI + 180) % 360) + 360) % 360) - 180;
+            const nextLat = Math.max(-90, Math.min(90, lat2 * 180 / Math.PI));
             coords.push([
-                lng + lngR * Math.cos(angle),
-                lat + latR * Math.sin(angle)
+                nextLng,
+                nextLat
             ]);
         }
+
         return coords;
     }
 
@@ -291,8 +312,8 @@ export class MapEngine {
             console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
         }
         if (this._is3D && this._cesiumViewer) {
-            this._cesiumViewer.dataSources.getByName(layerId)
-                .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
+            this._invalidateCesiumVectorSync(layerId);
+            this._removeCesiumVectorDataSource(layerId);
         }
     }
 
@@ -381,6 +402,48 @@ export class MapEngine {
         this._is3D ? this.switchTo2D() : this.switchTo3D();
     }
 
+    is3DMode() {
+        return this._is3D;
+    }
+
+    getCesiumViewer() {
+        return this._cesiumViewer;
+    }
+
+    getViewBbox() {
+        if (this._is3D && this._cesiumViewer && typeof Cesium !== 'undefined') {
+            const rectangle = this._cesiumViewer.camera.computeViewRectangle(
+                this._cesiumViewer.scene.globe.ellipsoid
+            );
+
+            if (rectangle) {
+                const west = Math.max(-180, Cesium.Math.toDegrees(rectangle.west));
+                const south = Math.max(-90, Cesium.Math.toDegrees(rectangle.south));
+                const east = Math.min(180, Cesium.Math.toDegrees(rectangle.east));
+                const north = Math.min(90, Cesium.Math.toDegrees(rectangle.north));
+
+                if (west <= east && south <= north) {
+                    return [west, south, east, north];
+                }
+                return [-180, south, 180, north];
+            }
+
+            return [-180, -90, 180, 90];
+        }
+
+        if (this.map?.getBounds) {
+            const bounds = this.map.getBounds();
+            return [
+                bounds.getWest(),
+                bounds.getSouth(),
+                bounds.getEast(),
+                bounds.getNorth(),
+            ];
+        }
+
+        return null;
+    }
+
     _syncRastersToCesium() {
         if (!this._cesiumViewer) return;
 
@@ -400,7 +463,10 @@ export class MapEngine {
 
     _syncVectorsToCesium() {
         if (!this._cesiumViewer) return;
-        this._cesiumViewer.dataSources.removeAll();
+        for (const layerId of Array.from(this._cesiumVectorDataSources.keys())) {
+            this._invalidateCesiumVectorSync(layerId);
+            this._removeCesiumVectorDataSource(layerId);
+        }
         this.vectorLayers.forEach((_, layerId) => {
             this._syncSingleVectorToCesium(layerId);
         });
@@ -410,8 +476,8 @@ export class MapEngine {
         if (!this._cesiumViewer) return;
 
         // 先清除同名旧数据源，避免重复叠加
-        this._cesiumViewer.dataSources.getByName(layerId)
-            .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
+        const syncToken = this._invalidateCesiumVectorSync(layerId);
+        this._removeCesiumVectorDataSource(layerId);
 
         const leafletLayer = this.vectorLayers.get(layerId);
         if (!leafletLayer) return;
@@ -476,11 +542,33 @@ export class MapEngine {
                 }
             });
 
+            if (this._cesiumVectorSyncTokens.get(layerId) !== syncToken) return;
+
             dataSource.name = layerId;
-            this._cesiumViewer.dataSources.add(dataSource);
+            await this._cesiumViewer.dataSources.add(dataSource);
+            this._cesiumVectorDataSources.set(layerId, dataSource);
             console.log(`[MapEngine] 🔷 矢量图层已同步到 Cesium: ${layerId}`);
         } catch (err) {
             console.error(`[MapEngine] ❌ 矢量图层同步失败 [${layerId}]:`, err);
         }
+    }
+
+    _invalidateCesiumVectorSync(layerId) {
+        const token = (this._cesiumVectorSyncTokens.get(layerId) || 0) + 1;
+        this._cesiumVectorSyncTokens.set(layerId, token);
+        return token;
+    }
+
+    _removeCesiumVectorDataSource(layerId) {
+        if (!this._cesiumViewer) return;
+
+        const tracked = this._cesiumVectorDataSources.get(layerId);
+        if (tracked) {
+            this._cesiumViewer.dataSources.remove(tracked);
+            this._cesiumVectorDataSources.delete(layerId);
+        }
+
+        this._cesiumViewer.dataSources.getByName(layerId)
+            .forEach(ds => this._cesiumViewer.dataSources.remove(ds));
     }
 }

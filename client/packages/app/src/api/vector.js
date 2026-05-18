@@ -36,7 +36,9 @@ async function apiRequest(url, options = {}) {
 
         return data;
     } catch (error) {
-        console.error(`[VectorAPI Error] Endpoint: ${url}`, error);
+        if (error.name !== 'AbortError') {
+            console.error(`[VectorAPI Error] Endpoint: ${url}`, error);
+        }
         throw error;
     }
 }
@@ -94,10 +96,10 @@ export const VectorAPI = {
      * @param {string} layerId
      * @param {Array} bbox - [minx, miny, maxx, maxy]
      */
-    async fetchFeaturesInBbox(layerId, bbox) {
+    async fetchFeaturesInBbox(layerId, bbox, options = {}) {
         const [minx, miny, maxx, maxy] = bbox;
         const query = `minx=${minx}&miny=${miny}&maxx=${maxx}&maxy=${maxy}`;
-        return await apiRequest(`${ANNO_BASE_URL}/layers/${layerId}/features?${query}`);
+        return await apiRequest(`${ANNO_BASE_URL}/layers/${layerId}/features?${query}`, options);
     },
 
     /**

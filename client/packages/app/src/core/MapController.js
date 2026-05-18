@@ -272,6 +272,10 @@ export class MapController {
      * @returns {number[]|null}
      */
     _getMapBbox() {
+        if (typeof this.engine?.getViewBbox === 'function') {
+            return this.engine.getViewBbox();
+        }
+
         const map = this.engine.map || this.engine;
 
         if (map.getBounds) {
