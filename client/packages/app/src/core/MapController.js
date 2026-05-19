@@ -41,6 +41,7 @@ export class MapController {
         this.initVectorEvents();
 
         Store.onRastersChange = () => {
+            this.applyLayerRenderOrder();
             this.updateUI();
         };
 
@@ -89,6 +90,15 @@ export class MapController {
         }
     }
 
+    applyLayerRenderOrder() {
+        if (this.engine?.setRasterLayerOrder) {
+            this.engine.setRasterLayerOrder(Store.getRasterRenderOrder());
+        }
+        if (this.engine?.setVectorLayerOrder) {
+            this.engine.setVectorLayerOrder(Store.getVectorRenderOrder());
+        }
+    }
+
 
     /**
      * 切换栅格图层显示状态
@@ -103,6 +113,7 @@ export class MapController {
         if (Store.isLoaded(numericId)) {
             this.engine.removeLayer(raster.index_id || numericId);
             Store.removeActiveLayer(numericId);
+            this.applyLayerRenderOrder();
         } else {
             Store.setLoading(numericId, true);
             this.updateUI();
@@ -110,6 +121,7 @@ export class MapController {
             try {
                 await this.engine.addGeoRasterLayer(raster);
                 Store.addActiveLayer(numericId);
+                this.applyLayerRenderOrder();
             } catch (err) {
                 console.error('[MapController] 栅格渲染失败:', err);
             } finally {
@@ -202,7 +214,7 @@ export class MapController {
      *   2. 通过 signal 传递给 VectorAPI，避免过期响应污染状态
      */
     async fetchViewportFeatures() {
-        const visibleIds = Array.from(Store.state.visibleVectorLayerIds);
+        const visibleIds = Store.getVectorRenderOrder();
         if (visibleIds.length === 0) return;
 
         const bbox = this._getMapBbox();
@@ -253,7 +265,7 @@ export class MapController {
     handleVectorStateChange(state) {
         // 通知底层引擎同步可见图层列表，清理已取消勾选的图层
         if (this.engine.syncVisibleLayers) {
-            this.engine.syncVisibleLayers(Array.from(state.visibleVectorLayerIds));
+            this.engine.syncVisibleLayers(Store.getVectorRenderOrder());
         }
 
         // 联动编辑工具栏

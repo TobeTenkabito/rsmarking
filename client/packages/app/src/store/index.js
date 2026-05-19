@@ -2,6 +2,45 @@
  * Store - 核心状态管理中心
  * 负责维护栅格影像元数据、矢量标注项目及图层、以及全局交互状态
  */
+const sameLayerId = (left, right) => String(left) === String(right);
+
+const getBundleKey = (raster) => String(raster?.bundle_id ?? 'unclassed');
+
+const getLayerProjectKey = (layer, fallbackProjectId = null) =>
+    String(layer?.project_id ?? layer?.projectId ?? fallbackProjectId ?? '');
+
+function moveItem(items, fromIndex, toIndex, position = 'before') {
+    const next = [...items];
+    const [moved] = next.splice(fromIndex, 1);
+    let insertIndex = toIndex + (position === 'after' ? 1 : 0);
+
+    if (fromIndex < insertIndex) insertIndex -= 1;
+    insertIndex = Math.max(0, Math.min(next.length, insertIndex));
+
+    if (insertIndex === fromIndex) return items;
+    next.splice(insertIndex, 0, moved);
+    return next;
+}
+
+function orderedSetByItems(existingSet, orderedItems, getId) {
+    const existingValues = Array.from(existingSet);
+    const next = new Set();
+
+    orderedItems.forEach((item) => {
+        const itemId = getId(item);
+        const existingValue = existingValues.find((value) => sameLayerId(value, itemId));
+        if (existingValue !== undefined) next.add(existingValue);
+    });
+
+    existingValues.forEach((value) => {
+        if (!Array.from(next).some((known) => sameLayerId(known, value))) {
+            next.add(value);
+        }
+    });
+
+    return next;
+}
+
 export const Store = {
     state: {
         // --- 栅格数据状态 ---
@@ -50,6 +89,7 @@ export const Store = {
 
     setRasters(data) {
         this.state.rasters = data;
+        this._syncActiveRasterOrder();
         if (this.onRastersChange) this.onRastersChange(data);
     },
 
@@ -93,7 +133,104 @@ export const Store = {
 
     setVectorLayers(layers) {
         this.state.vectorLayers = layers;
+        this._syncVisibleVectorLayerOrder();
         this.notifyVectorChange();
+    },
+
+    reorderRasterLayer(sourceId, targetId, position = 'before') {
+        const rasters = this.state.rasters;
+        const sourceIndex = rasters.findIndex((raster) => sameLayerId(raster.id, sourceId));
+        const targetIndex = rasters.findIndex((raster) => sameLayerId(raster.id, targetId));
+
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+        if (getBundleKey(rasters[sourceIndex]) !== getBundleKey(rasters[targetIndex])) return false;
+
+        const next = moveItem(rasters, sourceIndex, targetIndex, position);
+        if (next === rasters) return false;
+
+        this.state.rasters = next;
+        this._syncActiveRasterOrder();
+        if (this.onRastersChange) this.onRastersChange(next);
+        return true;
+    },
+
+    reorderVectorLayer(sourceId, targetId, position = 'before') {
+        const layers = this.state.vectorLayers;
+        const activeProjectId = this.state.activeProject?.id ?? null;
+        const sourceIndex = layers.findIndex((layer) => sameLayerId(layer.id, sourceId));
+        const targetIndex = layers.findIndex((layer) => sameLayerId(layer.id, targetId));
+
+        if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return false;
+        if (
+            getLayerProjectKey(layers[sourceIndex], activeProjectId) !==
+            getLayerProjectKey(layers[targetIndex], activeProjectId)
+        ) {
+            return false;
+        }
+
+        const next = moveItem(layers, sourceIndex, targetIndex, position);
+        if (next === layers) return false;
+
+        this.state.vectorLayers = next;
+        this._syncVisibleVectorLayerOrder();
+        this.notifyVectorChange();
+        return true;
+    },
+
+    _syncActiveRasterOrder() {
+        this.state.activeLayerIds = orderedSetByItems(
+            this.state.activeLayerIds,
+            this.state.rasters,
+            (raster) => raster.id
+        );
+    },
+
+    _syncVisibleVectorLayerOrder() {
+        this.state.visibleVectorLayerIds = orderedSetByItems(
+            this.state.visibleVectorLayerIds,
+            this.state.vectorLayers,
+            (layer) => layer.id
+        );
+    },
+
+    getRasterRenderOrder() {
+        const activeIds = Array.from(this.state.activeLayerIds);
+        const orderedIds = [];
+        const matchedRasterIds = new Set();
+
+        this.state.rasters.forEach((raster) => {
+            if (activeIds.some((id) => sameLayerId(id, raster.id))) {
+                orderedIds.push(raster.index_id ?? raster.id);
+                matchedRasterIds.add(String(raster.id));
+            }
+        });
+
+        activeIds.forEach((id) => {
+            if (!matchedRasterIds.has(String(id))) {
+                orderedIds.push(id);
+            }
+        });
+
+        return orderedIds.map((id) => String(id));
+    },
+
+    getVectorRenderOrder() {
+        const visibleIds = Array.from(this.state.visibleVectorLayerIds);
+        const orderedIds = [];
+
+        this.state.vectorLayers.forEach((layer) => {
+            if (visibleIds.some((id) => sameLayerId(id, layer.id))) {
+                orderedIds.push(layer.id);
+            }
+        });
+
+        visibleIds.forEach((id) => {
+            if (!orderedIds.some((known) => sameLayerId(known, id))) {
+                orderedIds.push(id);
+            }
+        });
+
+        return orderedIds.map((id) => String(id));
     },
 
     /**

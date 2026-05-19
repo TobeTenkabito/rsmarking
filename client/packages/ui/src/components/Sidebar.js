@@ -89,9 +89,22 @@ export const SidebarComponent = {
         const checkedAttr = isActive ? 'checked="checked"' : '';
         const activeItemClass = isActive ? 'bg-indigo-50/50 border-indigo-100' : 'border-transparent';
         const activeTextClass = isActive ? 'text-indigo-700' : 'text-slate-700';
+        const dragId = esc(raster.id);
+        const bundleId = esc(raster.bundle_id ?? 'unclassed');
 
         return `
-            <div class="layer-item p-3 flex items-center hover:bg-slate-50 transition-all group border-l-4 ${activeItemClass}" data-id="${raster.id}">
+            <div class="layer-item p-3 flex items-center hover:bg-slate-50 transition-all group border-l-4 ${activeItemClass} cursor-grab active:cursor-grabbing"
+                 draggable="true"
+                 data-layer-drag-type="raster"
+                 data-layer-drag-id="${dragId}"
+                 data-layer-bundle-id="${bundleId}"
+                 data-id="${raster.id}">
+                <div class="mr-2 shrink-0 text-slate-300 group-hover:text-slate-400" title="Drag to reorder">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
+                    </svg>
+                </div>
                 <div class="mr-3 flex items-center justify-center">
                     <div class="relative w-4 h-4">
                         <input type="checkbox"
@@ -197,7 +210,12 @@ export const SidebarComponent = {
                         <div class="divide-y divide-emerald-50 bg-white" id="vector-list">
                             ${layers.length === 0
                                 ? `<div class="p-6 text-center text-[10px] text-slate-400 italic">${t('sidebar.vector.emptyLayers')}</div>`
-                                : layers.map((layer) => this.renderVectorItem(layer, activeLayerId === layer.id, visibleIds?.has(layer.id))).join('')}
+                                : layers.map((layer) => this.renderVectorItem(
+                                    layer,
+                                    activeLayerId === layer.id,
+                                    visibleIds?.has(layer.id),
+                                    activeProject?.id
+                                )).join('')}
                         </div>
                     </div>
                 ` : `<div class="text-center py-6 text-[10px] text-slate-300 italic">${t('sidebar.vector.selectHint')}</div>`}
@@ -205,14 +223,27 @@ export const SidebarComponent = {
         `;
     },
 
-    renderVectorItem(layer, isActive, isVisible) {
+    renderVectorItem(layer, isActive, isVisible, activeProjectId = null) {
         const rowClass = isActive
             ? 'border-l-4 border-emerald-500 bg-emerald-50/20'
             : 'border-l-4 border-transparent';
         const nameClass = isActive ? 'text-emerald-700' : 'text-slate-700';
+        const dragId = esc(layer.id);
+        const projectId = esc(layer.project_id ?? layer.projectId ?? activeProjectId ?? '');
 
         return `
-            <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${rowClass}" data-vector-id="${layer.id}">
+            <div class="p-3 flex items-center hover:bg-emerald-50/50 transition-all group ${rowClass} cursor-grab active:cursor-grabbing"
+                 draggable="true"
+                 data-layer-drag-type="vector"
+                 data-layer-drag-id="${dragId}"
+                 data-layer-project-id="${projectId}"
+                 data-vector-id="${layer.id}">
+                <div class="mr-2 shrink-0 text-slate-300 group-hover:text-emerald-400" title="Drag to reorder">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/>
+                    </svg>
+                </div>
                 <div class="mr-3 shrink-0">
                     <input type="checkbox"
                            ${isVisible ? 'checked' : ''}

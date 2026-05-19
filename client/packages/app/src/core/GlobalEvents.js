@@ -6,6 +6,8 @@ import { t } from '../i18n/index.js';
 export class GlobalEvents {
     constructor(app) {
         this.app = app;
+        this.layerDragState = null;
+        this.layerDropTarget = null;
     }
 
     bindAll() {
@@ -33,6 +35,7 @@ export class GlobalEvents {
             await this.app.mapController.focusLayer(id);
         }
     });
+    this.bindLayerDragAndDrop(listContainer);
 
     // 上传文件监听
     document.getElementById('raster-upload-input')?.addEventListener('change', async (e) => {
@@ -110,6 +113,117 @@ export class GlobalEvents {
             alert(`导入失败: ${err.message}`);
         }});
 }
+
+    bindLayerDragAndDrop(container) {
+        if (!container) return;
+
+        container.addEventListener('dragstart', (e) => {
+            const row = this.getLayerDragRow(e.target);
+            if (!row || e.target.closest('button, input, select, textarea, a')) {
+                e.preventDefault();
+                return;
+            }
+
+            this.layerDragState = {
+                type: row.dataset.layerDragType,
+                id: row.dataset.layerDragId,
+                bundleId: row.dataset.layerBundleId,
+                projectId: row.dataset.layerProjectId,
+            };
+
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.layerDragState.id);
+            row.classList.add('opacity-50');
+        });
+
+        container.addEventListener('dragover', (e) => {
+            const row = this.getLayerDragRow(e.target);
+            if (!this.isValidLayerDropTarget(row)) {
+                this.clearLayerDropMarker();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+                return;
+            }
+
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            this.markLayerDropTarget(row, this.getDropPosition(e, row));
+        });
+
+        container.addEventListener('dragleave', (e) => {
+            if (!container.contains(e.relatedTarget)) this.clearLayerDropMarker();
+        });
+
+        container.addEventListener('drop', (e) => {
+            const row = this.getLayerDragRow(e.target);
+            if (!this.isValidLayerDropTarget(row)) return;
+
+            e.preventDefault();
+            const position = this.getDropPosition(e, row);
+            const targetId = row.dataset.layerDragId;
+            const state = this.layerDragState;
+
+            if (state.type === 'raster') {
+                Store.reorderRasterLayer(state.id, targetId, position);
+            } else if (state.type === 'vector') {
+                Store.reorderVectorLayer(state.id, targetId, position);
+            }
+
+            this.clearLayerDragState();
+        });
+
+        container.addEventListener('dragend', () => {
+            this.clearLayerDragState();
+        });
+    }
+
+    getLayerDragRow(target) {
+        return target?.closest?.('[data-layer-drag-type][data-layer-drag-id]') ?? null;
+    }
+
+    isValidLayerDropTarget(row) {
+        const state = this.layerDragState;
+        if (!row || !state || row.dataset.layerDragId === state.id) return false;
+        if (row.dataset.layerDragType !== state.type) return false;
+
+        if (state.type === 'raster') {
+            return row.dataset.layerBundleId === state.bundleId;
+        }
+
+        if (state.type === 'vector') {
+            return row.dataset.layerProjectId === state.projectId;
+        }
+
+        return false;
+    }
+
+    getDropPosition(event, row) {
+        const rect = row.getBoundingClientRect();
+        return event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+    }
+
+    markLayerDropTarget(row, position) {
+        if (this.layerDropTarget?.row === row && this.layerDropTarget?.position === position) return;
+        this.clearLayerDropMarker();
+        row.style.boxShadow = position === 'after'
+            ? 'inset 0 -2px 0 #6366f1'
+            : 'inset 0 2px 0 #6366f1';
+        this.layerDropTarget = { row, position };
+    }
+
+    clearLayerDropMarker() {
+        if (this.layerDropTarget?.row) {
+            this.layerDropTarget.row.style.boxShadow = '';
+        }
+        this.layerDropTarget = null;
+    }
+
+    clearLayerDragState() {
+        document
+            .querySelectorAll('[data-layer-drag-type].opacity-50')
+            .forEach((row) => row.classList.remove('opacity-50'));
+        this.clearLayerDropMarker();
+        this.layerDragState = null;
+    }
 
     bindCustomEvents() {
         window.addEventListener('inspect-feature', (e) => {

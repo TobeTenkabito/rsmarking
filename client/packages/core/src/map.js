@@ -5,6 +5,8 @@ export class MapEngine {
 
         this.layers = new Map();
         this.vectorLayers = new Map();
+        this._rasterLayerOrder = [];
+        this._vectorLayerOrder = [];
 
         this.isReady = false;
         this.tileServiceBase = "http://localhost:8005";
@@ -119,6 +121,7 @@ export class MapEngine {
             });
             layer.addTo(this.map);
             this.layers.set(indexId, layer);
+            this._applyRasterLayerOrder();
 
             const boundsData    = raster.bounds || raster.extent;
             const leafletBounds = this._convertBounds(boundsData);
@@ -162,8 +165,31 @@ export class MapEngine {
         });
 
         if (!removed) console.warn(`[MapEngine] ⚠️ 地图上未发现活动图层 [${id}]`);
+        this._applyRasterLayerOrder();
         if (this._is3D) this._syncRastersToCesium();
         return removed;
+    }
+
+    setRasterLayerOrder(indexIds = []) {
+        this._rasterLayerOrder = indexIds.map((id) => String(id).trim()).filter(Boolean);
+        this._applyRasterLayerOrder();
+        if (this._is3D) this._syncRastersToCesium();
+    }
+
+    _getOrderedRasterLayerIds() {
+        const ordered = this._rasterLayerOrder.filter((id) => this.layers.has(id));
+        const unordered = Array.from(this.layers.keys()).filter((id) => !ordered.includes(id));
+        return [...ordered, ...unordered];
+    }
+
+    _applyRasterLayerOrder() {
+        const orderedIds = this._getOrderedRasterLayerIds();
+        orderedIds.forEach((id, index) => {
+            const layer = this.layers.get(id);
+            if (layer && typeof layer.setZIndex === 'function') {
+                layer.setZIndex(1000 + orderedIds.length - index);
+            }
+        });
     }
 
     fitLayer(indexId, data) {
@@ -233,6 +259,7 @@ export class MapEngine {
             vectorLayer.addTo(this.map);
             this.vectorLayers.set(layerId, vectorLayer);
             vectorLayer._lastSelectedId = selectedId;
+            this._applyVectorLayerOrder();
             if (this._is3D) this._syncSingleVectorToCesium(layerId);
             return;
         }
@@ -289,18 +316,21 @@ export class MapEngine {
             vectorLayer.setStyle(getFeatureStyle);
         }
 
+        this._applyVectorLayerOrder();
         if (this._is3D) this._syncSingleVectorToCesium(layerId);
     }
 
     syncVisibleLayers(visibleIdsArray) {
         if (!this.isReady) return;
         const visibleSet = new Set(visibleIdsArray);
+        this._vectorLayerOrder = visibleIdsArray.map((id) => String(id));
         for (const [layerId, vectorLayer] of this.vectorLayers.entries()) {
             if (!visibleSet.has(layerId)) {
                 this.map.removeLayer(vectorLayer);
                 this.vectorLayers.delete(layerId);
             }
         }
+        this._applyVectorLayerOrder();
         if (this._is3D) this._syncVectorsToCesium();
     }
 
@@ -311,10 +341,45 @@ export class MapEngine {
             this.vectorLayers.delete(layerId);
             console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
         }
+        this._applyVectorLayerOrder();
         if (this._is3D && this._cesiumViewer) {
             this._invalidateCesiumVectorSync(layerId);
             this._removeCesiumVectorDataSource(layerId);
         }
+    }
+
+    setVectorLayerOrder(layerIds = []) {
+        this._vectorLayerOrder = layerIds.map((id) => String(id)).filter(Boolean);
+        this._applyVectorLayerOrder();
+        if (this._is3D) this._syncVectorsToCesium();
+    }
+
+    _getOrderedVectorLayerIds() {
+        const ordered = this._vectorLayerOrder.filter((id) => this.vectorLayers.has(id));
+        const unordered = Array.from(this.vectorLayers.keys()).filter((id) => !ordered.includes(id));
+        return [...ordered, ...unordered];
+    }
+
+    _applyVectorLayerOrder() {
+        const orderedIds = this._getOrderedVectorLayerIds();
+
+        [...orderedIds].reverse().forEach((layerId) => {
+            const layer = this.vectorLayers.get(layerId);
+            if (!layer) return;
+            if (typeof layer.bringToFront === 'function') {
+                layer.bringToFront();
+                return;
+            }
+            if (typeof layer.eachLayer === 'function') {
+                layer.eachLayer((childLayer) => {
+                    if (typeof childLayer.bringToFront === 'function') {
+                        childLayer.bringToFront();
+                    }
+                });
+            }
+        });
+
+        this._applyCesiumVectorOrder();
     }
 
     _initCesium() {
@@ -450,7 +515,7 @@ export class MapEngine {
         const layers = this._cesiumViewer.imageryLayers;
         while (layers.length > 1) layers.remove(layers.get(1));
 
-        this.layers.forEach((leafletLayer, indexId) => {
+        [...this._getOrderedRasterLayerIds()].reverse().forEach((indexId) => {
             const tileUrl = `${this.tileServiceBase}/tile/${indexId}/{z}/{x}/{y}.png?bands=1,2,3`;
             layers.addImageryProvider(
                 new Cesium.UrlTemplateImageryProvider({
@@ -467,7 +532,7 @@ export class MapEngine {
             this._invalidateCesiumVectorSync(layerId);
             this._removeCesiumVectorDataSource(layerId);
         }
-        this.vectorLayers.forEach((_, layerId) => {
+        [...this._getOrderedVectorLayerIds()].reverse().forEach((layerId) => {
             this._syncSingleVectorToCesium(layerId);
         });
     }
@@ -547,6 +612,7 @@ export class MapEngine {
             dataSource.name = layerId;
             await this._cesiumViewer.dataSources.add(dataSource);
             this._cesiumVectorDataSources.set(layerId, dataSource);
+            this._applyCesiumVectorOrder();
             console.log(`[MapEngine] 🔷 矢量图层已同步到 Cesium: ${layerId}`);
         } catch (err) {
             console.error(`[MapEngine] ❌ 矢量图层同步失败 [${layerId}]:`, err);
@@ -557,6 +623,17 @@ export class MapEngine {
         const token = (this._cesiumVectorSyncTokens.get(layerId) || 0) + 1;
         this._cesiumVectorSyncTokens.set(layerId, token);
         return token;
+    }
+
+    _applyCesiumVectorOrder() {
+        if (!this._cesiumViewer?.dataSources) return;
+        const dataSources = this._cesiumViewer.dataSources;
+        if (typeof dataSources.raiseToTop !== 'function') return;
+
+        [...this._getOrderedVectorLayerIds()].reverse().forEach((layerId) => {
+            const dataSource = this._cesiumVectorDataSources.get(layerId);
+            if (dataSource) dataSources.raiseToTop(dataSource);
+        });
     }
 
     _removeCesiumVectorDataSource(layerId) {
