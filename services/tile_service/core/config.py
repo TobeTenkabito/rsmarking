@@ -1,8 +1,10 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     PROJECT_NAME: str = "RSMarking-TileService"
     STORAGE_RAW_DIR: str = os.getenv("STORAGE_RAW_DIR", "/app/storage/raw")
     CACHE_L1_SIZE: int = 1024
@@ -10,7 +12,6 @@ class Settings(BaseSettings):
     CACHE_L2_SIZE_LIMIT: int = 5 * 1024 * 1024 * 1024
     DEFAULT_BANDS: str = "1,2,3"
     TILE_SIZE: int = 256
-    class Config:
-        env_file = ".env"
+
 
 settings = Settings()

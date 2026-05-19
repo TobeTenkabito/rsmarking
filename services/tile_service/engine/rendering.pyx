@@ -8,66 +8,90 @@ import numpy as np
 cimport numpy as np
 from libc.stdint cimport uint8_t
 
+
+cdef inline float _scale(float low, float high) noexcept nogil:
+    if high > low:
+        return 255.0 / (high - low)
+    return 0.0
+
+
+cdef inline uint8_t _stretch(float value, float low, float scale) noexcept nogil:
+    cdef float stretched = (value - low) * scale
+    if stretched <= 0.0:
+        return 0
+    if stretched >= 255.0:
+        return 255
+    return <uint8_t>stretched
+
+
 def render_tile(float[:, :, :] data, float[:] mins, float[:] maxs):
     """
-    Highly optimized tile rendering using Cython.
-    Processes stretching, clipping, and RGBA stacking in a single C-loop.
+    Stretch the first three bands into RGB and derive alpha from all bands.
+    The hot loop avoids per-pixel range calculation and fills RGBA directly.
     """
     cdef int count = data.shape[0]
     cdef int height = data.shape[1]
     cdef int width = data.shape[2]
+    cdef np.ndarray[uint8_t, ndim=3] out = np.empty((height, width, 4), dtype=np.uint8)
+    cdef uint8_t[:, :, :] out_view = out
 
-    # Output buffer: Height x Width x 4 (RGBA)
-    cdef np.ndarray[uint8_t, ndim=3] out = np.zeros((height, width, 4), dtype=np.uint8)
+    cdef int band, y, x
+    cdef bint has_data
+    cdef float v0, v1, v2
+    cdef float low0 = 0.0
+    cdef float low1 = 0.0
+    cdef float low2 = 0.0
+    cdef float scale0 = 0.0
+    cdef float scale1 = 0.0
+    cdef float scale2 = 0.0
 
-    cdef int c, y, x
-    cdef float val, low, high, rng, stretched
-    cdef float max_val
-    cdef uint8_t pixel_val
+    if count <= 0:
+        out.fill(0)
+        return out
 
-    # Release GIL to allow true multi-core processing
+    if count > 0:
+        low0 = mins[0]
+        scale0 = _scale(mins[0], maxs[0])
+    if count > 1:
+        low1 = mins[1]
+        scale1 = _scale(mins[1], maxs[1])
+    if count > 2:
+        low2 = mins[2]
+        scale2 = _scale(mins[2], maxs[2])
+
     with nogil:
         for y in range(height):
             for x in range(width):
-                max_val = 0
-
-                # Handle RGB Channels
-                for c in range(count):
-                    if c >= 3: break # Only process up to 3 bands for RGB
-
-                    val = data[c, y, x]
-                    low = mins[c]
-                    high = maxs[c]
-                    rng = high - low
-                    if rng <= 0: rng = 1.0
-
-                    # Stretch and Clip
-                    stretched = (val - low) / rng * 255.0
-                    if stretched < 0: stretched = 0
-                    if stretched > 255: stretched = 255
-
-                    pixel_val = <uint8_t>stretched
-
-                    # Store in Output (RGBA order)
-                    if count == 1:
-                        # Grayscale to RGB
-                        out[y, x, 0] = pixel_val
-                        out[y, x, 1] = pixel_val
-                        out[y, x, 2] = pixel_val
-                    else:
-                        out[y, x, c] = pixel_val
-
-                    if val > max_val:
-                        max_val = val
-
-                # Special case: 2 bands (rare in remote sensing, usually fill B with 0)
-                if count == 2:
-                    out[y, x, 2] = 0
-
-                # Alpha Channel: 255 if any band has data > 0, else 0
-                if max_val > 0:
-                    out[y, x, 3] = 255
+                if count == 1:
+                    v0 = data[0, y, x]
+                    out_view[y, x, 0] = _stretch(v0, low0, scale0)
+                    out_view[y, x, 1] = out_view[y, x, 0]
+                    out_view[y, x, 2] = out_view[y, x, 0]
+                    has_data = v0 != 0.0
+                elif count == 2:
+                    v0 = data[0, y, x]
+                    v1 = data[1, y, x]
+                    out_view[y, x, 0] = _stretch(v0, low0, scale0)
+                    out_view[y, x, 1] = _stretch(v1, low1, scale1)
+                    out_view[y, x, 2] = 0
+                    has_data = v0 != 0.0 or v1 != 0.0
                 else:
-                    out[y, x, 3] = 0
+                    v0 = data[0, y, x]
+                    v1 = data[1, y, x]
+                    v2 = data[2, y, x]
+                    out_view[y, x, 0] = _stretch(v0, low0, scale0)
+                    out_view[y, x, 1] = _stretch(v1, low1, scale1)
+                    out_view[y, x, 2] = _stretch(v2, low2, scale2)
+                    has_data = v0 != 0.0 or v1 != 0.0 or v2 != 0.0
+                    if not has_data:
+                        for band in range(3, count):
+                            if data[band, y, x] != 0.0:
+                                has_data = 1
+                                break
+
+                if has_data:
+                    out_view[y, x, 3] = 255
+                else:
+                    out_view[y, x, 3] = 0
 
     return out
