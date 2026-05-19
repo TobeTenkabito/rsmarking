@@ -135,44 +135,62 @@ export const SidebarComponent = {
                   </div>
                 </div>
 
-                <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <button onclick="event.stopPropagation(); RS.showSpectrumMode('${raster.index_id}')"
-                class="p-1.5 text-slate-300 hover:text-violet-500 hover:bg-violet-50 rounded-lg transition-colors"
-                title="${t('sidebar.raster.spectrumTitle')}">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0
-                0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0
-                0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                </svg>
-                </button>
-                <button onclick="event.stopPropagation(); RS.openRasterStatistics('${raster.index_id}')"
-                class="p-1.5 text-slate-300 hover:text-sky-500 hover:bg-sky-50 rounded-lg transition-colors"
-                title="${t('sidebar.raster.statsTitle')}">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-5"/>
-                </svg>
-                </button>
-                <button onclick="event.stopPropagation(); RS.openAttriRaster('${raster.index_id}','${esc(raster.file_name)}')"
-                class="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
-                title="${t('sidebar.raster.attrTitle')}">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
-                </svg>
-                </button>
-
-                <button data-id="${raster.id}"
-                class="btn-delete p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                title="${t('sidebar.raster.removeTitle')}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                </svg>
-                </button>
-                </div>
+                ${this.renderRasterActions(raster)}
             </div>
+        `;
+    },
+
+    renderRasterActions(raster) {
+        const indexId = esc(raster.index_id);
+        const rasterId = esc(raster.id);
+        const fileName = esc(raster.file_name);
+
+        return `
+            <details class="layer-action-menu relative shrink-0 ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <summary onclick="event.stopPropagation()"
+                         class="list-none [&::-webkit-details-marker]:hidden w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                         title="Layer actions">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 6h.01M12 12h.01M12 18h.01"/>
+                    </svg>
+                </summary>
+                <div class="absolute right-8 top-0 z-20 flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.showSpectrumMode('${indexId}')"
+                            class="p-1.5 text-slate-400 hover:text-violet-500 hover:bg-violet-50 rounded transition-colors"
+                            title="${t('sidebar.raster.spectrumTitle')}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                    </button>
+                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openRasterStatistics('${indexId}')"
+                            class="p-1.5 text-slate-400 hover:text-sky-500 hover:bg-sky-50 rounded transition-colors"
+                            title="${t('sidebar.raster.statsTitle')}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-5"/>
+                        </svg>
+                    </button>
+                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster('${indexId}','${fileName}')"
+                            class="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded transition-colors"
+                            title="${t('sidebar.raster.attrTitle')}">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
+                        </svg>
+                    </button>
+                    <button data-id="${rasterId}"
+                            onclick="this.closest('details')?.removeAttribute('open')"
+                            class="btn-delete p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="${t('sidebar.raster.removeTitle')}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </details>
         `;
     },
 

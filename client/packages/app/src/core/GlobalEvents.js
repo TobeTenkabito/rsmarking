@@ -119,7 +119,7 @@ export class GlobalEvents {
 
         container.addEventListener('dragstart', (e) => {
             const row = this.getLayerDragRow(e.target);
-            if (!row || e.target.closest('button, input, select, textarea, a')) {
+            if (!row || e.target.closest('button, input, select, textarea, a, summary, .layer-action-menu')) {
                 e.preventDefault();
                 return;
             }
@@ -137,8 +137,8 @@ export class GlobalEvents {
         });
 
         container.addEventListener('dragover', (e) => {
-            const row = this.getLayerDragRow(e.target);
-            if (!this.isValidLayerDropTarget(row)) {
+            const target = this.resolveLayerDropTarget(container, e);
+            if (!target) {
                 this.clearLayerDropMarker();
                 if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
                 return;
@@ -146,7 +146,7 @@ export class GlobalEvents {
 
             e.preventDefault();
             if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-            this.markLayerDropTarget(row, this.getDropPosition(e, row));
+            this.markLayerDropTarget(target.row, target.position);
         });
 
         container.addEventListener('dragleave', (e) => {
@@ -154,18 +154,17 @@ export class GlobalEvents {
         });
 
         container.addEventListener('drop', (e) => {
-            const row = this.getLayerDragRow(e.target);
-            if (!this.isValidLayerDropTarget(row)) return;
+            const target = this.resolveLayerDropTarget(container, e);
+            if (!target) return;
 
             e.preventDefault();
-            const position = this.getDropPosition(e, row);
-            const targetId = row.dataset.layerDragId;
+            const targetId = target.row.dataset.layerDragId;
             const state = this.layerDragState;
 
             if (state.type === 'raster') {
-                Store.reorderRasterLayer(state.id, targetId, position);
+                Store.reorderRasterLayer(state.id, targetId, target.position);
             } else if (state.type === 'vector') {
-                Store.reorderVectorLayer(state.id, targetId, position);
+                Store.reorderVectorLayer(state.id, targetId, target.position);
             }
 
             this.clearLayerDragState();
@@ -178,6 +177,33 @@ export class GlobalEvents {
 
     getLayerDragRow(target) {
         return target?.closest?.('[data-layer-drag-type][data-layer-drag-id]') ?? null;
+    }
+
+    resolveLayerDropTarget(container, event) {
+        const directRow = this.getLayerDragRow(event.target);
+        if (this.isValidLayerDropTarget(directRow)) {
+            return {
+                row: directRow,
+                position: this.getDropPosition(event, directRow),
+            };
+        }
+
+        const rows = Array.from(container.querySelectorAll('[data-layer-drag-type][data-layer-drag-id]'))
+            .filter((row) => this.isValidLayerDropTarget(row));
+
+        if (rows.length === 0) return null;
+
+        for (const row of rows) {
+            const rect = row.getBoundingClientRect();
+            if (event.clientY < rect.top) {
+                return { row, position: 'before' };
+            }
+            if (event.clientY <= rect.bottom) {
+                return { row, position: this.getDropPosition(event, row) };
+            }
+        }
+
+        return { row: rows[rows.length - 1], position: 'after' };
     }
 
     isValidLayerDropTarget(row) {
