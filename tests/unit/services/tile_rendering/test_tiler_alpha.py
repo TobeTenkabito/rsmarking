@@ -1,7 +1,14 @@
 import numpy as np
+from rasterio.enums import Resampling
 from rasterio.transform import from_origin
+from rasterio.windows import Window
 
 from services.tile_service.engine.tiler import TileEngine
+
+
+class FakeMaskFlag:
+    def __init__(self, name):
+        self.name = name
 
 
 class FakeDataset:
@@ -15,6 +22,8 @@ class FakeDataset:
         self.transform = from_origin(0, 0, 1, 1)
         self.closed = False
         self.nodata = None
+        flag_name = "all_valid" if mask_value == 255 else "per_dataset"
+        self.mask_flag_enums = [[FakeMaskFlag(flag_name)] for _ in range(self.count)]
 
     def read(self, bands, **kwargs):
         return self.data[np.array(bands) - 1]
@@ -28,6 +37,9 @@ class FakeDataset:
 
     def tags(self, band=None):
         return {}
+
+    def overviews(self, band):
+        return []
 
 
 def test_valid_negative_pixels_remain_opaque(mocker):
@@ -104,3 +116,25 @@ def test_unmasked_internal_zero_pixels_stay_opaque(mocker):
 
     assert tile is not None
     assert np.all(tile[:, :, 3] == 255)
+
+
+def test_large_decimation_without_overviews_uses_nearest():
+    data = np.ones((1, 256, 256), dtype=np.float32)
+    src = FakeDataset(data)
+    engine = TileEngine("fake.tif")
+    window = Window(0, 0, 2048, 2048)
+
+    resampling = engine._select_resampling(src, 1, window)
+
+    assert resampling == Resampling.nearest
+
+
+def test_small_decimation_uses_bilinear():
+    data = np.ones((1, 256, 256), dtype=np.float32)
+    src = FakeDataset(data)
+    engine = TileEngine("fake.tif")
+    window = Window(0, 0, 256, 256)
+
+    resampling = engine._select_resampling(src, 1, window)
+
+    assert resampling == Resampling.bilinear

@@ -23,7 +23,7 @@ import services.tile_service.logic as logic
 logger = logging.getLogger("tile_service.control")
 router = APIRouter()
 
-RENDER_CACHE_VERSION = "mask-alpha-v3"
+RENDER_CACHE_VERSION = "adaptive-resampling-v4"
 PNG_SAVE_OPTIONS = {"format": "PNG", "compress_level": 1}
 
 

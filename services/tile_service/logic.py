@@ -1,10 +1,44 @@
 import logging
+import os
 
 import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("tile_service.logic")
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+COG_DIR = os.path.join(BASE_DIR, "storage", "cog")
+
+
+def resolve_raster_path(file_path: str | None, cog_path: str | None = None) -> str | None:
+    candidates = []
+    if cog_path:
+        candidates.extend(_expand_path_candidates(cog_path, prefer_cog=True))
+    if file_path:
+        candidates.extend(_expand_path_candidates(file_path, prefer_cog=False))
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def _expand_path_candidates(path: str, prefer_cog: bool):
+    if not path:
+        return []
+
+    candidates = []
+    if os.path.isabs(path) and not path.startswith("/data/"):
+        candidates.append(path)
+
+    normalized = path.replace("\\", "/")
+    if normalized.startswith("/data/") or prefer_cog:
+        candidates.append(os.path.join(COG_DIR, os.path.basename(normalized)))
+
+    candidates.append(path)
+    return candidates
 
 
 async def get_raster_path(db: AsyncSession, index_id: str) -> str:
@@ -14,11 +48,11 @@ async def get_raster_path(db: AsyncSession, index_id: str) -> str:
         except ValueError:
             val = index_id
 
-        query = text("SELECT file_path FROM raster_metadata WHERE index_id = :val OR id = :val")
+        query = text("SELECT file_path, cog_path FROM raster_metadata WHERE index_id = :val OR id = :val")
         result = await db.execute(query, {"val": val})
         row = result.one_or_none()
         if row:
-            return row[0]
+            return resolve_raster_path(row[0], row[1])
 
         logger.warning("Raster record not found for: %s", index_id)
         return None

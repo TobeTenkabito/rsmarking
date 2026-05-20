@@ -14,6 +14,11 @@ from .utils import get_tile_window
 
 
 try:
+    from scipy import ndimage as scipy_ndimage
+except ImportError:
+    scipy_ndimage = None
+
+try:
     from .rendering import render_tile
 
     HAS_FAST_TILER = True
@@ -111,11 +116,12 @@ class TileEngine:
                 valid_bands = bands if bands else list(range(1, min(4, src.count) + 1))
                 valid_bands = [b for b in valid_bands if 1 <= b <= src.count] or [1]
                 window = get_tile_window(x, y, z, src, self._transformer)
+                resampling = self._select_resampling(src, valid_bands[0], window)
                 data = src.read(
                     valid_bands,
                     window=window,
                     out_shape=(len(valid_bands), settings.TILE_SIZE, settings.TILE_SIZE),
-                    resampling=Resampling.bilinear,
+                    resampling=resampling,
                     boundless=True,
                     fill_value=0,
                     out_dtype="float32",
@@ -163,7 +169,30 @@ class TileEngine:
     def _is_binary_tile(data):
         return bool(np.count_nonzero((data != 0) & (data != 1)) == 0)
 
+    def _select_resampling(self, src, band, window):
+        if window is None:
+            return Resampling.bilinear
+
+        x_decimation = abs(window.width) / settings.TILE_SIZE
+        y_decimation = abs(window.height) / settings.TILE_SIZE
+        decimation = max(x_decimation, y_decimation)
+        if decimation < 2.0:
+            return Resampling.bilinear
+
+        try:
+            if src.overviews(band):
+                return Resampling.bilinear
+        except Exception:
+            pass
+
+        return Resampling.nearest
+
     def _read_alpha_mask(self, src, valid_bands, window, data):
+        if not self._has_explicit_mask(src):
+            alpha = self._alpha_from_window(src, window, data.shape[1], data.shape[2])
+            alpha = self._remove_edge_fill_pixels(data, alpha)
+            return alpha
+
         try:
             masks = src.read_masks(
                 valid_bands,
@@ -177,8 +206,6 @@ class TileEngine:
             else:
                 alpha = np.max(masks, axis=0)
             alpha = np.where(alpha > 0, 255, 0).astype(np.uint8)
-            if not self._has_explicit_mask(src):
-                alpha = self._remove_edge_fill_pixels(data, alpha)
             return alpha
         except Exception:
             return self._alpha_from_data(data)
@@ -186,6 +213,22 @@ class TileEngine:
     @staticmethod
     def _alpha_from_data(data):
         return (np.any(data != 0, axis=0).astype(np.uint8) * 255)
+
+    @staticmethod
+    def _alpha_from_window(src, window, height, width):
+        if window is None or window.width <= 0 or window.height <= 0:
+            return np.full((height, width), 255, dtype=np.uint8)
+
+        col_scale = window.width / width
+        row_scale = window.height / height
+        cols_start = window.col_off + np.arange(width, dtype=np.float64) * col_scale
+        cols_end = cols_start + col_scale
+        rows_start = window.row_off + np.arange(height, dtype=np.float64) * row_scale
+        rows_end = rows_start + row_scale
+
+        cols_inside = (cols_end > 0) & (cols_start < src.width)
+        rows_inside = (rows_end > 0) & (rows_start < src.height)
+        return (rows_inside[:, None] & cols_inside[None, :]).astype(np.uint8) * 255
 
     @staticmethod
     def _has_explicit_mask(src):
@@ -222,17 +265,20 @@ class TileEngine:
         if not np.any(seeds):
             return alpha
 
-        outside_fill = seeds
-        while True:
-            expanded = outside_fill.copy()
-            expanded[1:, :] |= outside_fill[:-1, :]
-            expanded[:-1, :] |= outside_fill[1:, :]
-            expanded[:, 1:] |= outside_fill[:, :-1]
-            expanded[:, :-1] |= outside_fill[:, 1:]
-            expanded &= fill_pixels
-            if np.array_equal(expanded, outside_fill):
-                break
-            outside_fill = expanded
+        if scipy_ndimage is not None:
+            outside_fill = scipy_ndimage.binary_propagation(seeds, mask=fill_pixels)
+        else:
+            outside_fill = seeds
+            while True:
+                expanded = outside_fill.copy()
+                expanded[1:, :] |= outside_fill[:-1, :]
+                expanded[:-1, :] |= outside_fill[1:, :]
+                expanded[:, 1:] |= outside_fill[:, :-1]
+                expanded[:, :-1] |= outside_fill[:, 1:]
+                expanded &= fill_pixels
+                if np.array_equal(expanded, outside_fill):
+                    break
+                outside_fill = expanded
 
         if np.any(outside_fill):
             alpha = alpha.copy()
