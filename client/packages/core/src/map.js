@@ -399,6 +399,11 @@ export class MapEngine {
             infoBox:              false,
             selectionIndicator:   false,
             imageryProvider:      false,
+            contextOptions: {
+                webgl: {
+                    preserveDrawingBuffer: true
+                }
+            },
         });
 
         this._cesiumViewer.imageryLayers.addImageryProvider(

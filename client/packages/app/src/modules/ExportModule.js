@@ -10,6 +10,20 @@ export class ExportModule {
         return engine?.map ?? engine;
     }
 
+    _getMapEngine() {
+        return this.app?.mapEngine ?? null;
+    }
+
+    _getCesiumViewer() {
+        const engine = this._getMapEngine();
+        return engine?.getCesiumViewer?.() ?? null;
+    }
+
+    _is3DExport() {
+        const engine = this._getMapEngine();
+        return Boolean(engine?.is3DMode?.() && this._getCesiumViewer());
+    }
+
     openModal() {
         const modal = document.getElementById('export-modal');
         if (!modal) return;
@@ -84,15 +98,20 @@ export class ExportModule {
 
 
     async _renderToCanvas(opts) {
+        if (this._is3DExport()) {
+            return this._renderCesiumToCanvas(opts);
+        }
+
         const map   = this._getMap();
         const mapEl = map?.getContainer();
         if (!mapEl) throw new Error('地图实例未初始化');
 
         const W = mapEl.clientWidth  * opts.scale;
         const H = mapEl.clientHeight * opts.scale;
+        const showFrameLabels = opts.includeGraticule && opts.includeFrameLabels;
 
         // 经纬网需要在地图外侧留白（用于标注经纬度）
-        const MARGIN = opts.includeGraticule ? Math.round(36 * opts.scale) : 0;
+        const MARGIN = showFrameLabels ? Math.round(36 * opts.scale) : 0;
 
         const output = document.createElement('canvas');
         output.width  = W + MARGIN * 2;   // 左右各留 MARGIN
@@ -143,11 +162,90 @@ export class ExportModule {
         ctx.restore();
 
         // ⑥ 经纬度外框标注（在 translate 外绘制，使用绝对坐标）
-        if (opts.includeGraticule) {
+        if (showFrameLabels) {
             this._drawGraticuleFrame(ctx, map, W, H, MARGIN, opts.scale);
         }
 
         return output;
+    }
+
+
+    async _renderCesiumToCanvas(opts) {
+        const viewer = this._getCesiumViewer();
+        const sourceCanvas = viewer?.scene?.canvas ?? viewer?.canvas;
+        const container = viewer?.container ?? document.getElementById('cesium-container') ?? sourceCanvas;
+        if (!viewer || !sourceCanvas || !container) throw new Error('3D map is not initialized');
+
+        const cssW = container.clientWidth || sourceCanvas.clientWidth || sourceCanvas.width;
+        const cssH = container.clientHeight || sourceCanvas.clientHeight || sourceCanvas.height;
+        const W = Math.max(1, Math.round(cssW * opts.scale));
+        const H = Math.max(1, Math.round(cssH * opts.scale));
+
+        const output = document.createElement('canvas');
+        output.width = W;
+        output.height = H;
+        const ctx = output.getContext('2d');
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, W, H);
+
+        await this._withCesiumExportVisibility(viewer, opts, async () => {
+            viewer.resize?.();
+            await this._waitForCesiumFrame(viewer);
+            ctx.drawImage(sourceCanvas, 0, 0, W, H);
+        });
+
+        if (opts.includeGraticule) {
+            this._drawCesiumGraticule(ctx, viewer, W, H, opts.scale, opts.graticuleStyle, opts.includeFrameLabels);
+        }
+
+        if (opts.includeDecorations) {
+            this._drawCesiumDecorations(ctx, viewer, W, H, opts.scale);
+        }
+
+        return output;
+    }
+
+
+    async _withCesiumExportVisibility(viewer, opts, callback) {
+        const imagery = viewer.imageryLayers;
+        const imageryState = [];
+        const dataSourceState = [];
+
+        if (imagery) {
+            for (let i = 0; i < imagery.length; i++) {
+                const layer = imagery.get(i);
+                imageryState.push({ layer, show: layer.show });
+                layer.show = i === 0 ? opts.includeBasemap : opts.includeRasters;
+            }
+        }
+
+        if (viewer.dataSources) {
+            for (let i = 0; i < viewer.dataSources.length; i++) {
+                const dataSource = viewer.dataSources.get(i);
+                dataSourceState.push({ dataSource, show: dataSource.show });
+                dataSource.show = opts.includeVectors;
+            }
+        }
+
+        try {
+            return await callback();
+        } finally {
+            imageryState.forEach(({ layer, show }) => {
+                layer.show = show;
+            });
+            dataSourceState.forEach(({ dataSource, show }) => {
+                dataSource.show = show;
+            });
+            viewer.scene?.requestRender?.();
+        }
+    }
+
+
+    async _waitForCesiumFrame(viewer) {
+        viewer.scene?.requestRender?.();
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
 
@@ -156,9 +254,19 @@ export class ExportModule {
      */
     _niceLatLngInterval(map) {
         const bounds = map.getBounds();
-        const spanLng = bounds.getEast()  - bounds.getWest();
-        const spanLat = bounds.getNorth() - bounds.getSouth();
-        const span = Math.max(spanLng, spanLat);
+        return this._niceLatLngIntervalFromBbox([
+            bounds.getWest(),
+            bounds.getSouth(),
+            bounds.getEast(),
+            bounds.getNorth()
+        ]);
+    }
+
+    _niceLatLngIntervalFromBbox(bbox) {
+        const [west, south, east, north] = bbox ?? [-180, -90, 180, 90];
+        const spanLng = Number.isFinite(east - west) ? Math.abs(east - west) : 360;
+        const spanLat = Number.isFinite(north - south) ? Math.abs(north - south) : 180;
+        const span = Math.max(spanLng, spanLat, 0.01);
 
         // 目标：屏幕上出现 4~6 条线
         const raw = span / 5;
@@ -178,6 +286,238 @@ export class ExportModule {
     _latlngToPixel(map, lat, lng, mapEl, scale) {
         const point = map.latLngToContainerPoint([lat, lng]);
         return { x: point.x * scale, y: point.y * scale };
+    }
+
+    _getCesiumViewBbox(viewer) {
+        const engineBbox = this._getMapEngine()?.getViewBbox?.();
+        if (Array.isArray(engineBbox) && engineBbox.length === 4) {
+            const bbox = engineBbox.map(Number);
+            if (bbox.every(Number.isFinite)) return this._normalizeBbox(bbox);
+        }
+
+        const CesiumRef = window.Cesium;
+        const rectangle = viewer?.camera?.computeViewRectangle?.(viewer.scene?.globe?.ellipsoid);
+        if (!CesiumRef || !rectangle) return [-180, -90, 180, 90];
+
+        return this._normalizeBbox([
+            CesiumRef.Math.toDegrees(rectangle.west),
+            CesiumRef.Math.toDegrees(rectangle.south),
+            CesiumRef.Math.toDegrees(rectangle.east),
+            CesiumRef.Math.toDegrees(rectangle.north)
+        ]);
+    }
+
+    _normalizeBbox(bbox) {
+        const west = this._clamp(Number(bbox[0]), -180, 180);
+        const south = this._clamp(Number(bbox[1]), -90, 90);
+        const east = this._clamp(Number(bbox[2]), -180, 180);
+        const north = this._clamp(Number(bbox[3]), -90, 90);
+        if (!Number.isFinite(west + south + east + north)) return [-180, -90, 180, 90];
+        if (east < west) return [-180, south, 180, north];
+        return [west, south, east, north];
+    }
+
+    _buildGraticuleValues(min, max, interval, lower, upper) {
+        const lo = Math.max(min, lower);
+        const hi = Math.min(max, upper);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return [];
+
+        const start = Math.floor(lo / interval) * interval;
+        const end = Math.ceil(hi / interval) * interval;
+        const values = [];
+        for (let v = start; v <= end + interval * 0.001; v += interval) {
+            const value = Number(v.toFixed(8));
+            if (value >= lower - 1e-9 && value <= upper + 1e-9) values.push(value);
+        }
+        return values;
+    }
+
+    _drawCesiumGraticule(ctx, viewer, W, H, scale, style, includeLabels) {
+        const bbox = this._getCesiumViewBbox(viewer);
+        const interval = this._niceLatLngIntervalFromBbox(bbox);
+        const west = this._clamp(bbox[0] - interval, -180, 180);
+        const south = this._clamp(bbox[1] - interval, -90, 90);
+        const east = this._clamp(bbox[2] + interval, -180, 180);
+        const north = this._clamp(bbox[3] + interval, -90, 90);
+        const lngValues = this._buildGraticuleValues(west, east, interval, -180, 180);
+        const latValues = this._buildGraticuleValues(south, north, interval, -90, 90);
+        const occluder = this._createCesiumOccluder(viewer);
+        const labelLines = { lng: [], lat: [] };
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(40, 72, 132, 0.62)';
+        ctx.lineWidth = Math.max(0.8, 1.05 * scale);
+        ctx.setLineDash(style === 'dashed' ? [6 * scale, 5 * scale] : []);
+
+        lngValues.forEach((lng) => {
+            const points = this._sampleCesiumGraticuleLine(
+                viewer, 'lng', lng, south, north, interval, scale, occluder
+            );
+            this._drawProjectedLine(ctx, points, W, H, scale);
+            if (includeLabels) labelLines.lng.push({ value: lng, points });
+        });
+
+        latValues.forEach((lat) => {
+            const points = this._sampleCesiumGraticuleLine(
+                viewer, 'lat', lat, west, east, interval, scale, occluder
+            );
+            this._drawProjectedLine(ctx, points, W, H, scale);
+            if (includeLabels) labelLines.lat.push({ value: lat, points });
+        });
+
+        ctx.restore();
+
+        if (includeLabels) {
+            this._drawCesiumGraticuleLabels(ctx, labelLines, W, H, scale);
+        }
+    }
+
+    _sampleCesiumGraticuleLine(viewer, axis, fixedValue, start, end, interval, scale, occluder) {
+        const span = Math.abs(end - start);
+        const sampleCount = Math.min(220, Math.max(24, Math.ceil(span / Math.max(interval / 6, 0.25))));
+        const points = [];
+
+        for (let i = 0; i <= sampleCount; i++) {
+            const t = sampleCount === 0 ? 0 : i / sampleCount;
+            const value = start + (end - start) * t;
+            const lng = axis === 'lng' ? fixedValue : value;
+            const lat = axis === 'lng' ? value : fixedValue;
+            points.push(this._projectCesiumLngLat(viewer, lng, lat, scale, occluder));
+        }
+
+        return points;
+    }
+
+    _createCesiumOccluder(viewer) {
+        const CesiumRef = window.Cesium;
+        try {
+            if (!CesiumRef?.EllipsoidalOccluder || !viewer?.scene?.globe?.ellipsoid) return null;
+            return new CesiumRef.EllipsoidalOccluder(
+                viewer.scene.globe.ellipsoid,
+                viewer.camera.positionWC
+            );
+        } catch {
+            return null;
+        }
+    }
+
+    _projectCesiumLngLat(viewer, lng, lat, scale, occluder = null) {
+        const CesiumRef = window.Cesium;
+        if (!CesiumRef?.Cartesian3) return null;
+        const cartesian = CesiumRef.Cartesian3.fromDegrees(lng, lat, 0);
+        return this._projectCesiumCartesian(viewer, cartesian, scale, occluder);
+    }
+
+    _projectCesiumCartesian(viewer, cartesian, scale, occluder = null) {
+        const CesiumRef = window.Cesium;
+        if (!CesiumRef?.SceneTransforms || !cartesian) return null;
+        if (occluder && !occluder.isPointVisible(cartesian)) return null;
+
+        const point = CesiumRef.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartesian);
+        if (!point) return null;
+
+        const x = point.x * scale;
+        const y = point.y * scale;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return { x, y };
+    }
+
+    _drawProjectedLine(ctx, points, W, H, scale) {
+        const maxJump = Math.max(W, H) * 0.75;
+        const hardLimit = Math.max(W, H) * 4;
+        let started = false;
+        let previous = null;
+
+        ctx.beginPath();
+        points.forEach((point) => {
+            const valid = point &&
+                point.x > -hardLimit && point.x < W + hardLimit &&
+                point.y > -hardLimit && point.y < H + hardLimit;
+
+            if (!valid) {
+                if (started) ctx.stroke();
+                ctx.beginPath();
+                started = false;
+                previous = null;
+                return;
+            }
+
+            if (previous && Math.hypot(point.x - previous.x, point.y - previous.y) > maxJump) {
+                if (started) ctx.stroke();
+                ctx.beginPath();
+                started = false;
+            }
+
+            if (!started) {
+                ctx.moveTo(point.x, point.y);
+                started = true;
+            } else {
+                ctx.lineTo(point.x, point.y);
+            }
+            previous = point;
+        });
+
+        if (started) ctx.stroke();
+    }
+
+    _drawCesiumGraticuleLabels(ctx, labelLines, W, H, scale) {
+        const lngStride = Math.max(1, Math.ceil(labelLines.lng.length / 9));
+        const latStride = Math.max(1, Math.ceil(labelLines.lat.length / 9));
+
+        labelLines.lng.forEach((line, index) => {
+            if (index % lngStride !== 0) return;
+            const point = this._pickVisibleLabelPoint(line.points, W, H, 'bottom');
+            if (point) this._drawMapLabel(ctx, this._formatDeg(line.value, 'lng'), point.x, point.y - 10 * scale, W, H, scale);
+        });
+
+        labelLines.lat.forEach((line, index) => {
+            if (index % latStride !== 0) return;
+            const point = this._pickVisibleLabelPoint(line.points, W, H, 'right');
+            if (point) this._drawMapLabel(ctx, this._formatDeg(line.value, 'lat'), point.x - 10 * scale, point.y, W, H, scale);
+        });
+    }
+
+    _pickVisibleLabelPoint(points, W, H, prefer) {
+        const visible = points.filter(point =>
+            point &&
+            point.x >= 0 && point.x <= W &&
+            point.y >= 0 && point.y <= H
+        );
+        if (!visible.length) return null;
+        return visible.reduce((best, point) => {
+            if (prefer === 'bottom') return point.y > best.y ? point : best;
+            if (prefer === 'right') return point.x > best.x ? point : best;
+            return point;
+        }, visible[0]);
+    }
+
+    _drawMapLabel(ctx, text, x, y, W, H, scale) {
+        const fontSize = Math.max(10, 10 * scale);
+        const padX = 4 * scale;
+        const padY = 2 * scale;
+        const radius = 4 * scale;
+
+        ctx.save();
+        ctx.font = `600 ${fontSize}px -apple-system, "PingFang SC", sans-serif`;
+        const metrics = ctx.measureText(text);
+        const width = metrics.width + padX * 2;
+        const height = fontSize + padY * 2;
+        const cx = this._clamp(x, width / 2 + 6 * scale, W - width / 2 - 6 * scale);
+        const cy = this._clamp(y, height / 2 + 6 * scale, H - height / 2 - 6 * scale);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.82)';
+        ctx.strokeStyle = 'rgba(30,41,59,0.16)';
+        ctx.lineWidth = Math.max(0.6, 0.7 * scale);
+        ctx.beginPath();
+        ctx.roundRect(cx - width / 2, cy - height / 2, width, height, radius);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#1e293b';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, cx, cy);
+        ctx.restore();
     }
 
     _drawGraticuleLines(ctx, map, W, H, scale, style) {
@@ -307,6 +647,21 @@ export class ExportModule {
      * 格式化经纬度为 "120°E" / "30°N" 样式
      */
     _formatDeg(val, type) {
+        const normalized = Math.abs(Number(val) || 0);
+        let degValue = Math.floor(normalized);
+        let minutes = Math.round((normalized - degValue) * 60);
+        if (minutes === 60) {
+            degValue += 1;
+            minutes = 0;
+        }
+        const suffix = type === 'lng'
+            ? (val >= 0 ? 'E' : 'W')
+            : (val >= 0 ? 'N' : 'S');
+        const value = minutes > 0
+            ? `${degValue}\u00b0${String(minutes).padStart(2, '0')}'`
+            : `${degValue}\u00b0`;
+        return `${value}${suffix}`;
+        /*
         const abs = Math.abs(val);
         const deg = Math.floor(abs);
         const min = Math.round((abs - deg) * 60);
@@ -314,6 +669,7 @@ export class ExportModule {
         if (type === 'lng') str += val >= 0 ? 'E' : 'W';
         else                str += val >= 0 ? 'N' : 'S';
         return str;
+        */
     }
 
 
@@ -431,6 +787,15 @@ export class ExportModule {
         ctx.restore();
     }
 
+    _drawCesiumDecorations(ctx, viewer, W, H, scale) {
+        const pad = 16 * scale;
+        ctx.save();
+        this._drawCesiumScaleBar(ctx, viewer, W, H, pad, scale);
+        this._drawNorthArrow(ctx, W, pad, scale, this._getCesiumNorthVector(viewer, W, H, scale));
+        this._drawTimestamp(ctx, W, H, pad, scale);
+        ctx.restore();
+    }
+
     _drawScaleBar(ctx, W, H, pad, scale) {
         const map = this._getMap();
         if (!map) return;
@@ -469,7 +834,120 @@ export class ExportModule {
         ctx.fillText(label, x + barPx / 2, y - 4 * scale);
     }
 
-    _drawNorthArrow(ctx, W, pad, scale) {
+    _drawCesiumScaleBar(ctx, viewer, W, H, pad, scale) {
+        const targetPx = 100 * scale;
+        const y = H - pad - 20 * scale;
+        const distance = this._measureCesiumScreenDistance(
+            viewer,
+            pad / scale,
+            y / scale,
+            (pad + targetPx) / scale,
+            y / scale
+        ) ?? this._measureCesiumScreenDistance(
+            viewer,
+            W / (2 * scale),
+            H / (2 * scale),
+            W / (2 * scale) + targetPx / scale,
+            H / (2 * scale)
+        );
+
+        if (!Number.isFinite(distance) || distance <= 0) return;
+
+        const niceM = this._niceNumber(distance);
+        const barPx = this._clamp((niceM / distance) * targetPx, 36 * scale, 180 * scale);
+        const x = pad;
+        const barH = 5 * scale;
+
+        ctx.fillStyle = 'rgba(255,255,255,0.86)';
+        ctx.beginPath();
+        ctx.roundRect(x - 6 * scale, y - 14 * scale,
+            barPx + 12 * scale, 26 * scale, 4 * scale);
+        ctx.fill();
+
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(x, y, barPx / 2, barH);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(x + barPx / 2, y, barPx / 2, barH);
+
+        const label = niceM >= 1000
+            ? `${(niceM / 1000).toFixed(0)} km`
+            : `${niceM.toFixed(0)} m`;
+        ctx.font = `bold ${10 * scale}px -apple-system, sans-serif`;
+        ctx.fillStyle = '#334155';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x + barPx / 2, y - 4 * scale);
+    }
+
+    _measureCesiumScreenDistance(viewer, x1, y1, x2, y2) {
+        const CesiumRef = window.Cesium;
+        if (!CesiumRef?.Cartesian2) return null;
+
+        const first = this._pickCesiumGlobe(viewer, new CesiumRef.Cartesian2(x1, y1));
+        const second = this._pickCesiumGlobe(viewer, new CesiumRef.Cartesian2(x2, y2));
+        if (!first || !second) return null;
+
+        try {
+            const start = CesiumRef.Cartographic.fromCartesian(first);
+            const end = CesiumRef.Cartographic.fromCartesian(second);
+            const geodesic = new CesiumRef.EllipsoidGeodesic(start, end);
+            return geodesic.surfaceDistance;
+        } catch {
+            return null;
+        }
+    }
+
+    _pickCesiumGlobe(viewer, screenPosition) {
+        try {
+            const scene = viewer.scene;
+            const ray = viewer.camera.getPickRay(screenPosition);
+            return scene.globe.pick(ray, scene) ??
+                viewer.camera.pickEllipsoid(screenPosition, scene.globe.ellipsoid);
+        } catch {
+            return null;
+        }
+    }
+
+    _getCesiumNorthVector(viewer, W, H, scale) {
+        const CesiumRef = window.Cesium;
+        if (!CesiumRef?.Cartesian2) return this._northVectorFromCameraHeading(viewer);
+
+        const center = this._pickCesiumGlobe(
+            viewer,
+            new CesiumRef.Cartesian2(W / (2 * scale), H / (2 * scale))
+        );
+        if (!center) return this._northVectorFromCameraHeading(viewer);
+
+        try {
+            const cartographic = CesiumRef.Cartographic.fromCartesian(center);
+            const lng = CesiumRef.Math.toDegrees(cartographic.longitude);
+            const lat = CesiumRef.Math.toDegrees(cartographic.latitude);
+            const northLat = this._clamp(lat + 0.05, -89.95, 89.95);
+            const p0 = CesiumRef.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, center);
+            const p1 = CesiumRef.SceneTransforms.wgs84ToWindowCoordinates(
+                viewer.scene,
+                CesiumRef.Cartesian3.fromDegrees(lng, northLat, 0)
+            );
+            if (!p0 || !p1) return this._northVectorFromCameraHeading(viewer);
+
+            const dx = p1.x - p0.x;
+            const dy = p1.y - p0.y;
+            const length = Math.hypot(dx, dy);
+            if (length < 1e-3) return this._northVectorFromCameraHeading(viewer);
+            return { x: dx / length, y: dy / length };
+        } catch {
+            return this._northVectorFromCameraHeading(viewer);
+        }
+    }
+
+    _northVectorFromCameraHeading(viewer) {
+        const heading = viewer?.camera?.heading ?? 0;
+        return {
+            x: Math.sin(heading),
+            y: -Math.cos(heading)
+        };
+    }
+
+    _drawNorthArrow(ctx, W, pad, scale, northVector = { x: 0, y: -1 }) {
         const cx = W - pad - 18 * scale;
         const cy = pad + 30 * scale;
         const r  = 14 * scale;
@@ -479,26 +957,33 @@ export class ExportModule {
         ctx.arc(cx, cy, r + 4 * scale, 0, Math.PI * 2);
         ctx.fill();
 
+        const angle = Math.atan2(northVector.y, northVector.x) + Math.PI / 2;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+
         ctx.fillStyle = '#1e293b';
         ctx.beginPath();
-        ctx.moveTo(cx, cy - r);
-        ctx.lineTo(cx - 6 * scale, cy + 4 * scale);
-        ctx.lineTo(cx, cy);
+        ctx.moveTo(0, -r);
+        ctx.lineTo(-6 * scale, 4 * scale);
+        ctx.lineTo(0, 0);
         ctx.closePath();
         ctx.fill();
 
         ctx.fillStyle = '#cbd5e1';
         ctx.beginPath();
-        ctx.moveTo(cx, cy + r);
-        ctx.lineTo(cx + 6 * scale, cy - 4 * scale);
-        ctx.lineTo(cx, cy);
+        ctx.moveTo(0, r);
+        ctx.lineTo(6 * scale, -4 * scale);
+        ctx.lineTo(0, 0);
         ctx.closePath();
         ctx.fill();
+        ctx.restore();
 
         ctx.font      = `bold ${9 * scale}px -apple-system, sans-serif`;
         ctx.fillStyle = '#1e293b';
         ctx.textAlign = 'center';
-        ctx.fillText('N', cx, cy - r - 4 * scale);
+        ctx.textBaseline = 'middle';
+        ctx.fillText('N', cx + northVector.x * (r + 8 * scale), cy + northVector.y * (r + 8 * scale));
     }
 
     _drawTimestamp(ctx, W, H, pad, scale) {
@@ -511,6 +996,30 @@ export class ExportModule {
 
 
     async _exportSVG(opts) {
+        if (this._is3DExport()) {
+            const canvas = await this._renderCesiumToCanvas(opts);
+            const ns = 'http://www.w3.org/2000/svg';
+            const svg = document.createElementNS(ns, 'svg');
+            svg.setAttribute('xmlns', ns);
+            svg.setAttribute('width', canvas.width);
+            svg.setAttribute('height', canvas.height);
+            svg.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`);
+
+            const image = document.createElementNS(ns, 'image');
+            image.setAttribute('x', 0);
+            image.setAttribute('y', 0);
+            image.setAttribute('width', canvas.width);
+            image.setAttribute('height', canvas.height);
+            image.setAttribute('href', canvas.toDataURL('image/png'));
+            svg.appendChild(image);
+
+            const svgStr = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+                new XMLSerializer().serializeToString(svg);
+            const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+            this._triggerDownload(URL.createObjectURL(blob), `${opts.filename}.svg`);
+            return;
+        }
+
         const map   = this._getMap();
         const mapEl = map?.getContainer();
         if (!mapEl) throw new Error('地图实例未初始化');
@@ -643,6 +1152,11 @@ export class ExportModule {
         if (f < 3.5) return 2 * p;
         if (f < 7.5) return 5 * p;
         return 10 * p;
+    }
+
+    _clamp(value, min, max) {
+        if (!Number.isFinite(value)) return min;
+        return Math.min(max, Math.max(min, value));
     }
 
     async _loadHtml2Canvas() {
