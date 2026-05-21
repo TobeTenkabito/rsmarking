@@ -149,22 +149,25 @@ export class ProjectModule {
     /**
      * 【调试/管理】删除所有项目并重置 UI 状态
      */
-    async handleDeleteAllProjects() {
-        const isConfirmed = confirm(t('project.confirm.deleteAll'));
-        if (!isConfirmed) return;
-        this.app.ui.showGlobalLoader(true);
+    async handleDeleteAllProjects({ confirmUser = true, refresh = true, showLoader = true } = {}) {
+        if (confirmUser && !confirm(t('project.confirm.deleteAll'))) return false;
+
+        if (showLoader) this.app.ui.showGlobalLoader(true);
         try {
             await VectorAPI.deleteAllProjects();
-            Store.setActiveProject(null);
-            Store.setVectorLayers([]);
-            Store.setProjects([]);
-            await this.refreshProjects();
-            alert(t('project.alert.allCleared'));
+            Store.clearVectorState();
+            if (refresh) await this.refreshProjects();
+            if (confirmUser) alert(t('project.alert.allCleared'));
+            return true;
         } catch (e) {
             console.error("[ProjectModule] 清空项目失败:", e);
-            alert(`清空项目失败: ${e.message}`);
+            if (confirmUser) {
+                alert(`清空项目失败: ${e.message}`);
+                return false;
+            }
+            throw e;
         } finally {
-            this.app.ui.showGlobalLoader(false);
+            if (showLoader) this.app.ui.showGlobalLoader(false);
         }
     }
 }

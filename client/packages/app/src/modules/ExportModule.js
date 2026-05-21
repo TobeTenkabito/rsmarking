@@ -1,3 +1,6 @@
+import { RasterAPI } from '../api/raster.js';
+import { Store } from '../store/index.js';
+
 export class ExportModule {
     constructor(app) {
         this.app = app;
@@ -31,6 +34,7 @@ export class ExportModule {
         this._bindUIEvents();
         this._syncFilenameExt();
         this._syncJpegQualityVisibility();
+        this._syncExportModeUI();
     }
 
     closeModal() {
@@ -42,6 +46,20 @@ export class ExportModule {
         const canvas      = document.getElementById('export-preview-canvas');
         const loader      = document.getElementById('export-preview-loader');
         if (!canvas) return;
+
+        if (this._getSelectedFormat() === 'file') {
+            loader?.classList.add('hidden');
+            canvas.classList.add('hidden');
+            if (placeholder) {
+                placeholder.classList.remove('hidden');
+                placeholder.innerHTML = `
+                    <div class="text-2xl mb-1">GIS</div>
+                    <p class="text-[10px] text-slate-400 px-4">
+                        GIS 文件模式将导出可在 QGIS / ArcGIS 中打开的数据包
+                    </p>`;
+            }
+            return;
+        }
 
         loader?.classList.remove('hidden');
         placeholder?.classList.add('hidden');
@@ -81,7 +99,9 @@ export class ExportModule {
 
         try {
             const opts = this._collectOptions();
-            if (opts.format === 'svg') {
+            if (opts.format === 'file') {
+                await this._exportGISFile(opts);
+            } else if (opts.format === 'svg') {
                 await this._exportSVG(opts);
             } else {
                 const canvas = await this._renderToCanvas(opts);
@@ -1091,6 +1111,48 @@ export class ExportModule {
     }
 
 
+    async _exportGISFile(opts) {
+        const payload = this._buildGISExportPayload(opts);
+        if (!payload.raster_ids.length && !payload.vector_layers.length) {
+            throw new Error('请选择至少一个已加载的栅格或可见的矢量图层。');
+        }
+
+        const { blob, filename } = await RasterAPI.exportWorkspaceFile(payload);
+        const url = URL.createObjectURL(blob);
+        this._triggerDownload(url, filename || `${opts.filename}.zip`);
+    }
+
+    _buildGISExportPayload(opts) {
+        return {
+            filename: opts.filename || 'RSMarking_Export',
+            raster_ids: opts.includeRasters ? this._getActiveRasterExportIds() : [],
+            vector_layers: opts.includeVectors ? this._getVisibleVectorExportLayers() : [],
+        };
+    }
+
+    _getActiveRasterExportIds() {
+        const activeIds = Array.from(Store.state.activeLayerIds ?? []);
+        const ids = Store.state.rasters
+            .filter((raster) => activeIds.some((id) =>
+                String(id) === String(raster.id) ||
+                String(id) === String(raster.index_id)
+            ))
+            .map((raster) => Number(raster.index_id ?? raster.id))
+            .filter((id) => Number.isFinite(id));
+        return Array.from(new Set(ids));
+    }
+
+    _getVisibleVectorExportLayers() {
+        const visibleIds = Array.from(Store.state.visibleVectorLayerIds ?? []);
+        return Store.state.vectorLayers
+            .filter((layer) => visibleIds.some((id) => String(id) === String(layer.id)))
+            .map((layer) => ({
+                id: String(layer.id),
+                name: layer.name || `Layer_${layer.id}`,
+            }));
+    }
+
+
     _bindUIEvents() {
         if (this._uiBound) return;
         this._uiBound = true;
@@ -1099,6 +1161,7 @@ export class ExportModule {
             radio.addEventListener('change', () => {
                 this._syncFilenameExt();
                 this._syncJpegQualityVisibility();
+                this._syncExportModeUI();
             });
         });
 
@@ -1115,13 +1178,39 @@ export class ExportModule {
     _syncFilenameExt() {
         const fmt   = this._getSelectedFormat();
         const extEl = document.getElementById('export-filename-ext');
-        if (extEl) extEl.textContent = `.${fmt}`;
+        if (extEl) extEl.textContent = fmt === 'file' ? '.zip' : `.${fmt}`;
     }
 
     _syncJpegQualityVisibility() {
         const fmt   = this._getSelectedFormat();
         const group = document.getElementById('jpeg-quality-group');
         if (group) group.style.opacity = fmt === 'jpeg' ? '1' : '0.4';
+    }
+
+    _syncExportModeUI() {
+        const isFile = this._getSelectedFormat() === 'file';
+        document.querySelectorAll('[data-export-image-option]').forEach((el) => {
+            el.classList.toggle('opacity-40', isFile);
+            el.classList.toggle('pointer-events-none', isFile);
+        });
+
+        const imageSettings = document.getElementById('export-image-settings');
+        if (imageSettings) {
+            imageSettings.classList.toggle('opacity-40', isFile);
+            imageSettings.querySelectorAll('input, select').forEach((input) => {
+                input.disabled = isFile;
+            });
+        }
+
+        const executeLabel = document.getElementById('export-execute-label');
+        if (executeLabel) {
+            executeLabel.textContent = isFile ? '导出 GIS 文件' : '导出图像';
+        }
+
+        const refreshBtn = document.getElementById('export-preview-refresh-btn');
+        refreshBtn?.classList.toggle('hidden', isFile);
+
+        if (isFile) this.refreshPreview();
     }
 
     _getSelectedFormat() {

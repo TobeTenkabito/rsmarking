@@ -24,7 +24,7 @@ export const exportModal = `
               <!-- 导出格式 -->
               <div class="space-y-2">
                   <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">导出格式</label>
-                  <div class="grid grid-cols-3 gap-2">
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <label class="export-format-option">
                           <input type="radio" name="export-format" value="png" checked class="hidden">
                           <div class="format-card border-2 border-teal-500 bg-teal-50 text-teal-700 rounded-xl p-3 text-center cursor-pointer transition-all">
@@ -49,6 +49,14 @@ export const exportModal = `
                               <div class="text-[9px] opacity-60">矢量图形</div>
                           </div>
                       </label>
+                      <label class="export-format-option">
+                          <input type="radio" name="export-format" value="file" class="hidden">
+                          <div class="format-card border-2 border-slate-200 bg-white text-slate-600 rounded-xl p-3 text-center cursor-pointer transition-all hover:border-teal-300">
+                              <div class="text-xl mb-1">GIS</div>
+                              <div class="text-[11px] font-bold">FILE</div>
+                              <div class="text-[9px] opacity-60">属性表</div>
+                          </div>
+                      </label>
                   </div>
               </div>
 
@@ -57,7 +65,7 @@ export const exportModal = `
                   <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">导出内容</label>
                   <div class="bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-100">
 
-                      <label class="flex items-center justify-between cursor-pointer group">
+                      <label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-sm">🗺️</div>
                               <div>
@@ -111,7 +119,7 @@ export const exportModal = `
                           </div>
                       </label>
 
-                      <label class="flex items-center justify-between cursor-pointer group">
+                      <label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-sm">🧭</div>
                               <div>
@@ -130,7 +138,7 @@ export const exportModal = `
                       </label>
                       
 <!-- 经纬网格线 -->
-<label class="flex items-center justify-between cursor-pointer group">
+<label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
     <div class="flex items-center space-x-3">
         <div class="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-sm">🌐</div>
         <div>
@@ -148,7 +156,7 @@ export const exportModal = `
 </label>
 
 <!-- 线型选择（跟随经纬网显隐） -->
-<div id="graticule-style-group" class="hidden pl-10 pb-1">
+<div id="graticule-style-group" class="hidden pl-10 pb-1" data-export-image-option>
     <div class="flex items-center space-x-4">
         <label class="flex items-center space-x-1.5 cursor-pointer">
             <input type="radio" name="graticule-style" value="solid" checked class="accent-teal-500">
@@ -162,7 +170,7 @@ export const exportModal = `
 </div>
 
 <!-- 外框经纬度标注（独立开关） -->
-<label class="flex items-center justify-between cursor-pointer group">
+<label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
     <div class="flex items-center space-x-3">
         <div class="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center text-sm">📏</div>
         <div>
@@ -184,7 +192,7 @@ export const exportModal = `
               </div>
 
               <!-- 分辨率 / 质量 -->
-              <div class="grid grid-cols-2 gap-3">
+              <div id="export-image-settings" class="grid grid-cols-2 gap-3">
                   <div class="space-y-1.5">
                       <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">输出分辨率</label>
                       <select id="export-dpi"
@@ -219,7 +227,7 @@ export const exportModal = `
               <div class="space-y-2">
                   <div class="flex items-center justify-between">
                       <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">实时预览</label>
-                      <button onclick="RS.refreshExportPreview()"
+                      <button id="export-preview-refresh-btn" onclick="RS.refreshExportPreview()"
                           class="text-[10px] text-teal-600 hover:underline font-bold">刷新预览</button>
                   </div>
                   <div id="export-preview-container"
@@ -252,7 +260,7 @@ export const exportModal = `
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                   </svg>
-                  <span>导出图像</span>
+                  <span id="export-execute-label">导出图像</span>
               </button>
               <button onclick="RS.closeExportModal()"
                   class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">

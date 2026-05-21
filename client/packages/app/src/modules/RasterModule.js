@@ -26,10 +26,14 @@ export class RasterModule {
         await this.refreshData();
     }
 
-    handleClearDatabase() {
-        if (confirm(t('raster.confirm.clearDatabase'))) {
-            RasterAPI.clearDB().then(() => window.location.reload());
-        }
+    async handleClearDatabase({ confirmUser = true, reload = true } = {}) {
+        if (confirmUser && !confirm(t('raster.confirm.clearDatabase'))) return false;
+
+        await RasterAPI.clearDB();
+        Store.clearRasterState();
+
+        if (reload) window.location.reload();
+        return true;
     }
 
     handleOpenMergeModal() {

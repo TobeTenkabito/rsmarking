@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
-from ..models.feature import Project, Layer
+from ..models.feature import Feature, Layer, LayerField, Project
 
 
 class LayerCRUD:
@@ -48,13 +48,20 @@ class LayerCRUD:
     async def delete_all_projects(self):
         """
         清空所有项目及其关联数据
-        由于模型中定义了 ForeignKey(ondelete="CASCADE")，
-        数据库会自动清理 layers 和 features 表。
+        显式按依赖顺序删除，避免旧数据库约束缺少 ON DELETE CASCADE 时
+        遗留 layer_fields / features / layers。
         """
-        stmt = delete(Project)
-        result = await self.db.execute(stmt)
+        field_result = await self.db.execute(delete(LayerField))
+        feature_result = await self.db.execute(delete(Feature))
+        layer_result = await self.db.execute(delete(Layer))
+        project_result = await self.db.execute(delete(Project))
         await self.db.commit()
-        return result.rowcount  # 返回删除的记录数
+        return {
+            "projects": project_result.rowcount or 0,
+            "layers": layer_result.rowcount or 0,
+            "features": feature_result.rowcount or 0,
+            "fields": field_result.rowcount or 0,
+        }
 
     async def update_layer(self, layer_id: UUID, update_dict: dict) -> Optional[Layer]:
         """

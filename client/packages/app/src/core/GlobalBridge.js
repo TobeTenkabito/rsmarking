@@ -11,8 +11,25 @@ export class GlobalBridge {
             // --- 基础操作 ---
             fetchRasters: () => this.app.raster.refreshData(),
             clearDatabase: async () => {
-            await this.app.raster.handleClearDatabase();
-            await this.app.project.handleDeleteAllProjects();},
+                if (!confirm(t('data.confirm.clearAll'))) return;
+                this.app.ui.showGlobalLoader(true);
+                try {
+                    await Promise.all([
+                        this.app.raster.handleClearDatabase({ confirmUser: false, reload: false }),
+                        this.app.project.handleDeleteAllProjects({
+                            confirmUser: false,
+                            refresh: false,
+                            showLoader: false,
+                        }),
+                    ]);
+                    window.location.reload();
+                } catch (err) {
+                    console.error('[GlobalBridge] 清空数据失败:', err);
+                    alert(t('data.alert.clearFailed', { message: err.message }));
+                } finally {
+                    this.app.ui.showGlobalLoader(false);
+                }
+            },
 
             // --- 指数分析 ---
             openIndexModal: (type) => this.app.analysis?.openModal(type),

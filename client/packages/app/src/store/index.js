@@ -137,6 +137,31 @@ export const Store = {
         this.notifyVectorChange();
     },
 
+    clearVectorState() {
+        this.state.projects = [];
+        this.state.activeProject = null;
+        this.state.vectorLayers = [];
+        this.state.activeVectorLayerId = null;
+        this.state.selectedVectorLayerId = null;
+        this.state.visibleVectorLayerIds = new Set();
+        this.state.currentFeatures = { type: "FeatureCollection", features: [] };
+        this.state.selectedFeatureId = null;
+        this.notifyVectorChange();
+    },
+
+    clearRasterState() {
+        this.state.rasters = [];
+        this.state.activeLayerIds = new Set();
+        this.state.loadingIds = new Set();
+        this.state.selectedMergeIds = [];
+        this.state.extractSourceId = null;
+        this.state.selectedExtractIndices = [];
+        this.state.spectrumMode = false;
+        this.state.spectrumResult = null;
+        this.state.spectrumRasterId = null;
+        if (this.onRastersChange) this.onRastersChange(this.state.rasters);
+    },
+
     reorderRasterLayer(sourceId, targetId, position = 'before') {
         const rasters = this.state.rasters;
         const sourceIndex = rasters.findIndex((raster) => sameLayerId(raster.id, sourceId));

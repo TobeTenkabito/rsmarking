@@ -25,6 +25,39 @@ async function request(url, options = {}, errorMsg = 'Request failed') {
 }
 
 
+async function requestBlob(path, options = {}, errorMsg = 'Request failed') {
+  const response = await fetch(`${BASE_URL}${path}`, options);
+  if (!response.ok) {
+    const err = await response.clone().json().catch(async () => ({
+      detail: await response.text().catch(() => ''),
+    }));
+    throw new Error(err.detail ?? `${errorMsg}: ${response.status}`);
+  }
+  const blob = await response.blob();
+  return {
+    blob,
+    filename: filenameFromDisposition(response.headers.get('content-disposition')),
+  };
+}
+
+
+function filenameFromDisposition(header) {
+  if (!header) return null;
+
+  const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim().replace(/^"|"$/g, ''));
+    } catch {
+      return utf8Match[1].trim().replace(/^"|"$/g, '');
+    }
+  }
+
+  const plainMatch = header.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] ?? null;
+}
+
+
 async function postForm(path, fields, errorMsg) {
   return request(
     `${BASE_URL}${path}`,
@@ -263,6 +296,18 @@ export const RasterAPI = {
   },
 
   async clearDB() {
-    return fetch(`${BASE_URL}/debug/clear-db`);
+    return request(`${BASE_URL}/debug/clear-db`, {}, 'Failed to clear raster database');
+  },
+
+  async exportWorkspaceFile(payload) {
+    return requestBlob(
+      '/export/workspace-file',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      'Workspace file export failed'
+    );
   },
 };

@@ -110,6 +110,34 @@ async def internal_fetch_features(layer_id: UUID) -> List[Dict[str, Any]]:
         except httpx.ReadTimeout:
             logger.error(f"获取矢量数据超时: {url}")
             raise HTTPException(status_code=504, detail="矢量服务响应超时，数据量可能过大")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"内部通讯故障: {str(e)}")
             raise HTTPException(status_code=500, detail=f"无法获取矢量数据: {str(e)}")
+
+
+async def internal_fetch_fields(layer_id: UUID | str) -> List[Dict[str, Any]]:
+    url = f"{ANNOTATION_SERVICE_URL}/{layer_id}/fields"
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.get(url)
+
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"图层 {layer_id} 不存在")
+
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, list) else []
+
+        except httpx.ReadTimeout:
+            logger.error(f"获取矢量字段超时: {url}")
+            raise HTTPException(status_code=504, detail="矢量字段服务响应超时")
+        except HTTPException:
+            raise
+        except httpx.HTTPStatusError as e:
+            detail = e.response.json().get("detail", e.response.text)
+            raise HTTPException(status_code=e.response.status_code, detail=detail)
+        except Exception as e:
+            logger.error(f"字段内部通讯故障: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"无法获取矢量字段: {str(e)}")
