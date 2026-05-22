@@ -1,0 +1,8 @@
+{
+  "name": "rsmarking-client",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ]
+}

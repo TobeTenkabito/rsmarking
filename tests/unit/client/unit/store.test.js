@@ -13,6 +13,13 @@ describe('Store layer state', () => {
         Store.state.selectedVectorLayerId = null;
         Store.state.visibleVectorLayerIds = new Set();
         Store.state.currentFeatures = { type: 'FeatureCollection', features: [] };
+        Store.state.selectedFeatureId = null;
+        Store.state.selectedMergeIds = [];
+        Store.state.extractSourceId = null;
+        Store.state.selectedExtractIndices = [];
+        Store.state.spectrumMode = false;
+        Store.state.spectrumResult = null;
+        Store.state.spectrumRasterId = null;
         Store.onRastersChange = null;
         Store.onVectorStateChange = null;
     });
@@ -75,5 +82,54 @@ describe('Store layer state', () => {
 
         expect(Store.reorderVectorLayer('layer-2', 'layer-3', 'after')).toBe(false);
         expect(Store.state.vectorLayers.map((layer) => layer.id)).toEqual(['layer-2', 'layer-1', 'layer-3']);
+    });
+
+    it('clears vector state without leaving selected or visible layers behind', () => {
+        Store.state.projects = [{ id: 'project-a' }];
+        Store.state.activeProject = { id: 'project-a' };
+        Store.state.vectorLayers = [{ id: 'layer-a' }];
+        Store.state.activeVectorLayerId = 'layer-a';
+        Store.state.selectedVectorLayerId = 'layer-a';
+        Store.state.visibleVectorLayerIds = new Set(['layer-a']);
+        Store.state.currentFeatures = {
+            type: 'FeatureCollection',
+            features: [{ id: 'feature-a' }],
+        };
+        Store.state.selectedFeatureId = 'feature-a';
+
+        Store.clearVectorState();
+
+        expect(Store.state.projects).toEqual([]);
+        expect(Store.state.activeProject).toBe(null);
+        expect(Store.state.vectorLayers).toEqual([]);
+        expect(Store.state.activeVectorLayerId).toBe(null);
+        expect(Store.state.selectedVectorLayerId).toBe(null);
+        expect(Store.state.visibleVectorLayerIds.size).toBe(0);
+        expect(Store.state.currentFeatures.features).toEqual([]);
+        expect(Store.state.selectedFeatureId).toBe(null);
+    });
+
+    it('clears raster state and calculator selections together', () => {
+        Store.state.rasters = [{ id: 1 }];
+        Store.state.activeLayerIds = new Set([1]);
+        Store.state.loadingIds = new Set([1]);
+        Store.state.selectedMergeIds = [1, 2];
+        Store.state.extractSourceId = 1;
+        Store.state.selectedExtractIndices = [2];
+        Store.state.spectrumMode = true;
+        Store.state.spectrumResult = { bands: [] };
+        Store.state.spectrumRasterId = 1;
+
+        Store.clearRasterState();
+
+        expect(Store.state.rasters).toEqual([]);
+        expect(Store.state.activeLayerIds.size).toBe(0);
+        expect(Store.state.loadingIds.size).toBe(0);
+        expect(Store.state.selectedMergeIds).toEqual([]);
+        expect(Store.state.extractSourceId).toBe(null);
+        expect(Store.state.selectedExtractIndices).toEqual([]);
+        expect(Store.state.spectrumMode).toBe(false);
+        expect(Store.state.spectrumResult).toBe(null);
+        expect(Store.state.spectrumRasterId).toBe(null);
     });
 });

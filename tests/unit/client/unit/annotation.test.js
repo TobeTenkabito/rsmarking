@@ -32,13 +32,13 @@ describe('AnnotationModule 标注交互测试', () => {
         };
 
         // 模拟内部方法以验证调用
-        module.setDrawMode = vi.fn();
+        module.startDrawing = vi.fn();
         module.currentHandler = mockHandler;
         module.currentType = 'polygon';
 
         module.resetCurrentAction();
 
         expect(mockHandler.disable).toHaveBeenCalled();
-        expect(module.setDrawMode).toHaveBeenCalledWith('polygon');
+        expect(module.startDrawing).toHaveBeenCalledWith('polygon');
     });
 });

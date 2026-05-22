@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
-import rasterio
+
+rasterio = pytest.importorskip("rasterio")
 from rasterio.transform import from_origin
 
 from services.data_service.raster_statistics import compute_raster_statistics

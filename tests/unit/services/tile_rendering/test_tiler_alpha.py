@@ -1,4 +1,7 @@
 import numpy as np
+import pytest
+
+pytest.importorskip("rasterio")
 from rasterio.enums import Resampling
 from rasterio.transform import from_origin
 from rasterio.windows import Window

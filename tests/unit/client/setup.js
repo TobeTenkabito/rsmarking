@@ -1,6 +1,15 @@
 import { vi } from 'vitest';
 
-// 模拟 Leaflet 全局对象
+function createDrawHandler({ canDeleteVertex = false } = {}) {
+    return {
+        enable: vi.fn(),
+        disable: vi.fn(),
+        enabled: vi.fn(() => true),
+        ...(canDeleteVertex ? { deleteLastVertex: vi.fn() } : {}),
+    };
+}
+
+// Mock the Leaflet surface used by frontend unit tests.
 global.L = {
     map: vi.fn(() => ({
         on: vi.fn(),
@@ -13,7 +22,6 @@ global.L = {
             div.id = 'map-container';
             return div;
         }),
-        // 增加辅助方法模拟
         getZoom: vi.fn(() => 10),
         getCenter: vi.fn(() => ({ lat: 0, lng: 0 })),
     })),
@@ -24,28 +32,21 @@ global.L = {
         setStyle: vi.fn(),
         eachLayer: vi.fn(),
     })),
-    // 增加绘图相关的命名空间模拟，防止 AnnotationModule 报错
     Draw: {
-        Polygon: vi.fn(() => ({
-            enable: vi.fn(),
-            disable: vi.fn(),
-            enabled: vi.fn(() => true),
-            deleteLastVertex: vi.fn(),
-        })),
-        Rectangle: vi.fn(() => ({
-            enable: vi.fn(),
-            disable: vi.fn(),
-            enabled: vi.fn(() => true),
-        }))
+        Polygon: vi.fn(function Polygon() {
+            return createDrawHandler({ canDeleteVertex: true });
+        }),
+        Rectangle: vi.fn(function Rectangle() {
+            return createDrawHandler();
+        }),
     },
     DomEvent: {
         stopPropagation: vi.fn(),
         preventDefault: vi.fn(),
         on: vi.fn(),
-    }
+    },
 };
 
-// 模拟全局 Store 和业务桥接对象
 global.__app_id = 'test-app-id';
 global.RS = {
     toggleEditMode: vi.fn(),
@@ -53,7 +54,6 @@ global.RS = {
     exitEditMode: vi.fn(),
 };
 
-// 模拟 Fetch API (增加基本的回调支持)
 global.fetch = vi.fn(() =>
     Promise.resolve({
         ok: true,

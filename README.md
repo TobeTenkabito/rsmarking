@@ -95,8 +95,8 @@ resources/                      README screenshots and benchmark images
 - Docker Desktop or Docker Engine with Compose.
 - Conda or Mamba.
 - Python 3.12. The checked-in `environment.yml` creates a Python 3.12 environment named `rsmarking`.
-- A browser. The frontend is currently a static app; the committed `client/package.json` files are empty, so there is no working `npm run dev` script in this revision.
-- Optional: Node.js if you want to add/restore frontend package scripts and run Vitest.
+- A browser. The frontend is currently a static app, so there is no `npm run dev` workflow in this revision.
+- Optional: Node.js if you want to run the Vitest frontend unit tests.
 
 ## Quick Start
 
@@ -255,7 +255,12 @@ $env:RS_RUN_BENCHMARKS = "1"
 python -m pytest tests/benchmark -m benchmark
 ```
 
-Frontend tests are configured in `vitest.config.js`, but the frontend package manifests in this revision are empty. Restore or add the required JS dependencies and scripts before running Vitest.
+Frontend unit tests:
+
+```powershell
+npm install
+npm run test -- --config vitest.config.js
+```
 
 ## Screenshots
 
@@ -282,7 +287,7 @@ Frontend tests are configured in `vitest.config.js`, but the frontend package ma
 ## Current Caveats
 
 - Some older comments and docs in the repository are mojibaked. This README is ASCII-only to avoid adding more encoding damage.
-- `client/package.json`, `client/packages/app/package.json`, `client/packages/core/package.json`, and `client/pnpm_workspace.yaml` are empty placeholders in this revision.
+- The frontend does not currently ship a package-managed dev server workflow; use the Docker stack or the static client entry points above while developing the app.
 - The helper start scripts under `services/` are not the most reliable source of truth. Prefer the explicit `uvicorn` commands above while developing.
 - `worker_cluster` is optional until the synchronous `data_service` processing paths are replaced with Celery submissions.
 - Do not commit real `.env` API keys.

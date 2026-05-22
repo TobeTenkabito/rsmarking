@@ -1,9 +1,22 @@
-import numpy as np
+import os
 import time
 import concurrent.futures
+
+import numpy as np
+import pytest
+
+pytest.importorskip("rasterio")
 from tests.unit.services.tile_rendering.utils.tile_benchmark_utils import benchmark_render
 from tests.unit.services.tile_rendering.utils.benchmark_reporter import BenchmarkReporter
 reporter = BenchmarkReporter()
+
+pytestmark = pytest.mark.benchmark
+
+
+@pytest.fixture(autouse=True)
+def _benchmarks_enabled():
+    if os.getenv("RS_RUN_BENCHMARKS") != "1":
+        pytest.skip("Set RS_RUN_BENCHMARKS=1 to run tile rendering benchmarks.")
 
 
 def test_render_binary_mask():
