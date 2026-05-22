@@ -119,6 +119,19 @@ Run service tests:
 python -m pytest tests/unit/services
 ```
 
+Run service communication tests:
+
+```bash
+python -m pytest tests/integration
+```
+
+Run live service port probes after the FastAPI services are running:
+
+```bash
+$env:RS_RUN_PORT_TESTS="1"
+python -m pytest tests/integration/test_port_communication.py
+```
+
 Run benchmarks:
 
 ```bash

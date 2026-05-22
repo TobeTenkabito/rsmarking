@@ -248,6 +248,21 @@ python -m pytest tests/unit/functions
 python -m pytest tests/unit/services
 ```
 
+Service communication tests:
+
+```powershell
+python -m pytest tests/integration
+```
+
+The bridge tests mock cross-service HTTP calls. To probe a running stack on the six FastAPI service ports, enable the opt-in live checks:
+
+```powershell
+$env:RS_RUN_PORT_TESTS = "1"
+python -m pytest tests/integration/test_port_communication.py
+```
+
+Override a live port target with `RS_PORT_TEST_ANNOTATION_URL`, `RS_PORT_TEST_DATA_URL`, `RS_PORT_TEST_VTILE_URL`, `RS_PORT_TEST_EXECUTOR_URL`, `RS_PORT_TEST_TILE_URL`, or `RS_PORT_TEST_AI_URL`.
+
 Benchmarks are opt-in:
 
 ```powershell
