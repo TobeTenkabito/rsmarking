@@ -8,7 +8,7 @@ from typing import Any
 
 from worker_cluster.app import celery_app
 from worker_cluster.bridge.db_sync import get_sync_db
-from worker_cluster.bridge.status_reporter import set_task_status
+from worker_cluster.bridge.status_reporter import report_failure, set_task_status
 from worker_cluster.models import TaskJob, TaskStatus
 
 logger = logging.getLogger("worker.producer")
@@ -91,7 +91,13 @@ def submit_task(
     if queue:
         send_options["queue"] = queue
 
-    async_result = celery_app.send_task(task_name, args=args, kwargs=kwargs, **send_options)
+    try:
+        async_result = celery_app.send_task(task_name, args=args, kwargs=kwargs, **send_options)
+    except Exception as exc:
+        if recorded:
+            report_failure(job_id, f"Task submission failed: {exc}")
+        raise
+
     set_task_status(async_result.id, "pending", progress=0, message="Task submitted")
 
     if recorded:

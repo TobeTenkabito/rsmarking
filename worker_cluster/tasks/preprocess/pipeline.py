@@ -24,6 +24,12 @@ import numpy as np
 
 logger = logging.getLogger("worker.preprocess")
 
+
+def _ensure_parent_dir(path: str) -> None:
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
 # ─── 1. COG 转换 + 金字塔 ─────────────────────────────────────────────────────
 
 @celery_app.task(
@@ -46,7 +52,7 @@ def build_cog_task(self, index_id: int, raw_path: str, cog_path: str) -> dict:
     """
     try:
         self.report(10, "开始 COG 转换")
-        os.makedirs(os.path.dirname(cog_path), exist_ok=True)
+        _ensure_parent_dir(cog_path)
 
         self.report(30, "转换中...")
         RasterProcessor.convert_to_cog(raw_path, cog_path)
@@ -118,7 +124,7 @@ def reproject_task(
 
     try:
         self.report(10, f"重投影 → {target_crs}")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        _ensure_parent_dir(output_path)
 
         with rasterio.open(input_path) as src:
             transform, width, height = calculate_default_transform(
@@ -157,6 +163,8 @@ def reproject_task(
             if row:
                 row.crs = target_crs
                 row.cog_path = output_path
+            else:
+                raise RuntimeError(f"RasterMetadata not found: index_id={index_id}")
 
         return {"index_id": index_id, "output_path": output_path, "crs": target_crs}
 

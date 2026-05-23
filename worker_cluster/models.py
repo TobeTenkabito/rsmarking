@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Integer, DateTime, JSON, Text, Enum as SAEnum, Index,
 )
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 
 # 独立 Base，不与 data_service 的 Base 混用，
 # 避免 Worker 进程意外触发 data_service 的表创建
@@ -81,6 +81,6 @@ class TaskJob(Base):
     retry_count = Column(Integer, default=0)
 
     # 时间戳
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    started_at = Column(DateTime, nullable=True)
-    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)

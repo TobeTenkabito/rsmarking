@@ -24,7 +24,7 @@ import redis
 from worker_cluster.bridge.db_sync import get_sync_db
 
 logger = logging.getLogger("worker.status_reporter")
-TaskStatus = Literal["pending", "running", "success", "failed", "retrying"]
+TaskStatus = Literal["pending", "running", "success", "failed", "retrying", "revoked"]
 _redis_url = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 _redis_client = redis.Redis.from_url(_redis_url, decode_responses=True)
 
@@ -43,17 +43,18 @@ def set_task_status(
     写入 Redis，前端通过 GET /tasks/{task_id}/status 轮询。
     Redis 不可用时仅记录警告，不阻断任务执行。
     """
+    bounded_progress = max(0, min(100, int(progress)))
     payload = {
         "task_id":    task_id,
         "status":     status,
-        "progress":   progress,
+        "progress":   bounded_progress,
         "message":    message,
         "result":     result or {},
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     key = f"{_TASK_KEY_PREFIX}{task_id}"
     try:
-        _redis_client.setex(key, _TASK_TTL, json.dumps(payload))
+        _redis_client.setex(key, _TASK_TTL, json.dumps(payload, default=str))
     except Exception as e:
         logger.warning(f"[StatusReporter] Redis write failed task_id={task_id}: {e}")
 

@@ -74,7 +74,7 @@ class BaseRasterTask(Task):
         retry_count = int(getattr(self.request, "retries", 0)) + 1
         set_task_status(
             task_id,
-            "running",
+            "retrying",
             progress=0,
             message=f"Retrying: {exc}",
         )

@@ -9,31 +9,46 @@ import logging
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, Session
 
 logger = logging.getLogger("worker.db_sync")
 
 # ── 连接字符串 ────────────────────────────────────────────────────────────────
 # 优先读专用变量，回退到把 asyncpg URL 的驱动前缀替换掉
+def _to_sync_database_url(url: str) -> str:
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+
 _async_url: str = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://rs_admin:rs_password@localhost:5432/rsmarking",
 )
 SYNC_DATABASE_URL: str = os.getenv(
     "SYNC_DATABASE_URL",
-    _async_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://"),
+    _to_sync_database_url(_async_url),
 )
 
-# ── 引擎（单例，进程级复用） ──────────────────────────────────────────────────
-_engine = create_engine(
-    SYNC_DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,   # 自动检测断开的连接
-    echo=False,
-)
+_engine: Engine | None = None
+_SessionFactory: sessionmaker[Session] | None = None
 
-_SessionFactory = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
+
+def _get_session_factory() -> sessionmaker[Session]:
+    global _engine, _SessionFactory
+    if _SessionFactory is None:
+        _engine = create_engine(
+            SYNC_DATABASE_URL,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+            echo=False,
+        )
+        _SessionFactory = sessionmaker(bind=_engine, autocommit=False, autoflush=False)
+    return _SessionFactory
 
 
 @contextmanager
@@ -44,7 +59,7 @@ def get_sync_db() -> Session:
             db.query(...)
     异常时自动回滚，正常时自动提交并关闭。
     """
-    session: Session = _SessionFactory()
+    session: Session = _get_session_factory()()
     try:
         yield session
         session.commit()

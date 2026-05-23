@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
+from uuid import UUID
 
 from worker_cluster.app import celery_app
 from worker_cluster.tasks.base import BaseRasterTask
@@ -17,6 +18,18 @@ logger = logging.getLogger("worker.export.geojson")
 
 # 导出目录（可通过环境变量覆盖）
 EXPORT_DIR = os.getenv("EXPORT_DIR", "/storage/exports")
+
+
+def _json_safe(value):
+    if isinstance(value, UUID):
+        return str(value)
+    return value
+
+
+def _geometry_from_row(value):
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 @celery_app.task(
@@ -52,7 +65,7 @@ def export_geojson_task(
                     SELECT
                         f.id,
                         f.properties,
-                        ST_AsGeoJSON(f.geometry)::json AS geometry
+                        ST_AsGeoJSON(f.geom)::json AS geometry
                     FROM features f
                     WHERE f.layer_id = :layer_id
                     ORDER BY f.id
@@ -67,8 +80,8 @@ def export_geojson_task(
         for row in rows:
             features.append({
                 "type": "Feature",
-                "id": row.id,
-                "geometry": row.geometry,
+                "id": _json_safe(row.id),
+                "geometry": _geometry_from_row(row.geometry),
                 "properties": row.properties or {},
             })
 
@@ -76,7 +89,7 @@ def export_geojson_task(
             "type": "FeatureCollection",
             "features": features,
             "metadata": {
-                "layer_id": layer_id,
+                "layer_id": _json_safe(layer_id),
                 "feature_count": len(features),
                 "exported_at": datetime.now(timezone.utc).isoformat(),
             },
@@ -88,6 +101,10 @@ def export_geojson_task(
             output_path = os.path.join(
                 EXPORT_DIR, f"layer_{layer_id}_{int(datetime.now().timestamp())}.geojson"
             )
+        else:
+            parent = os.path.dirname(os.path.abspath(output_path))
+            if parent:
+                os.makedirs(parent, exist_ok=True)
 
         self.report(80, "写出文件")
         with open(output_path, "w", encoding="utf-8") as f:
