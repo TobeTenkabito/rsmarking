@@ -1,5 +1,7 @@
 import hashlib
 import json
+import logging
+import os
 from threading import RLock
 from typing import Optional
 
@@ -7,6 +9,8 @@ from cachetools import LRUCache
 from diskcache import Cache
 
 from .config import settings
+
+logger = logging.getLogger("tile_service.cache")
 
 
 class TileCache:
@@ -20,11 +24,15 @@ class TileCache:
         self.l2_dir = l2_dir
         self.l2_limit = l2_limit
         self._l2_cache = None
-        self._lock = RLock()
+        self._l1_lock = RLock()
+        self._l2_init_lock = RLock()
+        self._lock = self._l1_lock
 
     def _get_l2_cache(self):
         if self._l2_cache is None:
-            self._l2_cache = Cache(self.l2_dir, size_limit=self.l2_limit)
+            with self._l2_init_lock:
+                if self._l2_cache is None:
+                    self._l2_cache = Cache(self.l2_dir, size_limit=self.l2_limit)
         return self._l2_cache
 
     def _make_key(
@@ -68,6 +76,21 @@ class TileCache:
         value_str = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.md5(value_str.encode()).hexdigest()[:8]
 
+    @staticmethod
+    def _profile_enabled() -> bool:
+        return bool(getattr(settings, "TILE_PROFILE", False)) or os.getenv("TILE_PROFILE") == "1"
+
+    def _log_profile_event(self, event: str, key: str, data: Optional[bytes] = None):
+        if not self._profile_enabled():
+            return
+        key_hash = hashlib.md5(key.encode()).hexdigest()[:12]
+        logger.info(
+            "tile_cache_profile event=%s key=%s bytes=%s",
+            event,
+            key_hash,
+            len(data) if data is not None else 0,
+        )
+
     def get_tile(
         self,
         index_id: str,
@@ -99,16 +122,20 @@ class TileCache:
             render_options=render_options,
         )
 
-        with self._lock:
+        with self._l1_lock:
             tile = self.l1_cache.get(key)
             if tile is not None:
+                self._log_profile_event("l1_hit", key, tile)
                 return tile
 
-            tile = self._get_l2_cache().get(key)
-            if tile is not None:
+        tile = self._get_l2_cache().get(key)
+        if tile is not None:
+            with self._l1_lock:
                 self.l1_cache[key] = tile
-                return tile
+            self._log_profile_event("l2_hit", key, tile)
+            return tile
 
+        self._log_profile_event("miss", key)
         return None
 
     def set_tile(
@@ -147,19 +174,22 @@ class TileCache:
             style_hash=style_hash,
             render_options=render_options,
         )
-        with self._lock:
+        with self._l1_lock:
             self.l1_cache[key] = data
-            self._get_l2_cache().set(key, data)
+        self._get_l2_cache().set(key, data)
+        self._log_profile_event("set", key, data)
 
     def clear_l1(self):
-        with self._lock:
+        with self._l1_lock:
             self.l1_cache.clear()
 
     def clear(self):
-        with self._lock:
+        with self._l1_lock:
             self.l1_cache.clear()
-            if self._l2_cache is not None:
-                self._l2_cache.clear()
+        with self._l2_init_lock:
+            l2_cache = self._l2_cache
+        if l2_cache is not None:
+            l2_cache.clear()
 
 
 tile_cache = TileCache(

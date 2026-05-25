@@ -63,10 +63,24 @@ def test_tile_cache_different_tile_size_or_renderer_do_not_hit(tmp_path):
         b"a",
         tile_size=256,
         renderer_version="render_v2",
+        alpha_strategy="mask_auto",
     )
 
-    assert cache.get_tile("idx", 1, 2, 3, "1", tile_size=512, renderer_version="render_v2") is None
-    assert cache.get_tile("idx", 1, 2, 3, "1", tile_size=256, renderer_version="render_v3") is None
+    assert cache.get_tile("idx", 1, 2, 3, "1", tile_size=512, renderer_version="render_v2", alpha_strategy="mask_auto") is None
+    assert cache.get_tile("idx", 1, 2, 3, "1", tile_size=256, renderer_version="render_v3", alpha_strategy="mask_auto") is None
+    assert cache.get_tile("idx", 1, 2, 3, "1", tile_size=256, renderer_version="render_v2", alpha_strategy="mask_data") is None
+
+
+def test_tile_cache_l2_hit_repopulates_l1(tmp_path):
+    cache = TileCache(l1_size=8, l2_dir=str(tmp_path / "cache"), l2_limit=1024 * 1024)
+    cache.set_tile("idx", 1, 2, 3, "1", b"a", file_version=1)
+    key = cache._make_key("idx", 1, 2, 3, "1", file_version=1)
+
+    cache.clear_l1()
+
+    assert key not in cache.l1_cache
+    assert cache.get_tile("idx", 1, 2, 3, "1", file_version=1) == b"a"
+    assert cache.l1_cache[key] == b"a"
 
 
 def test_tile_cache_preserves_legacy_key_shape(tmp_path):

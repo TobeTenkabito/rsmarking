@@ -1,7 +1,7 @@
 from collections import OrderedDict
 import logging
 import os
-from threading import RLock
+from threading import RLock, local
 import time
 
 import numpy as np
@@ -39,6 +39,8 @@ except (ImportError, ValueError):
 _ENGINE_CACHE_MAXSIZE = max(1, int(os.getenv("TILE_ENGINE_CACHE_SIZE", "16")))
 _ENGINE_CACHE = OrderedDict()
 _ENGINE_CACHE_LOCK = RLock()
+_RASTER_DIAGNOSTICS_LOGGED = set()
+_RASTER_DIAGNOSTICS_LOCK = RLock()
 
 
 def get_tile_engine(file_path: str):
@@ -84,6 +86,24 @@ def _alpha_mode() -> str:
     return mode
 
 
+def _raster_open_mode() -> str:
+    mode = str(getattr(settings, "TILE_RASTER_OPEN_MODE", "per_request") or "per_request").strip().lower()
+    if mode not in {"per_request", "thread_local"}:
+        return "per_request"
+    return mode
+
+
+def _resampling_mode() -> str:
+    mode = str(getattr(settings, "TILE_RESAMPLING_MODE", "quality") or "quality").strip().lower()
+    if mode not in {"quality", "fast", "nearest", "bilinear"}:
+        return "quality"
+    return mode
+
+
+def _safe_basename(file_path: str) -> str:
+    return os.path.basename(file_path)
+
+
 class TileEngine:
     def __init__(self, file_path: str):
         self.file_path = os.path.abspath(file_path)
@@ -94,13 +114,77 @@ class TileEngine:
         self._file_mtime_ns = None
         self._crs_wgs84 = "EPSG:4326"
         self._lock = RLock()
+        self._thread_local = local()
 
     def _get_src(self, current_mtime_ns: int | None = None):
+        src, _ = self._open_src(current_mtime_ns)
+        return src
+
+    def _open_src(self, current_mtime_ns: int | None = None):
         if current_mtime_ns is None:
             current_mtime_ns = _file_mtime_ns(self.file_path)
+
+        if _raster_open_mode() == "thread_local":
+            state = getattr(self._thread_local, "src_state", None)
+            if state is not None:
+                src = state.get("src")
+                if (
+                    state.get("file_path") == self.file_path
+                    and state.get("mtime_ns") == current_mtime_ns
+                    and src is not None
+                    and not getattr(src, "closed", False)
+                ):
+                    self._refresh_file_state(current_mtime_ns)
+                    return src, False
+
+                if src is not None and not getattr(src, "closed", False):
+                    src.close()
+
+            src = rasterio.open(self.file_path)
+            self._thread_local.src_state = {
+                "file_path": self.file_path,
+                "mtime_ns": current_mtime_ns,
+                "src": src,
+            }
+            self._refresh_file_state(current_mtime_ns)
+            self._log_raster_diagnostics(src)
+            return src, False
+
         src = rasterio.open(self.file_path)
         self._refresh_file_state(current_mtime_ns)
-        return src
+        self._log_raster_diagnostics(src)
+        return src, True
+
+    def _log_raster_diagnostics(self, src):
+        if not _profile_enabled():
+            return
+
+        with _RASTER_DIAGNOSTICS_LOCK:
+            if self.file_path in _RASTER_DIAGNOSTICS_LOGGED:
+                return
+            _RASTER_DIAGNOSTICS_LOGGED.add(self.file_path)
+
+        try:
+            try:
+                overviews = src.overviews(1) if getattr(src, "count", 0) >= 1 else []
+            except Exception:
+                overviews = []
+
+            logger.info(
+                "tile_raster_profile path=%s driver=%s width=%s height=%s count=%s "
+                "crs=%s is_tiled=%s block_shapes=%s overviews_1=%s",
+                _safe_basename(self.file_path),
+                getattr(src, "driver", None),
+                getattr(src, "width", None),
+                getattr(src, "height", None),
+                getattr(src, "count", None),
+                getattr(src, "crs", None),
+                getattr(src, "is_tiled", None),
+                getattr(src, "block_shapes", None),
+                overviews,
+            )
+        except Exception:
+            logger.warning("Failed to log raster diagnostics for %s", _safe_basename(self.file_path))
 
     def _refresh_file_state(self, current_mtime_ns: int):
         with self._lock:
@@ -150,10 +234,11 @@ class TileEngine:
             return None
 
         src = None
+        close_src = False
         tile_result = None
         try:
             current_mtime_ns = _file_mtime_ns(self.file_path)
-            src = self._get_src(current_mtime_ns)
+            src, close_src = self._open_src(current_mtime_ns)
             mark("source")
 
             valid_bands = bands if bands else list(range(1, min(4, src.count) + 1))
@@ -223,7 +308,7 @@ class TileEngine:
             )
             return None
         finally:
-            if src is not None and not getattr(src, "closed", False):
+            if src is not None and close_src and not getattr(src, "closed", False):
                 src.close()
             if profile:
                 total_ms = (time.perf_counter() - total_start) * 1000.0
@@ -252,12 +337,20 @@ class TileEngine:
         return bool(np.count_nonzero((data != 0) & (data != 1)) == 0)
 
     def _select_resampling(self, src, band, window):
+        mode = _resampling_mode()
+        if mode == "nearest":
+            return Resampling.nearest
+        if mode == "bilinear":
+            return Resampling.bilinear
+
         if window is None:
             return Resampling.bilinear
 
         x_decimation = abs(window.width) / settings.TILE_SIZE
         y_decimation = abs(window.height) / settings.TILE_SIZE
         decimation = max(x_decimation, y_decimation)
+        if mode == "fast" and decimation >= 4.0:
+            return Resampling.nearest
         if decimation < 2.0:
             return Resampling.bilinear
 
@@ -297,13 +390,14 @@ class TileEngine:
                 "Failed to read alpha mask for %s; falling back to data-derived alpha",
                 self.file_path,
             )
-            return self._alpha_from_data(data)
+            return self._alpha_from_data(data, getattr(src, "nodata", None))
 
     @staticmethod
     def _alpha_from_data(data, nodata=None):
-        valid = np.any(data != 0, axis=0)
+        valid_data = data != 0
         if nodata is not None:
-            valid &= np.any(data != nodata, axis=0)
+            valid_data &= data != nodata
+        valid = np.any(valid_data, axis=0)
         return valid.astype(np.uint8) * 255
 
     @staticmethod
@@ -409,6 +503,12 @@ class TileEngine:
             self._src = None
             self._transformer = None
             self._transformer_key = None
+        state = getattr(self._thread_local, "src_state", None)
+        if state is not None:
+            src = state.get("src")
+            if src is not None and not getattr(src, "closed", False):
+                src.close()
+            self._thread_local.src_state = None
 
     def __del__(self):
         self.close()

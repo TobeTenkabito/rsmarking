@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     TILE_SIZE: int = 256
     TILE_PROFILE: bool = False
     TILE_ALPHA_MODE: str = "auto"
+    TILE_PATH_CACHE_TTL_SECONDS: float = 30.0
+    TILE_PATH_CACHE_MAXSIZE: int = 1024
+    TILE_RASTER_OPEN_MODE: str = "per_request"
+    TILE_RESAMPLING_MODE: str = "quality"
+    TILE_PNG_COMPRESS_LEVEL: int = 1
 
 
 settings = Settings()

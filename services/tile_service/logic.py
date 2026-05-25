@@ -1,15 +1,22 @@
 import logging
 import os
+import time
+from collections import OrderedDict
+from threading import RLock
 
 import numpy as np
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.tile_service.core.config import settings
 
 logger = logging.getLogger("tile_service.logic")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 COG_DIR = os.path.join(BASE_DIR, "storage", "cog")
+_PATH_CACHE = OrderedDict()
+_PATH_CACHE_LOCK = RLock()
 
 
 def resolve_raster_path(file_path: str | None, cog_path: str | None = None) -> str | None:
@@ -42,6 +49,11 @@ def _expand_path_candidates(path: str, prefer_cog: bool):
 
 
 async def get_raster_path(db: AsyncSession, index_id: str) -> str:
+    cache_key = str(index_id)
+    cached = _get_cached_raster_path(cache_key)
+    if cached is not _CACHE_MISS:
+        return cached
+
     try:
         try:
             val = int(index_id)
@@ -52,13 +64,65 @@ async def get_raster_path(db: AsyncSession, index_id: str) -> str:
         result = await db.execute(query, {"val": val})
         row = result.one_or_none()
         if row:
-            return resolve_raster_path(row[0], row[1])
+            resolved = resolve_raster_path(row[0], row[1])
+            _set_cached_raster_path(cache_key, resolved)
+            return resolved
 
         logger.warning("Raster record not found for: %s", index_id)
+        _set_cached_raster_path(cache_key, None)
         return None
     except Exception:
         logger.exception("Database query error for %s", index_id)
         return None
+
+
+_CACHE_MISS = object()
+
+
+def _path_cache_ttl() -> float:
+    return max(0.0, float(getattr(settings, "TILE_PATH_CACHE_TTL_SECONDS", 30.0) or 0.0))
+
+
+def _path_cache_maxsize() -> int:
+    return max(1, int(getattr(settings, "TILE_PATH_CACHE_MAXSIZE", 1024) or 1024))
+
+
+def _get_cached_raster_path(index_id: str):
+    ttl = _path_cache_ttl()
+    if ttl <= 0.0:
+        return _CACHE_MISS
+
+    now = time.monotonic()
+    with _PATH_CACHE_LOCK:
+        entry = _PATH_CACHE.get(index_id)
+        if entry is None:
+            return _CACHE_MISS
+
+        expires_at, value = entry
+        if expires_at <= now:
+            _PATH_CACHE.pop(index_id, None)
+            return _CACHE_MISS
+
+        _PATH_CACHE.move_to_end(index_id)
+        return value
+
+
+def _set_cached_raster_path(index_id: str, value: str | None):
+    ttl = _path_cache_ttl()
+    if ttl <= 0.0:
+        return
+
+    expires_at = time.monotonic() + ttl
+    with _PATH_CACHE_LOCK:
+        _PATH_CACHE[index_id] = (expires_at, value)
+        _PATH_CACHE.move_to_end(index_id)
+        while len(_PATH_CACHE) > _path_cache_maxsize():
+            _PATH_CACHE.popitem(last=False)
+
+
+def clear_raster_path_cache():
+    with _PATH_CACHE_LOCK:
+        _PATH_CACHE.clear()
 
 
 def process_tile_pixels_fallback(data: np.ndarray) -> np.ndarray:
