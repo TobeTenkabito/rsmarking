@@ -56,12 +56,13 @@ async def get_raster_path(db: AsyncSession, index_id: str) -> str:
 
         logger.warning("Raster record not found for: %s", index_id)
         return None
-    except Exception as e:
-        logger.error("Database query error for %s: %s", index_id, e)
+    except Exception:
+        logger.exception("Database query error for %s", index_id)
         return None
 
 
 def process_tile_pixels_fallback(data: np.ndarray) -> np.ndarray:
+    """Deprecated debug-only fallback renderer kept for /debug/render-first.png."""
     data = np.asarray(data, dtype=np.float32)
     count, height, width = data.shape
     out = np.zeros((height, width, 4), dtype=np.uint8)

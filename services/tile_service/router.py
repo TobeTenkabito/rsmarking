@@ -1,7 +1,6 @@
 import io
 import logging
 import os
-import traceback
 from functools import lru_cache
 
 import mercantile
@@ -23,7 +22,7 @@ import services.tile_service.logic as logic
 logger = logging.getLogger("tile_service.control")
 router = APIRouter()
 
-RENDER_CACHE_VERSION = "adaptive-resampling-v4"
+RENDER_CACHE_VERSION = "render_v2"
 PNG_SAVE_OPTIONS = {"format": "PNG", "compress_level": 1}
 
 
@@ -63,12 +62,18 @@ def _parse_bands(bands: str):
     return parsed or [int(part) for part in settings.DEFAULT_BANDS.split(",")]
 
 
-def _tile_cache_index(index_id: str, file_path: str) -> str:
+def _file_version(file_path: str) -> int:
     try:
-        file_version = os.stat(file_path).st_mtime_ns
+        return os.stat(file_path).st_mtime_ns
     except OSError:
-        file_version = 0
-    return f"{index_id}:{file_version}:{RENDER_CACHE_VERSION}"
+        return 0
+
+
+def _alpha_strategy() -> str:
+    mode = str(getattr(settings, "TILE_ALPHA_MODE", "auto") or "auto").lower()
+    if mode not in {"auto", "data"}:
+        mode = "auto"
+    return f"mask_{mode}"
 
 
 @router.get("/tile/{index_id}/{z}/{x}/{y}.png")
@@ -86,14 +91,19 @@ async def get_tile(
 
     requested_bands = _parse_bands(bands)
     band_key = ",".join(str(b) for b in requested_bands)
-    cache_index = _tile_cache_index(index_id, file_path)
+    file_version = _file_version(file_path)
+    alpha_strategy = _alpha_strategy()
 
     cached_tile = tile_cache.get_tile(
-        cache_index,
+        index_id,
         z,
         x,
         y,
         band_key,
+        file_version=file_version,
+        tile_size=settings.TILE_SIZE,
+        renderer_version=RENDER_CACHE_VERSION,
+        alpha_strategy=alpha_strategy,
     )
     if cached_tile is not None:
         return _png_response(cached_tile)
@@ -108,18 +118,21 @@ async def get_tile(
         )
         content = _encode_png(tile_data)
         tile_cache.set_tile(
-            cache_index,
+            index_id,
             z,
             x,
             y,
             band_key,
             content,
+            file_version=file_version,
+            tile_size=settings.TILE_SIZE,
+            renderer_version=RENDER_CACHE_VERSION,
+            alpha_strategy=alpha_strategy,
         )
         return _png_response(content)
 
     except Exception:
-        logger.error("Tile generation failed: %s, Z=%s, X=%s, Y=%s", index_id, z, x, y)
-        logger.error(traceback.format_exc())
+        logger.exception("Tile generation failed: %s, Z=%s, X=%s, Y=%s", index_id, z, x, y)
         return Response(status_code=500)
 
 
@@ -155,5 +168,5 @@ async def debug_render_first(db: AsyncSession = Depends(get_db)):
             img_rgba = logic.process_tile_pixels_fallback(tile_data)
             return _png_response(_encode_png(img_rgba))
     except Exception as e:
-        logger.error("Debug render failed: %s", e)
+        logger.exception("Debug render failed")
         raise HTTPException(status_code=500, detail=str(e))

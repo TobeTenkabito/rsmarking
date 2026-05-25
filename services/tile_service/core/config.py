@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     CACHE_L2_SIZE_LIMIT: int = 5 * 1024 * 1024 * 1024
     DEFAULT_BANDS: str = "1,2,3"
     TILE_SIZE: int = 256
+    TILE_PROFILE: bool = False
+    TILE_ALPHA_MODE: str = "auto"
 
 
 settings = Settings()

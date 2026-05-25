@@ -35,14 +35,38 @@ class TileCache:
         y: int,
         bands: str,
         stats: Optional[dict] = None,
+        *,
+        file_version: Optional[int | str] = None,
+        tile_size: Optional[int] = None,
+        renderer_version: Optional[str] = None,
+        alpha_strategy: Optional[str] = None,
+        style_hash: Optional[str] = None,
+        render_options: Optional[dict] = None,
     ) -> str:
         base = f"{index_id}/{z}/{x}/{y}/{bands}"
-        if not stats:
-            return base
+        parts = [base]
 
-        stats_str = json.dumps(stats, sort_keys=True, separators=(",", ":"))
-        stats_hash = hashlib.md5(stats_str.encode()).hexdigest()[:8]
-        return f"{base}/{stats_hash}"
+        if stats:
+            parts.append(self._hash_mapping(stats))
+        if file_version is not None:
+            parts.append(f"file:{file_version}")
+        if tile_size is not None:
+            parts.append(f"size:{tile_size}")
+        if renderer_version:
+            parts.append(f"renderer:{renderer_version}")
+        if alpha_strategy:
+            parts.append(f"alpha:{alpha_strategy}")
+        if style_hash:
+            parts.append(f"style:{style_hash}")
+        if render_options:
+            parts.append(f"options:{self._hash_mapping(render_options)}")
+
+        return "/".join(parts)
+
+    @staticmethod
+    def _hash_mapping(value: dict) -> str:
+        value_str = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.md5(value_str.encode()).hexdigest()[:8]
 
     def get_tile(
         self,
@@ -52,8 +76,28 @@ class TileCache:
         y: int,
         bands: str,
         stats: Optional[dict] = None,
+        *,
+        file_version: Optional[int | str] = None,
+        tile_size: Optional[int] = None,
+        renderer_version: Optional[str] = None,
+        alpha_strategy: Optional[str] = None,
+        style_hash: Optional[str] = None,
+        render_options: Optional[dict] = None,
     ) -> Optional[bytes]:
-        key = self._make_key(index_id, z, x, y, bands, stats)
+        key = self._make_key(
+            index_id,
+            z,
+            x,
+            y,
+            bands,
+            stats,
+            file_version=file_version,
+            tile_size=tile_size,
+            renderer_version=renderer_version,
+            alpha_strategy=alpha_strategy,
+            style_hash=style_hash,
+            render_options=render_options,
+        )
 
         with self._lock:
             tile = self.l1_cache.get(key)
@@ -76,11 +120,33 @@ class TileCache:
         bands: str,
         data: bytes,
         stats: Optional[dict] = None,
+        *,
+        file_version: Optional[int | str] = None,
+        tile_size: Optional[int] = None,
+        renderer_version: Optional[str] = None,
+        alpha_strategy: Optional[str] = None,
+        style_hash: Optional[str] = None,
+        render_options: Optional[dict] = None,
     ):
         if data is None:
             return
+        if not isinstance(data, bytes):
+            data = bytes(data)
 
-        key = self._make_key(index_id, z, x, y, bands, stats)
+        key = self._make_key(
+            index_id,
+            z,
+            x,
+            y,
+            bands,
+            stats,
+            file_version=file_version,
+            tile_size=tile_size,
+            renderer_version=renderer_version,
+            alpha_strategy=alpha_strategy,
+            style_hash=style_hash,
+            render_options=render_options,
+        )
         with self._lock:
             self.l1_cache[key] = data
             self._get_l2_cache().set(key, data)
@@ -88,6 +154,12 @@ class TileCache:
     def clear_l1(self):
         with self._lock:
             self.l1_cache.clear()
+
+    def clear(self):
+        with self._lock:
+            self.l1_cache.clear()
+            if self._l2_cache is not None:
+                self._l2_cache.clear()
 
 
 tile_cache = TileCache(

@@ -1,17 +1,25 @@
+import logging
+from threading import RLock
+
 import numpy as np
 from rasterio.enums import Resampling
 
+logger = logging.getLogger("tile_service.stats")
 
 # Shared across TileEngine instances. Key: (file_path, band_idx) -> (low, high)
 _GLOBAL_FILE_STATS: dict = {}
+_GLOBAL_FILE_STATS_LOCK = RLock()
+_GLOBAL_FILE_STATS_KEY_LOCKS: dict = {}
 
 
 class StatsManager:
     def __init__(self):
         self.cache = {}
+        self._lock = RLock()
 
     def clear(self):
-        self.cache.clear()
+        with self._lock:
+            self.cache.clear()
 
     def get_stretch_params(self, data, band_indices, src, stats_override=None):
         mins, maxs = [], []
@@ -26,30 +34,54 @@ class StatsManager:
         if override is not None:
             return override
 
-        if b_idx in self.cache:
-            return self.cache[b_idx]
+        with self._lock:
+            cached = self.cache.get(b_idx)
+            if cached is not None:
+                return cached
 
         b_meta = src.tags(b_idx)
         m_min = b_meta.get("STATISTICS_MINIMUM")
         m_max = b_meta.get("STATISTICS_MAXIMUM")
         if m_min is not None and m_max is not None:
             val = (float(m_min), float(m_max))
-            self.cache[b_idx] = val
+            with self._lock:
+                self.cache[b_idx] = val
             return val
 
         file_path = getattr(src, "name", None)
         if not file_path:
             val = self._compute_tile_stats(data[band_pos], src)
-            self.cache[b_idx] = val
+            with self._lock:
+                self.cache[b_idx] = val
             return val
 
         global_key = (file_path, b_idx)
-        if global_key in _GLOBAL_FILE_STATS:
-            return _GLOBAL_FILE_STATS[global_key]
-
-        val = self._compute_global_stats(src, b_idx)
-        _GLOBAL_FILE_STATS[global_key] = val
+        val = self._get_global_stats(global_key, src, b_idx)
+        with self._lock:
+            self.cache[b_idx] = val
         return val
+
+    def _get_global_stats(self, global_key, src, b_idx):
+        with _GLOBAL_FILE_STATS_LOCK:
+            cached = _GLOBAL_FILE_STATS.get(global_key)
+            if cached is not None:
+                return cached
+            key_lock = _GLOBAL_FILE_STATS_KEY_LOCKS.setdefault(global_key, RLock())
+
+        with key_lock:
+            with _GLOBAL_FILE_STATS_LOCK:
+                cached = _GLOBAL_FILE_STATS.get(global_key)
+                if cached is not None:
+                    return cached
+
+            val = self._compute_global_stats(src, b_idx)
+
+            with _GLOBAL_FILE_STATS_LOCK:
+                cached = _GLOBAL_FILE_STATS.get(global_key)
+                if cached is not None:
+                    return cached
+                _GLOBAL_FILE_STATS[global_key] = val
+                return val
 
     def _get_stats_override(self, band_pos, b_idx, stats_override):
         if not stats_override:
@@ -106,7 +138,11 @@ class StatsManager:
             return self._compute_tile_stats(thumb, src)
 
         except Exception as e:
-            print(f"### [STATS_WARN] band={b_idx} global stats failed: {e}, fallback to (0,1)")
+            logger.warning(
+                "Global stats failed for band=%s, falling back to (0,1): %s",
+                b_idx,
+                e,
+            )
             return (0.0, 1.0)
 
     def _compute_tile_stats(self, band, src=None):
@@ -129,6 +165,8 @@ class StatsManager:
 
     @staticmethod
     def invalidate_file(file_path: str):
-        keys_to_del = [k for k in _GLOBAL_FILE_STATS if k[0] == file_path]
-        for k in keys_to_del:
-            del _GLOBAL_FILE_STATS[k]
+        with _GLOBAL_FILE_STATS_LOCK:
+            keys_to_del = [k for k in _GLOBAL_FILE_STATS if k[0] == file_path]
+            for k in keys_to_del:
+                del _GLOBAL_FILE_STATS[k]
+                _GLOBAL_FILE_STATS_KEY_LOCKS.pop(k, None)

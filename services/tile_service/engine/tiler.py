@@ -1,6 +1,8 @@
 from collections import OrderedDict
+import logging
 import os
 from threading import RLock
+import time
 
 import numpy as np
 import rasterio
@@ -11,6 +13,8 @@ from services.tile_service.core.config import settings
 
 from .stats import StatsManager
 from .utils import get_tile_window
+
+logger = logging.getLogger("tile_service.engine")
 
 
 try:
@@ -69,101 +73,179 @@ def _file_mtime_ns(file_path: str):
         return 0
 
 
+def _profile_enabled() -> bool:
+    return bool(getattr(settings, "TILE_PROFILE", False)) or os.getenv("TILE_PROFILE") == "1"
+
+
+def _alpha_mode() -> str:
+    mode = str(getattr(settings, "TILE_ALPHA_MODE", "auto") or "auto").strip().lower()
+    if mode not in {"auto", "data"}:
+        return "auto"
+    return mode
+
+
 class TileEngine:
     def __init__(self, file_path: str):
         self.file_path = os.path.abspath(file_path)
         self._src = None
         self._stats_manager = StatsManager()
         self._transformer = None
+        self._transformer_key = None
         self._file_mtime_ns = None
         self._crs_wgs84 = "EPSG:4326"
         self._lock = RLock()
 
-    def _get_src(self):
-        current_mtime_ns = _file_mtime_ns(self.file_path)
-        file_changed = (
-            self._file_mtime_ns is not None
-            and current_mtime_ns != self._file_mtime_ns
-        )
+    def _get_src(self, current_mtime_ns: int | None = None):
+        if current_mtime_ns is None:
+            current_mtime_ns = _file_mtime_ns(self.file_path)
+        src = rasterio.open(self.file_path)
+        self._refresh_file_state(current_mtime_ns)
+        return src
 
-        if self._src is None or self._src.closed or file_changed:
-            if self._src is not None and not self._src.closed:
-                self._src.close()
-
+    def _refresh_file_state(self, current_mtime_ns: int):
+        with self._lock:
+            file_changed = (
+                self._file_mtime_ns is not None
+                and current_mtime_ns != self._file_mtime_ns
+            )
             if file_changed:
                 StatsManager.invalidate_file(self.file_path)
+                self._stats_manager.clear()
+                self._transformer = None
+                self._transformer_key = None
+            elif self._file_mtime_ns is None:
+                self._stats_manager.clear()
 
-            self._src = rasterio.open(self.file_path)
-            self._transformer = Transformer.from_crs(
-                self._crs_wgs84,
-                self._src.crs,
-                always_xy=True,
-            )
-            self._stats_manager.clear()
             self._file_mtime_ns = current_mtime_ns
 
-        return self._src
+    def _get_transformer(self, src, current_mtime_ns: int):
+        transformer_key = (self.file_path, current_mtime_ns, str(src.crs))
+        with self._lock:
+            if self._transformer is None or self._transformer_key != transformer_key:
+                self._transformer = Transformer.from_crs(
+                    self._crs_wgs84,
+                    src.crs,
+                    always_xy=True,
+                )
+                self._transformer_key = transformer_key
+            return self._transformer
 
     def read_tile(self, x: int, y: int, z: int, bands: list = None, stats: dict = None):
+        profile = _profile_enabled()
+        alpha_mode = _alpha_mode()
+        timings = {}
+        total_start = time.perf_counter()
+        last_mark = total_start
+
+        def mark(stage: str):
+            nonlocal last_mark
+            if not profile:
+                return
+            now = time.perf_counter()
+            timings[stage] = (now - last_mark) * 1000.0
+            last_mark = now
+
         if not os.path.exists(self.file_path):
-            with self._lock:
-                self.close()
+            self.close()
             return None
 
-        with self._lock:
-            try:
-                src = self._get_src()
-                valid_bands = bands if bands else list(range(1, min(4, src.count) + 1))
-                valid_bands = [b for b in valid_bands if 1 <= b <= src.count] or [1]
-                window = get_tile_window(x, y, z, src, self._transformer)
-                resampling = self._select_resampling(src, valid_bands[0], window)
-                data = src.read(
-                    valid_bands,
-                    window=window,
-                    out_shape=(len(valid_bands), settings.TILE_SIZE, settings.TILE_SIZE),
-                    resampling=resampling,
-                    boundless=True,
-                    fill_value=0,
-                    out_dtype="float32",
-                )
+        src = None
+        tile_result = None
+        try:
+            current_mtime_ns = _file_mtime_ns(self.file_path)
+            src = self._get_src(current_mtime_ns)
+            mark("source")
 
-                if data.dtype != np.float32 or not data.flags.c_contiguous:
-                    data = np.ascontiguousarray(data, dtype=np.float32)
+            valid_bands = bands if bands else list(range(1, min(4, src.count) + 1))
+            valid_bands = [b for b in valid_bands if 1 <= b <= src.count] or [1]
+            transformer = self._get_transformer(src, current_mtime_ns)
+            window = get_tile_window(x, y, z, src, transformer)
+            mark("window")
 
-                alpha = self._read_alpha_mask(src, valid_bands, window, data)
-                if not np.any(alpha):
-                    return None
+            resampling = self._select_resampling(src, valid_bands[0], window)
+            data = src.read(
+                valid_bands,
+                window=window,
+                out_shape=(len(valid_bands), settings.TILE_SIZE, settings.TILE_SIZE),
+                resampling=resampling,
+                boundless=True,
+                fill_value=0,
+                out_dtype="float32",
+            )
 
-                d_min = float(np.min(data))
-                d_max = float(np.max(data))
+            if data.dtype != np.float32 or not data.flags.c_contiguous:
+                data = np.ascontiguousarray(data, dtype=np.float32)
+            mark("read")
 
-                num_bands = len(valid_bands)
-                if d_min >= 0.0 and d_max <= 1.0 and self._is_binary_tile(data):
-                    mins = np.zeros(num_bands, dtype=np.float32)
-                    maxs = np.ones(num_bands, dtype=np.float32)
-                elif d_min >= -1.0001 and d_max <= 1.0001:
-                    mins = np.full(num_bands, -1.0, dtype=np.float32)
-                    maxs = np.full(num_bands, 1.0, dtype=np.float32)
-                else:
-                    mins, maxs = self._stats_manager.get_stretch_params(
-                        data,
-                        valid_bands,
-                        src,
-                        stats,
-                    )
-
-                if HAS_FAST_TILER:
-                    tile = render_tile(data, mins, maxs)
-                elif fast_stretch_and_stack:
-                    tile = fast_stretch_and_stack(data, mins, maxs)
-                else:
-                    tile = self._fallback_process(data, mins, maxs)
-
-                tile[:, :, 3] = alpha
-                return tile
-            except Exception as e:
-                print(f"### [TILE_ENGINE_ERROR] {e} ###")
+            alpha = self._read_alpha_mask(src, valid_bands, window, data, alpha_mode)
+            mark("alpha")
+            if not np.any(alpha):
                 return None
+
+            d_min = float(np.min(data))
+            d_max = float(np.max(data))
+
+            num_bands = len(valid_bands)
+            if d_min >= 0.0 and d_max <= 1.0 and self._is_binary_tile(data):
+                mins = np.zeros(num_bands, dtype=np.float32)
+                maxs = np.ones(num_bands, dtype=np.float32)
+            elif d_min >= -1.0001 and d_max <= 1.0001:
+                mins = np.full(num_bands, -1.0, dtype=np.float32)
+                maxs = np.full(num_bands, 1.0, dtype=np.float32)
+            else:
+                mins, maxs = self._stats_manager.get_stretch_params(
+                    data,
+                    valid_bands,
+                    src,
+                    stats,
+                )
+            mark("stats")
+
+            if HAS_FAST_TILER:
+                tile = render_tile(data, mins, maxs)
+            elif fast_stretch_and_stack:
+                tile = fast_stretch_and_stack(data, mins, maxs)
+            else:
+                tile = self._fallback_process(data, mins, maxs)
+
+            tile[:, :, 3] = alpha
+            tile_result = tile
+            mark("render")
+            return tile_result
+        except Exception:
+            logger.exception(
+                "Tile engine failed file=%s z=%s x=%s y=%s bands=%s",
+                self.file_path,
+                z,
+                x,
+                y,
+                bands,
+            )
+            return None
+        finally:
+            if src is not None and not getattr(src, "closed", False):
+                src.close()
+            if profile:
+                total_ms = (time.perf_counter() - total_start) * 1000.0
+                logger.info(
+                    "tile_profile file=%s z=%s x=%s y=%s bands=%s alpha_mode=%s "
+                    "source=%.2fms window=%.2fms read=%.2fms alpha=%.2fms "
+                    "stats=%.2fms render=%.2fms total=%.2fms empty=%s",
+                    self.file_path,
+                    z,
+                    x,
+                    y,
+                    bands,
+                    alpha_mode,
+                    timings.get("source", 0.0),
+                    timings.get("window", 0.0),
+                    timings.get("read", 0.0),
+                    timings.get("alpha", 0.0),
+                    timings.get("stats", 0.0),
+                    timings.get("render", 0.0),
+                    total_ms,
+                    tile_result is None,
+                )
 
     @staticmethod
     def _is_binary_tile(data):
@@ -187,7 +269,10 @@ class TileEngine:
 
         return Resampling.nearest
 
-    def _read_alpha_mask(self, src, valid_bands, window, data):
+    def _read_alpha_mask(self, src, valid_bands, window, data, alpha_mode="auto"):
+        if alpha_mode == "data":
+            return self._alpha_from_data(data, getattr(src, "nodata", None))
+
         if not self._has_explicit_mask(src):
             alpha = self._alpha_from_window(src, window, data.shape[1], data.shape[2])
             alpha = self._remove_edge_fill_pixels(data, alpha)
@@ -208,11 +293,18 @@ class TileEngine:
             alpha = np.where(alpha > 0, 255, 0).astype(np.uint8)
             return alpha
         except Exception:
+            logger.warning(
+                "Failed to read alpha mask for %s; falling back to data-derived alpha",
+                self.file_path,
+            )
             return self._alpha_from_data(data)
 
     @staticmethod
-    def _alpha_from_data(data):
-        return (np.any(data != 0, axis=0).astype(np.uint8) * 255)
+    def _alpha_from_data(data, nodata=None):
+        valid = np.any(data != 0, axis=0)
+        if nodata is not None:
+            valid &= np.any(data != nodata, axis=0)
+        return valid.astype(np.uint8) * 255
 
     @staticmethod
     def _alpha_from_window(src, window, height, width):
@@ -315,6 +407,8 @@ class TileEngine:
             if self._src is not None and not self._src.closed:
                 self._src.close()
             self._src = None
+            self._transformer = None
+            self._transformer_key = None
 
     def __del__(self):
         self.close()
