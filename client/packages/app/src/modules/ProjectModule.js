@@ -5,9 +5,20 @@ import { t } from '../i18n/index.js';
 export class ProjectModule {
     constructor(app) {
         this.app = app;
+        this._refreshProjectsPromise = null;
     }
 
     async refreshProjects() {
+        if (this._refreshProjectsPromise) return this._refreshProjectsPromise;
+        this._refreshProjectsPromise = this._refreshProjects();
+        try {
+            return await this._refreshProjectsPromise;
+        } finally {
+            this._refreshProjectsPromise = null;
+        }
+    }
+
+    async _refreshProjects() {
         try {
             const projects = await VectorAPI.fetchProjects();
             Store.setProjects(projects);

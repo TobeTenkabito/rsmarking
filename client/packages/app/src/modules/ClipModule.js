@@ -105,7 +105,6 @@ export class ClipModule {
             const result = await RasterAPI.clipRasterByVector(
                 rasterId, newName, [clipGeometry], 'EPSG:4326', true, null, false,
                 );
-            console.log('[ClipModule] 栅格裁剪完成:', result);
             await this.app.raster?.refreshData();
         if (result?.id && this.app.mapController) {
             await this.app.mapController.toggleLayer(result.id);
@@ -163,7 +162,6 @@ export class ClipModule {
             },
         }));
         await VectorAPI.bulkCreateFeatures(newLayer.id, payload);
-        console.log(`[ClipModule] 矢量裁剪结果已写入新图层: ${newLayerName}`);
 
         await this.app.project?.handleSelectProject(activeProject.id);
         if (this.app.mapController?.toggleVectorLayer) {
@@ -226,7 +224,7 @@ export class ClipModule {
     _getActiveRasterId() {
         const ids = Store.state.activeLayerIds;
         if (!ids.size) return null;
-        const activeId = [...ids][0];
+        const activeId = ids.values().next().value;
         const match = Store.state.rasters.find(r => r.id == activeId);
         return match?.index_id ?? null;  // ← 返回 index_id
     }
@@ -234,7 +232,7 @@ export class ClipModule {
     _getActiveRasterMeta() {
         const ids = Store.state.activeLayerIds;
         if (!ids.size) return null;
-        const activeId = [...ids][0];
+        const activeId = ids.values().next().value;
         return Store.state.rasters.find(r => r.id == activeId) ?? null;
     }
 

@@ -1,11 +1,14 @@
 import { WelcomeTemplate } from '../../../ui/src/templates/Welcome.js';
 
+const CONNECTION_NEIGHBOR_OFFSETS = [-1, 0, 1];
+
 export const WelcomeModule = {
     canvas: null,
     ctx: null,
     particles: [],
     earthNodes: [],
     animationId: null,
+    resizeFrame: null,
     mouse: { x: -1000, y: -1000, radius: 180 },
     settings: {
         particleCount: 0,
@@ -43,9 +46,13 @@ export const WelcomeModule = {
 
         btn.addEventListener('click', () => this.enter(screen));
         window.addEventListener('resize', () => {
-            this.resize();
-            this.createEarth();
-            this.createParticles();
+            if (this.resizeFrame) return;
+            this.resizeFrame = requestAnimationFrame(() => {
+                this.resizeFrame = null;
+                this.resize();
+                this.createEarth();
+                this.createParticles();
+            });
         });
     },
 
@@ -169,8 +176,9 @@ export const WelcomeModule = {
         const centerY = this.canvas.height / 2;
 
         if (!this.settings.aggrActive) {
+            const now = Date.now();
             const cycleTime = 20000; // 20秒完整循环
-            const cycle = (Date.now() % cycleTime) / cycleTime;
+            const cycle = (now % cycleTime) / cycleTime;
 
             let foldProgress = 0;
             let panOffset = 0;
@@ -204,7 +212,7 @@ export const WelcomeModule = {
             const radius = mapHeight * 0.7;
             const focalLength = 800;
 
-            const time = Date.now();
+            const time = now;
 
             for (let i = 0; i < this.earthNodes.length; i++) {
                 const node = this.earthNodes[i];
@@ -299,31 +307,64 @@ export const WelcomeModule = {
         }
 
         if (!this.settings.aggrActive) {
-            this.ctx.lineWidth = 0.8;
-            for (let i = 0; i < this.particles.length; i++) {
-                for (let j = i + 1; j < this.particles.length; j++) {
-                    const p1 = this.particles[i];
-                    const p2 = this.particles[j];
-                    const dx = p1.x - p2.x;
-                    const dy = p1.y - p2.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
+            this.drawParticleConnections(mx, my, mouseRadius);
+        }
+    },
 
-                    if (dist < this.settings.connectionDistance) {
-                        const opacity = 1 - (dist / this.settings.connectionDistance);
+    drawParticleConnections(mx, my, mouseRadius) {
+        const distance = this.settings.connectionDistance;
+        const distanceSq = distance * distance;
+        const mouseRadiusSq = mouseRadius * mouseRadius;
+        const grid = new Map();
 
-                        const distToMouse1 = Math.sqrt(Math.pow(mx - p1.x, 2) + Math.pow(my - p1.y, 2));
-                        const distToMouse2 = Math.sqrt(Math.pow(mx - p2.x, 2) + Math.pow(my - p2.y, 2));
+        for (let i = 0; i < this.particles.length; i++) {
+            const p = this.particles[i];
+            const cx = Math.floor(p.x / distance);
+            const cy = Math.floor(p.y / distance);
+            const key = `${cx}:${cy}`;
+            let bucket = grid.get(key);
+            if (!bucket) {
+                bucket = [];
+                grid.set(key, bucket);
+            }
+            bucket.push(i);
+        }
 
-                        let strokeColor = `rgba(${p1.baseColor[0]}, ${p1.baseColor[1]}, ${p1.baseColor[2]}, ${opacity * 0.15})`;
+        this.ctx.lineWidth = 0.8;
+        for (let i = 0; i < this.particles.length; i++) {
+            const p1 = this.particles[i];
+            const cx = Math.floor(p1.x / distance);
+            const cy = Math.floor(p1.y / distance);
 
-                        if (distToMouse1 < mouseRadius && distToMouse2 < mouseRadius) {
-                            strokeColor = `rgba(${p1.baseColor[0]}, ${p1.baseColor[1]}, ${p1.baseColor[2]}, ${opacity * 0.8})`;
-                        }
+            for (const ox of CONNECTION_NEIGHBOR_OFFSETS) {
+                for (const oy of CONNECTION_NEIGHBOR_OFFSETS) {
+                    const bucket = grid.get(`${cx + ox}:${cy + oy}`);
+                    if (!bucket) continue;
+
+                    for (const j of bucket) {
+                        if (j <= i) continue;
+                        const p2 = this.particles[j];
+                        const dx = p1.x - p2.x;
+                        const dy = p1.y - p2.y;
+                        const distSq = dx * dx + dy * dy;
+                        if (distSq >= distanceSq) continue;
+
+                        const dist = Math.sqrt(distSq);
+                        const opacity = 1 - (dist / distance);
+                        const mouseDx1 = mx - p1.x;
+                        const mouseDy1 = my - p1.y;
+                        const mouseDx2 = mx - p2.x;
+                        const mouseDy2 = my - p2.y;
+                        const nearMouse = (
+                            mouseDx1 * mouseDx1 + mouseDy1 * mouseDy1 < mouseRadiusSq &&
+                            mouseDx2 * mouseDx2 + mouseDy2 * mouseDy2 < mouseRadiusSq
+                        );
+                        const alpha = nearMouse ? opacity * 0.8 : opacity * 0.15;
 
                         this.ctx.beginPath();
                         this.ctx.moveTo(p1.x, p1.y);
                         this.ctx.lineTo(p2.x, p2.y);
-                        this.ctx.strokeStyle = strokeColor;
+                        this.ctx.strokeStyle = `rgba(${p1.baseColor[0]}, ${p1.baseColor[1]}, ${p1.baseColor[2]}, ${alpha})`;
                         this.ctx.stroke();
                     }
                 }

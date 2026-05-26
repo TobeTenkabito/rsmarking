@@ -11,6 +11,9 @@ export class ScriptModule {
         this.outputName = '';
         this.isExecuting = false;
         this.scriptHistory = this.loadScriptHistory();
+        this._templatePromise = null;
+        this._templateCache = null;
+        this._validationFrame = null;
     }
 
     /**
@@ -65,7 +68,7 @@ export class ScriptModule {
         if (editor) {
             editor.addEventListener('input', (e) => {
                 this.currentScript = e.target.value;
-                this.updateScriptValidation();
+                this.scheduleScriptValidation();
             });
 
             // Tab键支持
@@ -77,6 +80,7 @@ export class ScriptModule {
                     editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
                     editor.selectionStart = editor.selectionEnd = start + 4;
                     this.currentScript = editor.value;
+                    this.scheduleScriptValidation();
                 }
             });
         }
@@ -127,7 +131,7 @@ export class ScriptModule {
      */
     async loadTemplates() {
         try {
-            const templates = await RasterAPI.getScriptTemplates();
+            const templates = await this._getTemplates();
             const selector = document.getElementById('script-template-selector');
 
             if (selector && templates) {
@@ -144,7 +148,7 @@ export class ScriptModule {
                         const code = this.decodeBase64(e.target.value);
                         document.getElementById('script-editor-textarea').value = code;
                         this.currentScript = code;
-                        this.updateScriptValidation();
+                        this.scheduleScriptValidation();
                     }
                 });
             }
@@ -204,16 +208,11 @@ export class ScriptModule {
         }
 
         const result = await response.json();
-        console.log('[ScriptModule] 执行结果:', result);
 
         if (result.status === 'success') {
             this.app.ui.showToast(t('script.toast.success'), 'success');
 
             // 显示执行日志（如果有）
-            if (result.logs) {
-                console.log('[Script Output]:', result.logs);
-            }
-
             // 保存到历史
             this.saveToHistory();
 
@@ -250,6 +249,14 @@ export class ScriptModule {
         if (cancelBtn) {
             cancelBtn.disabled = isExecuting;
         }
+    }
+
+    scheduleScriptValidation() {
+        if (this._validationFrame) return;
+        this._validationFrame = requestAnimationFrame(() => {
+            this._validationFrame = null;
+            this.updateScriptValidation();
+        });
     }
 
     /**
@@ -375,6 +382,21 @@ export class ScriptModule {
     /**
      * 显示历史记录
      */
+    async _getTemplates() {
+        if (this._templateCache) return this._templateCache;
+        if (!this._templatePromise) {
+            this._templatePromise = RasterAPI.getScriptTemplates()
+                .then((templates) => {
+                    this._templateCache = templates ?? [];
+                    return this._templateCache;
+                })
+                .finally(() => {
+                    this._templatePromise = null;
+                });
+        }
+        return this._templatePromise;
+    }
+
     showHistory() {
         const historyDiv = document.getElementById('script-history');
         if (!historyDiv) return;

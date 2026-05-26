@@ -6,9 +6,20 @@ import { t } from '../i18n/index.js';
 export class RasterModule {
     constructor(app) {
         this.app = app;
+        this._refreshPromise = null;
     }
 
     async refreshData() {
+        if (this._refreshPromise) return this._refreshPromise;
+        this._refreshPromise = this._refreshData();
+        try {
+            return await this._refreshPromise;
+        } finally {
+            this._refreshPromise = null;
+        }
+    }
+
+    async _refreshData() {
         try {
             const data = await RasterAPI.fetchAll();
             Store.setRasters(data);

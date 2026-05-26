@@ -67,7 +67,9 @@ export class RasterStatisticsModule {
     }
 
     selectBand(bandIndex) {
-        this.activeBandIndex = Number(bandIndex);
+        const nextBandIndex = Number(bandIndex);
+        if (this.activeBandIndex === nextBandIndex) return;
+        this.activeBandIndex = nextBandIndex;
         this._render();
     }
 

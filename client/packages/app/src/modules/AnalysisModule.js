@@ -9,6 +9,8 @@ export class AnalysisModule {
     constructor(app) {
         this.app = app;
         this.currentType = null;
+        this._spectrumRequestSeq = 0;
+        this._spectrumPanelBound = false;
     }
     /**
      * 打开计算弹窗并动态生成波段选择器
@@ -87,13 +89,16 @@ export class AnalysisModule {
     async querySpectrumAt(lng, lat) {
     const rasterId = Store.state.spectrumRasterId;
     if (!rasterId) return;
+    const requestSeq = ++this._spectrumRequestSeq;
 
     try {
         const result = await RasterAPI.querySpectrum(rasterId, lng, lat);
+        if (requestSeq !== this._spectrumRequestSeq) return;
         if (!result) throw new Error("查詢返回空結果");
         Store.setSpectrumResult(result);
         this._showSpectrumPanel(result);
     } catch (e) {
+        if (requestSeq !== this._spectrumRequestSeq) return;
         console.error("[AnalysisModule] 光譜查詢失敗:", e);
         this._showSpectrumPanel(null, e.message);
     }
@@ -119,12 +124,22 @@ export class AnalysisModule {
         document.getElementById('map').parentElement.appendChild(panel);
     }
 
+    if (!this._spectrumPanelBound) {
+        this._spectrumPanelBound = true;
+        panel.addEventListener('click', (event) => {
+            if (!event.target.closest('[data-spectrum-close]')) return;
+            this._closeSpectrumPanel();
+            Store.setSpectrumMode(false);
+            document.getElementById('map').style.cursor = '';
+        });
+    }
+
     // 錯誤狀態
     if (errorMsg) {
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                 <span style="font-weight:600;color:#f87171">⚠ 光譜查詢</span>
-                <button onclick="document.getElementById('spectrum-panel').remove()"
+                <button data-spectrum-close="true"
                     style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
             </div>
             <p style="color:#f87171;margin:0">${errorMsg}</p>`;
@@ -136,17 +151,12 @@ export class AnalysisModule {
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span style="font-weight:600;color:#a78bfa">📈 光譜查詢</span>
-                <button id="spectrum-close-btn"
+                <button id="spectrum-close-btn" data-spectrum-close="true"
                     style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
             </div>
             <p style="color:#94a3b8;margin:0;text-align:center;padding:12px 0">
                 點擊地圖上任意像素查看光譜
             </p>`;
-        document.getElementById('spectrum-close-btn')?.addEventListener('click', () => {
-            this._closeSpectrumPanel();
-            Store.setSpectrumMode(false);
-            document.getElementById('map').style.cursor = '';
-        });
         return;
     }
 
@@ -178,7 +188,7 @@ export class AnalysisModule {
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
             <span style="font-weight:600;color:#a78bfa">📈 光譜</span>
-            <button id="spectrum-close-btn"
+            <button id="spectrum-close-btn" data-spectrum-close="true"
                 style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
         </div>
         <div style="color:#64748b;font-size:11px;margin-bottom:10px">
@@ -186,15 +196,12 @@ export class AnalysisModule {
         </div>
         ${bars}`;
 
-    document.getElementById('spectrum-close-btn')?.addEventListener('click', () => {
-        this._closeSpectrumPanel();
-        Store.setSpectrumMode(false);
-        document.getElementById('map').style.cursor = '';
-    });
 }
 
     _closeSpectrumPanel() {
     document.getElementById('spectrum-panel')?.remove();
+    this._spectrumPanelBound = false;
+    this._spectrumRequestSeq++;
     Store.setSpectrumResult(null);
 }
 

@@ -41,6 +41,11 @@ export class AttributeTable {
         this._minHeight = 180;
         this._viewportMargin = 8;
         this._floatingBound = false;
+        this._featureById = new Map();
+        this._rasterFieldById = new Map();
+        this._resizeFrame = null;
+        this._layoutFrame = null;
+        this._pendingLayout = null;
     }
 
     _initDom() {
@@ -179,6 +184,7 @@ export class AttributeTable {
     }
 
     _renderVector() {
+        this._featureById = new Map(this.features.map(feature => [String(feature.id), feature]));
         if (this._thead) {
             this._thead.innerHTML = ModalComponent.renderAttrTableHead(this.fields);
         }
@@ -195,6 +201,7 @@ export class AttributeTable {
     }
 
     _renderRaster() {
+        this._rasterFieldById = new Map(this.rasterFields.map(field => [String(field.id), field]));
         if (this._thead) {
             this._thead.innerHTML = ModalComponent.renderRasterFieldTableHead();
         }
@@ -202,8 +209,12 @@ export class AttributeTable {
             this._tbody.innerHTML = ModalComponent.renderRasterFieldTableBody(this.rasterFields);
         }
         if (this._count) {
-            const userCount = this.rasterFields.filter(f => !f.is_system).length;
-            const sysCount  = this.rasterFields.filter(f =>  f.is_system).length;
+            let userCount = 0;
+            let sysCount = 0;
+            for (const field of this.rasterFields) {
+                if (field.is_system) sysCount++;
+                else userCount++;
+            }
             this._count.textContent = `${sysCount} 系统 · ${userCount} 自定义`;
         }
     }
@@ -432,7 +443,7 @@ export class AttributeTable {
         try {
             await RasterAPI.updateField(this.layerId, fieldId, { field_alias: alias.trim() });
             // 乐观更新本地缓存
-            const f = this.rasterFields.find(f => String(f.id) === String(fieldId));
+            const f = this._rasterFieldById.get(String(fieldId));
             if (f) f.field_alias = alias.trim();
             this._render();
         } catch (err) {
@@ -463,7 +474,7 @@ export class AttributeTable {
         if (td.querySelector('input,select')) return;
 
         const { fieldId, fieldType } = td.dataset;
-        const field   = this.rasterFields.find(f => String(f.id) === String(fieldId));
+        const field   = this._rasterFieldById.get(String(fieldId));
         const rawVal  = field?.default_val ?? '';
         const span    = td.querySelector('.cell-val');
         span.classList.add('hidden');
@@ -521,7 +532,7 @@ export class AttributeTable {
         if (td.querySelector('input,select')) return;
 
         const { featureId, fieldName, fieldType } = td.dataset;
-        const feature  = this.features.find(f => String(f.id) === String(featureId));
+        const feature  = this._featureById.get(String(featureId));
         const rawVal   = feature?.properties?.[fieldName] ?? '';
 
         const span = td.querySelector('.cell-val');
@@ -611,8 +622,12 @@ export class AttributeTable {
 
         window.addEventListener('resize', () => {
             if (!this._panel || this._panel.classList.contains('hidden')) return;
-            this._clampPanelToViewport();
-            this._persistLayout();
+            if (this._resizeFrame) return;
+            this._resizeFrame = requestAnimationFrame(() => {
+                this._resizeFrame = null;
+                this._clampPanelToViewport();
+                this._persistLayout();
+            });
         });
     }
 
@@ -629,7 +644,7 @@ export class AttributeTable {
                 left: start.left + mv.clientX - startX,
                 top: start.top + mv.clientY - startY,
             });
-            this._applyLayout(next);
+            this._scheduleApplyLayout(next);
         };
         const onUp = () => this._finishPanelInteraction(onMove, onUp);
 
@@ -677,7 +692,7 @@ export class AttributeTable {
                 }
             }
 
-            this._applyLayout(this._clampLayout(next));
+            this._scheduleApplyLayout(this._clampLayout(next));
             this._syncExpandedStateFromHeight();
         };
         const onUp = () => this._finishPanelInteraction(onMove, onUp);
@@ -695,6 +710,10 @@ export class AttributeTable {
     _finishPanelInteraction(onMove, onUp) {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        if (this._pendingLayout) {
+            this._applyLayout(this._pendingLayout);
+            this._pendingLayout = null;
+        }
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
         this._panel?.classList.remove('is-moving');
@@ -790,6 +809,17 @@ export class AttributeTable {
         this._panel.style.height = `${Math.round(layout.height)}px`;
         this._panel.style.right = 'auto';
         this._panel.style.bottom = 'auto';
+    }
+
+    _scheduleApplyLayout(layout) {
+        this._pendingLayout = layout;
+        if (this._layoutFrame) return;
+        this._layoutFrame = requestAnimationFrame(() => {
+            this._layoutFrame = null;
+            const next = this._pendingLayout;
+            this._pendingLayout = null;
+            if (next) this._applyLayout(next);
+        });
     }
 
     _syncExpandedStateFromHeight() {

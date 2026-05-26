@@ -135,6 +135,7 @@ export class AnnotationModule {
         this.currentHandler = null;
         this.currentType = null;
         this.cesiumDraw = null;
+        this._drawButtons = null;
 
         this.initEventListeners();
     }
@@ -292,7 +293,9 @@ export class AnnotationModule {
     }
 
     updateUI(activeMode) {
-        const buttons = document.querySelectorAll('.draw-btn');
+        const buttons = this._drawButtons?.length
+            ? this._drawButtons
+            : (this._drawButtons = Array.from(document.querySelectorAll('.draw-btn')));
         buttons.forEach(btn => {
             const onclickAttr = btn.getAttribute('onclick') || "";
             const isMatch = activeMode && onclickAttr.includes(`'${activeMode}'`);
@@ -534,6 +537,7 @@ export class AnnotationModule {
         const position = movement.endPosition || movement.position;
         const point = this._pickCesiumLngLat(position);
         if (!point) return;
+        if (samePoint(state.cursor, point)) return;
 
         state.cursor = point;
         this._syncCesiumPreviewEntities();

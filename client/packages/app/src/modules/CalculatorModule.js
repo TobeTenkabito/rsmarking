@@ -2,6 +2,17 @@ import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { Store } from '../store/index.js';
 
+const RESERVED_TOKENS = new Set([
+    'sin','cos','tan','arcsin','arccos','arctan','arctan2',
+    'sinh','cosh','tanh','exp','log','log10','sqrt','abs',
+    'where','pi','e','expm1','log1p'
+]);
+const VARIABLE_TOKEN_PATTERN = /\b([A-Za-z][A-Za-z0-9]*(?:_\d+)*)\b/g;
+
+function sameVariables(a, b) {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 
 export class CalculatorModule {
     constructor(app) {
@@ -19,23 +30,20 @@ export class CalculatorModule {
     }
 
     closeModal() {
-        document.getElementById('calculator-modal').classList.add('hidden');
-        document.getElementById('calc-expression-input').value = '';
-        document.getElementById('calc-variables-container').innerHTML = '';
+        document.getElementById('calculator-modal')?.classList.add('hidden');
+        const expressionInput = document.getElementById('calc-expression-input');
+        if (expressionInput) expressionInput.value = '';
+        const variablesContainer = document.getElementById('calc-variables-container');
+        if (variablesContainer) variablesContainer.innerHTML = '';
     }
     
     handleExpressionChange() {
     const expression = document.getElementById('calc-expression-input').value;
-    const RESERVED = new Set([
-        'sin','cos','tan','arcsin','arccos','arctan','arctan2',
-        'sinh','cosh','tanh','exp','log','log10','sqrt','abs',
-        'where','pi','e','expm1','log1p'
-    ]);
-    const tokenPattern = /\b([A-Za-z][A-Za-z0-9]*(?:_\d+)*)\b/g;
     const baseVarSet = new Set();
 
     let match;
-    while ((match = tokenPattern.exec(expression)) !== null) {
+    VARIABLE_TOKEN_PATTERN.lastIndex = 0;
+    while ((match = VARIABLE_TOKEN_PATTERN.exec(expression)) !== null) {
         const token = match[1];
         const parts = token.split('_');
         let splitPos = parts.length;
@@ -44,10 +52,12 @@ export class CalculatorModule {
         }
         const varName = parts.slice(0, splitPos).join('_');
 
-        if (!varName || RESERVED.has(varName.toLowerCase())) continue;
+        if (!varName || RESERVED_TOKENS.has(varName.toLowerCase())) continue;
         baseVarSet.add(varName.toUpperCase());
     }
-    this.currentVariables = [...baseVarSet].sort();
+    const nextVariables = [...baseVarSet].sort();
+    if (sameVariables(nextVariables, this.currentVariables)) return;
+    this.currentVariables = nextVariables;
     this.renderVariableMappers();
 }
 
@@ -96,6 +106,7 @@ export class CalculatorModule {
     */
     insertFunction(funcName) {
         const input = document.getElementById('calc-expression-input');
+        if (!input) return;
         const start = input.selectionStart;
         const end = input.selectionEnd;
         const text = input.value;

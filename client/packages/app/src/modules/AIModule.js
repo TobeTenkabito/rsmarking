@@ -171,6 +171,7 @@ export class AIModule {
         this._functionsLoading = true;
         this._functionCatalogError = '';
         this._renderFunctionCatalog();
+        let loaded = false;
 
         try {
             const response = await AIAPI.listFunctions('catalog');
@@ -178,14 +179,13 @@ export class AIModule {
             this._selectedFunction = this._selectedFunction
                 ? this._functionCatalog.find(fn => fn.name === this._selectedFunction.name) ?? this._functionCatalog[0] ?? null
                 : this._functionCatalog[0] ?? null;
-            this._renderFunctionCatalog();
-            this.resetFunctionArgs();
+            loaded = true;
         } catch (err) {
             this._functionCatalogError = err.message || 'Failed to load backend functions';
-            this._renderFunctionCatalog();
         } finally {
             this._functionsLoading = false;
             this._renderFunctionCatalog();
+            if (loaded) this.resetFunctionArgs();
         }
     }
 
@@ -500,11 +500,12 @@ export class AIModule {
     }
 
     _getRasterIds() {
-        return Store.getRasters()
-            .map(raster => raster.index_id ?? raster.id)
-            .filter(id => id !== null && id !== undefined)
-            .map(id => Number(id))
-            .filter(id => Number.isFinite(id));
+        const ids = [];
+        for (const raster of Store.getRasters()) {
+            const id = Number(raster.index_id ?? raster.id);
+            if (Number.isFinite(id)) ids.push(id);
+        }
+        return ids;
     }
 
     _getPrimaryRasterId() {

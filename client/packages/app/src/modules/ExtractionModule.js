@@ -9,6 +9,7 @@ export class ExtractionModule {
     constructor(app) {
         this.app = app;
         this.currentType = null;
+        this._contentEl = null;
         this.selectedBandIds = []; // 存储用户依次选择的波段 ID
     }
 
@@ -25,16 +26,20 @@ export class ExtractionModule {
         this.selectedBandIds = [];
         const content = document.getElementById('extraction-content');
         const bar = document.getElementById('extraction-modal-bar');
+        if (!content) return;
 
         // 初始化基础骨架
         content.innerHTML = ModalComponent.renderExtractionConfig(type, Store.state.rasters);
 
         // 绑定动态监听：当选择框变化时，决定是否开启下一个
-        content.addEventListener('change', (e) => {
-            if (e.target && e.target.classList.contains('band-selector')) {
-                this.handleBandSelectionChange(e.target);
-            }
-        });
+        if (this._contentEl !== content) {
+            this._contentEl = content;
+            content.addEventListener('change', (e) => {
+                if (e.target && e.target.classList.contains('band-selector')) {
+                    this.handleBandSelectionChange(e.target);
+                }
+            });
+        }
 
         const themeColors = {
             'VEGETATION': '#10b981',
@@ -52,6 +57,7 @@ export class ExtractionModule {
      */
     handleBandSelectionChange(target) {
         const container = document.getElementById('dynamic-bands-container');
+        if (!container) return;
         const allSelectors = Array.from(container.querySelectorAll('.band-selector'));
         const currentIndex = allSelectors.indexOf(target);
 
@@ -72,7 +78,7 @@ export class ExtractionModule {
     }
 
     closeModal() {
-        document.getElementById('extraction-modal').classList.add('hidden');
+        document.getElementById('extraction-modal')?.classList.add('hidden');
     }
 
     /**
@@ -80,6 +86,7 @@ export class ExtractionModule {
      */
     async run() {
         const container = document.getElementById('dynamic-bands-container');
+        if (!container) return;
         const selectors = Array.from(container.querySelectorAll('.band-selector'));
 
         // 过滤出用户真正选了值的 ID
@@ -106,7 +113,6 @@ export class ExtractionModule {
                 await RasterAPI.extractClouds(bandIds, name, threshold, mode);
             }
             else {
-                console.log("执行多波段提取:", bandIds);
                 await RasterAPI.extractBuildings(bandIds, name, mode);
             }
             this.closeModal();

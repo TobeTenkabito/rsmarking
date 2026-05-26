@@ -5,7 +5,9 @@ export class ExportModule {
     constructor(app) {
         this.app = app;
         this._html2canvasLoaded = false;
+        this._html2canvasPromise = null;
         this._uiBound = false;
+        this._previewSeq = 0;
     }
 
     _getMap() {
@@ -42,6 +44,7 @@ export class ExportModule {
     }
 
     async refreshPreview() {
+        const previewSeq = ++this._previewSeq;
         const placeholder = document.getElementById('export-preview-placeholder');
         const canvas      = document.getElementById('export-preview-canvas');
         const loader      = document.getElementById('export-preview-loader');
@@ -68,6 +71,7 @@ export class ExportModule {
         try {
             const opts       = this._collectOptions();
             const fullCanvas = await this._renderToCanvas(opts);
+            if (previewSeq !== this._previewSeq) return;
             const container  = document.getElementById('export-preview-container');
             const ctx        = canvas.getContext('2d');
 
@@ -78,6 +82,7 @@ export class ExportModule {
             ctx.drawImage(fullCanvas, 0, 0, canvas.width, canvas.height);
             canvas.classList.remove('hidden');
         } catch (e) {
+            if (previewSeq !== this._previewSeq) return;
             console.error('[ExportModule] Preview failed:', e);
             if (placeholder) {
                 placeholder.classList.remove('hidden');
@@ -85,7 +90,7 @@ export class ExportModule {
                     `<p class="text-[10px] text-red-400">预览失败: ${e.message}</p>`;
             }
         } finally {
-            loader?.classList.add('hidden');
+            if (previewSeq === this._previewSeq) loader?.classList.add('hidden');
         }
     }
 
@@ -498,17 +503,17 @@ export class ExportModule {
     }
 
     _pickVisibleLabelPoint(points, W, H, prefer) {
-        const visible = points.filter(point =>
-            point &&
-            point.x >= 0 && point.x <= W &&
-            point.y >= 0 && point.y <= H
-        );
-        if (!visible.length) return null;
-        return visible.reduce((best, point) => {
-            if (prefer === 'bottom') return point.y > best.y ? point : best;
-            if (prefer === 'right') return point.x > best.x ? point : best;
-            return point;
-        }, visible[0]);
+        let best = null;
+        for (const point of points) {
+            if (!point || point.x < 0 || point.x > W || point.y < 0 || point.y > H) continue;
+            if (!best) {
+                best = point;
+                continue;
+            }
+            if (prefer === 'bottom' && point.y > best.y) best = point;
+            else if (prefer === 'right' && point.x > best.x) best = point;
+        }
+        return best;
     }
 
     _drawMapLabel(ctx, text, x, y, W, H, scale) {
@@ -1107,7 +1112,9 @@ export class ExportModule {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(href), 5000);
+        if (href.startsWith('blob:')) {
+            setTimeout(() => URL.revokeObjectURL(href), 5000);
+        }
     }
 
 
@@ -1131,11 +1138,11 @@ export class ExportModule {
     }
 
     _getActiveRasterExportIds() {
-        const activeIds = Array.from(Store.state.activeLayerIds ?? []);
+        const activeIds = new Set(Array.from(Store.state.activeLayerIds ?? [], String));
         const ids = Store.state.rasters
-            .filter((raster) => activeIds.some((id) =>
-                String(id) === String(raster.id) ||
-                String(id) === String(raster.index_id)
+            .filter((raster) => (
+                activeIds.has(String(raster.id)) ||
+                activeIds.has(String(raster.index_id))
             ))
             .map((raster) => Number(raster.index_id ?? raster.id))
             .filter((id) => Number.isFinite(id));
@@ -1143,9 +1150,9 @@ export class ExportModule {
     }
 
     _getVisibleVectorExportLayers() {
-        const visibleIds = Array.from(Store.state.visibleVectorLayerIds ?? []);
+        const visibleIds = new Set(Array.from(Store.state.visibleVectorLayerIds ?? [], String));
         return Store.state.vectorLayers
-            .filter((layer) => visibleIds.some((id) => String(id) === String(layer.id)))
+            .filter((layer) => visibleIds.has(String(layer.id)))
             .map((layer) => ({
                 id: String(layer.id),
                 name: layer.name || `Layer_${layer.id}`,
@@ -1250,12 +1257,16 @@ export class ExportModule {
 
     async _loadHtml2Canvas() {
         if (this._html2canvasLoaded || window.html2canvas) return;
-        await new Promise((resolve, reject) => {
+        if (this._html2canvasPromise) return this._html2canvasPromise;
+        this._html2canvasPromise = new Promise((resolve, reject) => {
             const s   = document.createElement('script');
             s.src     = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
             s.onload  = () => { this._html2canvasLoaded = true; resolve(); };
             s.onerror = reject;
             document.head.appendChild(s);
+        }).finally(() => {
+            this._html2canvasPromise = null;
         });
+        await this._html2canvasPromise;
     }
 }

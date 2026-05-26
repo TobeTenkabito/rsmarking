@@ -4,6 +4,13 @@
 import { ChangeAPI } from '../api/change.js';
 import { Store }     from '../store/index.js';
 
+const INDEX_BAND_HINTS = {
+  ndvi:  'NDVI锛欱1 = Red锛孊2 = NIR',
+  ndwi:  'NDWI锛欱1 = Green锛孊2 = NIR',
+  ndbi:  'NDBI锛欱1 = SWIR锛孊2 = NIR',
+  mndwi: 'MNDWI锛欱1 = Green锛孊2 = SWIR',
+};
+
 export class ChangeDetectionModule {
   constructor(app) {
     this.app         = app;
@@ -12,14 +19,14 @@ export class ChangeDetectionModule {
 
   this._onIndexChange = (e) => {
     if (e.target.id !== 'change-index-select') return;
-    const hints = {
+    /*
       ndvi:  'NDVI：B1 = Red，B2 = NIR',
       ndwi:  'NDWI：B1 = Green，B2 = NIR',
       ndbi:  'NDBI：B1 = SWIR，B2 = NIR',
       mndwi: 'MNDWI：B1 = Green，B2 = SWIR',
-    };
+    */
     const el = document.getElementById('change-index-band-hint');
-    if (el) el.textContent = hints[e.target.value] ?? '';
+    if (el) el.textContent = INDEX_BAND_HINTS[e.target.value] ?? '';
   };
 
   document.addEventListener('change', this._onIndexChange);

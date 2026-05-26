@@ -43,7 +43,6 @@ export class ConversionModule {
         if (!modal) return;
 
         // 直接从 Store 全量读取，不依赖任何激活状态
-        const vectorLayers = Store.getVectorLayers?.() ?? Store.state.vectorLayers ?? [];
 
         // 重置内部状态
         this._selectedLayerId = null;
@@ -199,7 +198,6 @@ export class ConversionModule {
 
         try {
             const result = await ConversionAPI.vectorToRaster(layerId, refId, newName);
-            console.log('[ConversionModule] 栅格化完成:', result);
 
             // 刷新栅格列表
             await this.app.raster?.refreshData();
