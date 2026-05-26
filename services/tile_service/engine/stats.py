@@ -1,4 +1,5 @@
 import logging
+import math
 from threading import RLock
 
 import numpy as np
@@ -43,14 +44,15 @@ class StatsManager:
         m_min = b_meta.get("STATISTICS_MINIMUM")
         m_max = b_meta.get("STATISTICS_MAXIMUM")
         if m_min is not None and m_max is not None:
-            val = (float(m_min), float(m_max))
-            with self._lock:
-                self.cache[b_idx] = val
-            return val
+            val = self._metadata_stats(m_min, m_max, src, b_idx)
+            if val is not None:
+                with self._lock:
+                    self.cache[b_idx] = val
+                return val
 
         file_path = getattr(src, "name", None)
         if not file_path:
-            val = self._compute_tile_stats(data[band_pos], src)
+            val = self._compute_tile_stats(data[band_pos], src, b_idx)
             with self._lock:
                 self.cache[b_idx] = val
             return val
@@ -133,9 +135,10 @@ class StatsManager:
                 out_shape=(out_h, out_w),
                 resampling=Resampling.nearest,
                 out_dtype="float32",
+                masked=True,
             )
 
-            return self._compute_tile_stats(thumb, src)
+            return self._compute_tile_stats(thumb, src, b_idx)
 
         except Exception as e:
             logger.warning(
@@ -145,13 +148,18 @@ class StatsManager:
             )
             return (0.0, 1.0)
 
-    def _compute_tile_stats(self, band, src=None):
+    def _compute_tile_stats(self, band, src=None, b_idx=None):
+        if np.ma.isMaskedArray(band):
+            band = band.filled(np.nan)
         band = np.asarray(band, dtype=np.float32)
-        mask = band != 0
+        mask = np.isfinite(band) & (band != 0)
 
-        nodata = getattr(src, "nodata", None)
+        nodata = self._band_nodata(src, b_idx)
         if nodata is not None:
-            mask &= band != nodata
+            if self._is_nan(nodata):
+                mask &= ~np.isnan(band)
+            else:
+                mask &= band != float(nodata)
 
         valid = band[mask]
         if valid.size < 10:
@@ -162,6 +170,46 @@ class StatsManager:
             high = low + 1.0
 
         return (float(low), float(high))
+
+    def _metadata_stats(self, m_min, m_max, src, b_idx):
+        try:
+            low = float(m_min)
+            high = float(m_max)
+        except (TypeError, ValueError):
+            return None
+
+        if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+            return None
+
+        nodata = self._band_nodata(src, b_idx)
+        if nodata is not None and not self._is_nan(nodata):
+            nodata = float(nodata)
+            if math.isclose(low, nodata, rel_tol=0.0, abs_tol=1e-6):
+                return None
+            if math.isclose(high, nodata, rel_tol=0.0, abs_tol=1e-6):
+                return None
+
+        return (low, high)
+
+    @staticmethod
+    def _band_nodata(src, b_idx=None):
+        if src is None:
+            return None
+
+        nodatavals = getattr(src, "nodatavals", None)
+        if nodatavals and b_idx is not None:
+            idx = b_idx - 1
+            if 0 <= idx < len(nodatavals):
+                return nodatavals[idx]
+
+        return getattr(src, "nodata", None)
+
+    @staticmethod
+    def _is_nan(value):
+        try:
+            return math.isnan(float(value))
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def invalidate_file(file_path: str):

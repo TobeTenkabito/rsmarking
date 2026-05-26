@@ -20,6 +20,7 @@ class FakeStatsDataset:
         self.height = 64
         self.width = 64
         self.nodata = None
+        self.nodatavals = (None,)
 
     def tags(self, band=None):
         return {}
@@ -78,3 +79,43 @@ def test_stats_manager_invalidate_file_removes_matching_keys(tmp_path):
         assert (target, 1) not in _GLOBAL_FILE_STATS
         assert (target, 2) not in _GLOBAL_FILE_STATS
         assert _GLOBAL_FILE_STATS[(other, 1)] == (5.0, 6.0)
+
+
+def test_stats_manager_ignores_masked_nan_and_nodata(tmp_path):
+    src = FakeStatsDataset(str(tmp_path / "image.tif"))
+    src.nodata = -9999.0
+    src.nodatavals = (-9999.0,)
+    manager = StatsManager()
+    valid = np.linspace(10, 100, 100, dtype=np.float32)
+    band = np.concatenate(
+        [
+            valid,
+            np.array([0.0, np.nan, np.inf, -np.inf, -9999.0], dtype=np.float32),
+        ]
+    )
+    masked = np.ma.array(band, mask=np.isinf(band))
+
+    low, high = manager._compute_tile_stats(masked, src, 1)
+
+    assert np.isfinite(low)
+    assert np.isfinite(high)
+    assert high > low
+    assert low >= 10.0
+
+
+def test_stats_manager_skips_metadata_stats_that_equal_nodata(tmp_path, monkeypatch):
+    src = FakeStatsDataset(str(tmp_path / "image.tif"))
+    src.nodata = -9999.0
+    src.nodatavals = (-9999.0,)
+    src.tags = lambda band=None: {
+        "STATISTICS_MINIMUM": "-9999",
+        "STATISTICS_MAXIMUM": "100",
+    }
+    manager = StatsManager()
+    data = np.ones((1, 64, 64), dtype=np.float32)
+    monkeypatch.setattr(StatsManager, "_compute_global_stats", lambda self, compute_src, b_idx: (10.0, 90.0))
+
+    mins, maxs = manager.get_stretch_params(data, [1], src)
+
+    assert float(mins[0]) == 10.0
+    assert float(maxs[0]) == 90.0

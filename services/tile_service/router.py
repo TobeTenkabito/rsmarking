@@ -23,7 +23,7 @@ import services.tile_service.logic as logic
 logger = logging.getLogger("tile_service.control")
 router = APIRouter()
 
-RENDER_CACHE_VERSION = "render_v2"
+RENDER_CACHE_VERSION = "render_v3"
 
 
 def _profile_enabled() -> bool:

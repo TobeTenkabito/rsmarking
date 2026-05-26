@@ -1,5 +1,6 @@
 from collections import OrderedDict
 import logging
+import math
 import os
 from threading import RLock, local
 import time
@@ -248,21 +249,37 @@ class TileEngine:
             mark("window")
 
             resampling = self._select_resampling(src, valid_bands[0], window)
-            data = src.read(
+            raw_data = src.read(
                 valid_bands,
                 window=window,
                 out_shape=(len(valid_bands), settings.TILE_SIZE, settings.TILE_SIZE),
                 resampling=resampling,
                 boundless=True,
-                fill_value=0,
+                fill_value=self._read_fill_value(src, valid_bands),
                 out_dtype="float32",
+                masked=True,
             )
+
+            read_valid_mask = None
+            if np.ma.isMaskedArray(raw_data):
+                read_valid_mask = ~np.ma.getmaskarray(raw_data)
+                data = raw_data.filled(0.0)
+            else:
+                data = raw_data
 
             if data.dtype != np.float32 or not data.flags.c_contiguous:
                 data = np.ascontiguousarray(data, dtype=np.float32)
             mark("read")
 
-            alpha = self._read_alpha_mask(src, valid_bands, window, data, alpha_mode)
+            valid_mask = self._read_valid_data_mask(
+                src,
+                valid_bands,
+                window,
+                data,
+                alpha_mode,
+                read_valid_mask=read_valid_mask,
+            )
+            data, alpha = self._sanitize_tile_data(data, valid_mask)
             mark("alpha")
             if not np.any(alpha):
                 return None
@@ -363,13 +380,44 @@ class TileEngine:
         return Resampling.nearest
 
     def _read_alpha_mask(self, src, valid_bands, window, data, alpha_mode="auto"):
+        valid_mask = self._read_valid_data_mask(src, valid_bands, window, data, alpha_mode)
+        return (np.any(valid_mask, axis=0).astype(np.uint8) * 255)
+
+    def _read_valid_data_mask(
+        self,
+        src,
+        valid_bands,
+        window,
+        data,
+        alpha_mode="auto",
+        read_valid_mask=None,
+    ):
+        height, width = data.shape[1], data.shape[2]
+
+        if read_valid_mask is None:
+            valid = np.ones(data.shape, dtype=bool)
+        else:
+            valid = np.asarray(read_valid_mask, dtype=bool)
+            if valid.shape != data.shape:
+                valid = np.broadcast_to(valid, data.shape).copy()
+            else:
+                valid = valid.copy()
+
+        valid &= np.isfinite(data)
+        valid = self._apply_nodata_mask(data, valid, src, valid_bands)
+
+        coverage = self._alpha_from_window(src, window, height, width) > 0
+        valid &= coverage[None, :, :]
+
         if alpha_mode == "data":
-            return self._alpha_from_data(data, getattr(src, "nodata", None))
+            valid &= self._data_value_mask(data, src, valid_bands)
+            return valid
 
         if not self._has_explicit_mask(src):
-            alpha = self._alpha_from_window(src, window, data.shape[1], data.shape[2])
+            alpha = coverage.astype(np.uint8) * 255
             alpha = self._remove_edge_fill_pixels(data, alpha)
-            return alpha
+            valid &= (alpha > 0)[None, :, :]
+            return valid
 
         try:
             masks = src.read_masks(
@@ -380,17 +428,28 @@ class TileEngine:
                 resampling=Resampling.nearest,
             )
             if masks.ndim == 2:
-                alpha = masks
+                mask_valid = masks[None, :, :] > 0
             else:
-                alpha = np.max(masks, axis=0)
-            alpha = np.where(alpha > 0, 255, 0).astype(np.uint8)
-            return alpha
+                mask_valid = masks > 0
+            valid &= mask_valid
+            return valid
         except Exception:
             logger.warning(
                 "Failed to read alpha mask for %s; falling back to data-derived alpha",
                 self.file_path,
             )
-            return self._alpha_from_data(data, getattr(src, "nodata", None))
+            valid &= self._data_value_mask(data, src, valid_bands)
+            return valid
+
+    @classmethod
+    def _sanitize_tile_data(cls, data, valid_mask):
+        alpha = np.any(valid_mask, axis=0).astype(np.uint8) * 255
+        if np.all(valid_mask):
+            return data, alpha
+
+        data = data.copy()
+        data[~valid_mask] = 0.0
+        return data, alpha
 
     @staticmethod
     def _alpha_from_data(data, nodata=None):
@@ -399,6 +458,58 @@ class TileEngine:
             valid_data &= data != nodata
         valid = np.any(valid_data, axis=0)
         return valid.astype(np.uint8) * 255
+
+    @classmethod
+    def _data_value_mask(cls, data, src, valid_bands):
+        valid = data != 0
+        valid = cls._apply_nodata_mask(data, valid, src, valid_bands)
+        valid &= np.isfinite(data)
+        return valid
+
+    @classmethod
+    def _apply_nodata_mask(cls, data, valid, src, valid_bands):
+        for band_pos, nodata in enumerate(cls._nodata_values(src, valid_bands)):
+            if nodata is None:
+                continue
+            if cls._is_nan(nodata):
+                valid[band_pos] &= ~np.isnan(data[band_pos])
+            else:
+                valid[band_pos] &= data[band_pos] != float(nodata)
+        return valid
+
+    @classmethod
+    def _read_fill_value(cls, src, valid_bands):
+        values = [
+            float(value)
+            for value in cls._nodata_values(src, valid_bands)
+            if value is not None and not cls._is_nan(value)
+        ]
+        if not values:
+            return 0.0
+
+        first = values[0]
+        if all(math.isclose(first, value, rel_tol=0.0, abs_tol=1e-6) for value in values):
+            return first
+        return 0.0
+
+    @staticmethod
+    def _nodata_values(src, valid_bands):
+        nodatavals = getattr(src, "nodatavals", None)
+        if nodatavals:
+            values = []
+            for band in valid_bands:
+                idx = band - 1
+                values.append(nodatavals[idx] if 0 <= idx < len(nodatavals) else None)
+            return values
+
+        return [getattr(src, "nodata", None)] * len(valid_bands)
+
+    @staticmethod
+    def _is_nan(value):
+        try:
+            return math.isnan(float(value))
+        except (TypeError, ValueError):
+            return False
 
     @staticmethod
     def _alpha_from_window(src, window, height, width):
