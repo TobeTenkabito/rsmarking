@@ -27,16 +27,19 @@ class BuildingParams:
 
 
 def normalize_reflectance(arr: np.ndarray) -> np.ndarray:
-    data = arr.astype("float32", copy=False)
-    finite = np.isfinite(data)
-    if not np.any(finite):
+    data = np.asarray(arr, dtype=np.float32)
+    if data.size == 0:
         return np.zeros_like(data, dtype="float32")
 
-    valid = data[finite]
-    max_value = float(np.nanmax(valid))
+    max_value = float(np.nanmax(data))
+    if not np.isfinite(max_value):
+        finite = np.isfinite(data)
+        if not np.any(finite):
+            return np.zeros_like(data, dtype="float32")
+        max_value = float(np.max(data[finite]))
 
     if max_value <= 1.0:
-        scaled = data
+        scaled = data.copy()
     elif max_value <= 255.0:
         scaled = data / 255.0
     elif max_value <= 12000.0:
@@ -44,27 +47,34 @@ def normalize_reflectance(arr: np.ndarray) -> np.ndarray:
     else:
         scaled = data / 65535.0
 
-    scaled = np.nan_to_num(scaled, nan=0.0, posinf=1.0, neginf=0.0)
-    return np.clip(scaled, 0.0, 1.0).astype("float32", copy=False)
+    np.nan_to_num(scaled, copy=False, nan=0.0, posinf=1.0, neginf=0.0)
+    np.clip(scaled, 0.0, 1.0, out=scaled)
+    return scaled.astype("float32", copy=False)
 
 
-def _as_reflectance_bands(bands: List[np.ndarray]) -> list[np.ndarray]:
+def _as_reflectance_bands(
+    bands: List[np.ndarray],
+    limit: int | None = None,
+) -> list[np.ndarray]:
     if not bands:
         raise ValueError("Building extraction requires at least one band")
 
     first_shape = bands[0].shape
-    normalized = []
     for band in bands:
         if band.shape != first_shape:
             raise ValueError("Building extraction bands must have the same shape")
-        normalized.append(normalize_reflectance(band))
-    return normalized
+
+    selected = bands[:limit] if limit is not None else bands
+    return [normalize_reflectance(band) for band in selected]
 
 
 def _safe_ratio(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
+    result = np.empty_like(numerator, dtype=np.float32)
+    denom = np.empty_like(denominator, dtype=np.float32)
+    np.add(denominator, EPSILON, out=denom)
     with np.errstate(divide="ignore", invalid="ignore"):
-        result = numerator / (denominator + EPSILON)
-    return np.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
+        np.divide(numerator, denom, out=result)
+    return np.nan_to_num(result, copy=False, nan=0.0, posinf=1.0, neginf=-1.0)
 
 
 def _clean_mask(mask: np.ndarray, params: BuildingParams) -> np.ndarray:
@@ -102,7 +112,7 @@ def ndbi_building(
         raise ValueError("NDBI building extraction requires SWIR and NIR bands")
 
     params = params or BuildingParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=min(len(bands), 4))
     swir, nir = reflectance[0], reflectance[1]
     cutoff = params.ndbi_threshold if threshold is None else threshold
 
@@ -131,7 +141,7 @@ def urban_index_building(
         raise ValueError("Urban-index building extraction requires SWIR and NIR bands")
 
     params = params or BuildingParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=2)
     swir, nir = reflectance[0], reflectance[1]
     cutoff = params.ndbi_threshold if threshold is None else threshold
     ui = calculate_ndbi_array(swir, nir)
@@ -148,7 +158,7 @@ def ibi_building(
         raise ValueError("IBI building extraction requires SWIR, NIR, Red, and Green bands")
 
     params = params or BuildingParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=4)
     swir, nir, red, green = reflectance[:4]
 
     ndbi = calculate_ndbi_array(swir, nir)
@@ -170,7 +180,7 @@ def compute_building_score(
         raise ValueError("Building score requires at least SWIR and NIR bands")
 
     params = params or BuildingParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=min(len(bands), 4))
     swir, nir = reflectance[0], reflectance[1]
 
     ndbi = calculate_ndbi_array(swir, nir)
@@ -190,7 +200,8 @@ def compute_building_score(
     else:
         score += 0.10
 
-    return np.clip(score, 0.0, 1.0)
+    np.clip(score, 0.0, 1.0, out=score)
+    return score
 
 
 def building_score_mask(

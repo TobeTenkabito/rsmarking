@@ -24,16 +24,19 @@ class CloudParams:
 
 
 def normalize_reflectance(arr: np.ndarray) -> np.ndarray:
-    data = arr.astype("float32", copy=False)
-    finite = np.isfinite(data)
-    if not np.any(finite):
+    data = np.asarray(arr, dtype=np.float32)
+    if data.size == 0:
         return np.zeros_like(data, dtype="float32")
 
-    valid = data[finite]
-    max_value = float(np.nanmax(valid))
+    max_value = float(np.nanmax(data))
+    if not np.isfinite(max_value):
+        finite = np.isfinite(data)
+        if not np.any(finite):
+            return np.zeros_like(data, dtype="float32")
+        max_value = float(np.max(data[finite]))
 
     if max_value <= 1.0:
-        scaled = data
+        scaled = data.copy()
     elif max_value <= 255.0:
         scaled = data / 255.0
     elif max_value <= 12000.0:
@@ -41,34 +44,80 @@ def normalize_reflectance(arr: np.ndarray) -> np.ndarray:
     else:
         scaled = data / 65535.0
 
-    scaled = np.nan_to_num(scaled, nan=0.0, posinf=1.0, neginf=0.0)
-    return np.clip(scaled, 0.0, 1.0).astype("float32", copy=False)
+    np.nan_to_num(scaled, copy=False, nan=0.0, posinf=1.0, neginf=0.0)
+    np.clip(scaled, 0.0, 1.0, out=scaled)
+    return scaled.astype("float32", copy=False)
 
 
-def _as_reflectance_bands(bands: List[np.ndarray]) -> list[np.ndarray]:
+def _as_reflectance_bands(
+    bands: List[np.ndarray],
+    limit: int | None = None,
+) -> list[np.ndarray]:
     if not bands:
         raise ValueError("Cloud extraction requires at least one band")
 
     first_shape = bands[0].shape
-    normalized = []
     for band in bands:
         if band.shape != first_shape:
             raise ValueError("Cloud extraction bands must have the same shape")
-        normalized.append(normalize_reflectance(band))
-    return normalized
+
+    selected = bands[:limit] if limit is not None else bands
+    return [normalize_reflectance(band) for band in selected]
 
 
 def _normalized_difference(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    a = np.asarray(a, dtype=np.float32)
+    b = np.asarray(b, dtype=np.float32)
+    out_shape = np.broadcast_shapes(a.shape, b.shape)
+
+    result = np.empty(out_shape, dtype=np.float32)
+    denominator = np.empty(out_shape, dtype=np.float32)
     with np.errstate(divide="ignore", invalid="ignore"):
-        result = (a - b) / (a + b + EPSILON)
-    return np.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
+        np.subtract(a, b, out=result)
+        np.add(a, b, out=denominator)
+        np.add(denominator, EPSILON, out=denominator)
+        np.divide(result, denominator, out=result)
+    return np.nan_to_num(result, copy=False, nan=0.0, posinf=1.0, neginf=-1.0)
 
 
-def _whiteness(visible_bands: list[np.ndarray]) -> np.ndarray:
-    visible = np.stack(visible_bands, axis=0)
-    mean_visible = np.mean(visible, axis=0)
-    deviation = np.sum(np.abs(visible - mean_visible), axis=0)
-    return deviation / (mean_visible * len(visible_bands) + EPSILON)
+def _whiteness(blue: np.ndarray, green: np.ndarray, red: np.ndarray) -> np.ndarray:
+    mean_visible = (blue + green + red) / 3.0
+    deviation = (
+        np.abs(blue - mean_visible)
+        + np.abs(green - mean_visible)
+        + np.abs(red - mean_visible)
+    )
+    return deviation / (mean_visible * 3.0 + EPSILON)
+
+
+def _cloud_components(reflectance: list[np.ndarray]) -> tuple[np.ndarray, ...]:
+    blue, green, red, nir, swir1 = reflectance[:5]
+    visible_brightness = (blue + green + red) / 3.0
+    whiteness = _whiteness(blue, green, red)
+    ndvi = _normalized_difference(nir, red)
+    ndsi = _normalized_difference(green, swir1)
+    hot = blue - 0.5 * red - 0.08
+    return blue, visible_brightness, whiteness, ndvi, ndsi, hot
+
+
+def _cloud_score_from_components(
+    blue: np.ndarray,
+    visible_brightness: np.ndarray,
+    whiteness: np.ndarray,
+    ndvi: np.ndarray,
+    ndsi: np.ndarray,
+    hot: np.ndarray,
+    params: CloudParams,
+) -> np.ndarray:
+    score = np.zeros_like(blue, dtype="float32")
+    score += np.clip((visible_brightness - 0.15) / 0.55, 0, 1) * 0.30
+    score += np.clip((blue - 0.12) / 0.50, 0, 1) * 0.20
+    score += np.clip((params.whiteness_max - whiteness) / params.whiteness_max, 0, 1) * 0.20
+    score += np.clip((params.ndvi_max - ndvi) / (params.ndvi_max + 1.0), 0, 1) * 0.15
+    score += np.clip((params.ndsi_max - ndsi) / (params.ndsi_max + 1.0), 0, 1) * 0.10
+    score += np.clip((hot - params.hot_threshold + 0.15) / 0.40, 0, 1) * 0.05
+    np.clip(score, 0.0, 1.0, out=score)
+    return score
 
 
 def _clean_mask(mask: np.ndarray, params: CloudParams) -> np.ndarray:
@@ -103,7 +152,7 @@ def threshold_cloud(
     params: CloudParams | None = None,
 ) -> np.ndarray:
     params = params or CloudParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=min(len(bands), 2))
     blue = reflectance[0]
 
     mask = blue > params.blue_threshold
@@ -121,30 +170,16 @@ def compute_cloud_score(
     params: CloudParams | None = None,
 ) -> np.ndarray:
     params = params or CloudParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=min(len(bands), 5))
 
     if len(reflectance) < 5:
         blue = reflectance[0]
         swir = reflectance[1] if len(reflectance) >= 2 else blue
         score = 0.65 * blue + 0.35 * swir
-        return np.clip(score, 0.0, 1.0)
+        np.clip(score, 0.0, 1.0, out=score)
+        return score
 
-    blue, green, red, nir, swir1 = reflectance[:5]
-    visible_brightness = (blue + green + red) / 3.0
-    whiteness = _whiteness([blue, green, red])
-    ndvi = _normalized_difference(nir, red)
-    ndsi = _normalized_difference(green, swir1)
-    hot = blue - 0.5 * red - 0.08
-
-    score = np.zeros_like(blue, dtype="float32")
-    score += np.clip((visible_brightness - 0.15) / 0.55, 0, 1) * 0.30
-    score += np.clip((blue - 0.12) / 0.50, 0, 1) * 0.20
-    score += np.clip((params.whiteness_max - whiteness) / params.whiteness_max, 0, 1) * 0.20
-    score += np.clip((params.ndvi_max - ndvi) / (params.ndvi_max + 1.0), 0, 1) * 0.15
-    score += np.clip((params.ndsi_max - ndsi) / (params.ndsi_max + 1.0), 0, 1) * 0.10
-    score += np.clip((hot - params.hot_threshold + 0.15) / 0.40, 0, 1) * 0.05
-
-    return np.clip(score, 0.0, 1.0)
+    return _cloud_score_from_components(*_cloud_components(reflectance), params=params)
 
 
 def fmask_cloud(
@@ -153,22 +188,19 @@ def fmask_cloud(
     params: CloudParams | None = None,
 ) -> np.ndarray:
     params = params or CloudParams()
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=5)
 
     if len(reflectance) < 5:
         raise ValueError(
             "Fmask-like cloud extraction requires Blue, Green, Red, NIR, and SWIR1 bands"
         )
 
-    blue, green, red, nir, swir1 = reflectance[:5]
-    visible_brightness = (blue + green + red) / 3.0
-    whiteness = _whiteness([blue, green, red])
-    ndvi = _normalized_difference(nir, red)
-    ndsi = _normalized_difference(green, swir1)
-    hot = blue - 0.5 * red - 0.08
+    blue, visible_brightness, whiteness, ndvi, ndsi, hot = _cloud_components(reflectance)
 
     cutoff = params.score_threshold if threshold is None else threshold
-    score = compute_cloud_score(reflectance, params)
+    score = _cloud_score_from_components(
+        blue, visible_brightness, whiteness, ndvi, ndsi, hot, params
+    )
 
     mask = (
         (score > cutoff)
@@ -189,7 +221,7 @@ def cirrus_cloud(
     params: CloudParams | None = None,
 ) -> np.ndarray:
     params = params or CloudParams(apply_morphology=False, min_component_size=1)
-    reflectance = _as_reflectance_bands(bands)
+    reflectance = _as_reflectance_bands(bands, limit=1)
     cirrus = reflectance[0]
     cutoff = 0.01 if threshold is None else threshold
     return _clean_mask(cirrus > cutoff, params).astype("uint8")

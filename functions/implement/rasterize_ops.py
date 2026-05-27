@@ -35,7 +35,6 @@ def vector_to_raster(
 
             # 兼容性兜底：如果在外部没有被转化为 shapely 对象，则在此转换
             if not isinstance(geom, BaseGeometry):
-                from shapely.geometry import shape
                 geom = shape(geom)
 
             # 读取外部计算好的烧录值 (burn value)，如果不存在则默认 1
@@ -149,20 +148,25 @@ def raster_to_vector(
         data = src.read(band_index)
         if data.dtype.name not in {"int16", "int32", "uint8", "uint16", "float32"}:
             data = data.astype("float32")
-        include_mask = np.ones(data.shape, dtype=bool)
+        include_mask = None
 
         if np.issubdtype(data.dtype, np.floating):
-            include_mask &= np.isfinite(data)
+            include_mask = np.isfinite(data)
 
         if skip_nodata and src.nodata is not None:
             nodata = src.nodata
             if isinstance(nodata, float) and math.isnan(nodata):
-                include_mask &= ~np.isnan(data)
+                nodata_mask = ~np.isnan(data)
             else:
-                include_mask &= data != nodata
+                nodata_mask = data != nodata
+            include_mask = nodata_mask if include_mask is None else include_mask & nodata_mask
 
         if skip_zero:
-            include_mask &= data != 0
+            zero_mask = data != 0
+            include_mask = zero_mask if include_mask is None else include_mask & zero_mask
+
+        if include_mask is None:
+            include_mask = np.ones(data.shape, dtype=bool)
 
         transformer = None
         source_crs = src.crs

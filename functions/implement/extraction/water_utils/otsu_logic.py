@@ -2,8 +2,15 @@ import numpy as np
 
 
 def compute_otsu_threshold(data: np.ndarray) -> float:
-    mask = np.isfinite(data)
-    valid_data = data[mask]
+    data = np.asarray(data)
+    if data.size == 0:
+        return 0.0
+
+    if np.issubdtype(data.dtype, np.floating):
+        finite_mask = np.isfinite(data)
+        valid_data = data.ravel() if finite_mask.all() else data[finite_mask]
+    else:
+        valid_data = data.ravel()
 
     if valid_data.size == 0:
         return 0.0

@@ -1,10 +1,14 @@
 import numpy as np
+import logging
 from ..spectral_indices import calculate_mndwi_array, calculate_ndwi_array
 from .water_utils import(
     GeoAdaptive,
     jrc_water,
     compute_otsu_threshold
 )
+
+
+logger = logging.getLogger("functions.extraction.water")
 
 
 def extract_water(bands: list[np.ndarray], threshold: float, mode: str = "mndwi") -> np.ndarray:
@@ -23,8 +27,9 @@ def extract_water(bands: list[np.ndarray], threshold: float, mode: str = "mndwi"
         return (ndwi > threshold).astype('uint8')
 
     elif mode.startswith("jrc"):
-        for i, b in enumerate(bands):
-            print(f"bands[{i}] max={np.nanmax(b):.0f}  mean={np.nanmean(b):.0f}")
+        if logger.isEnabledFor(logging.DEBUG):
+            for i, b in enumerate(bands):
+                logger.debug("bands[%s] max=%.0f mean=%.0f", i, np.nanmax(b), np.nanmean(b))
         return jrc_water(bands, threshold, mode.replace("jrc_", ""))
 
     elif mode == "otsu":
@@ -36,8 +41,8 @@ def extract_water(bands: list[np.ndarray], threshold: float, mode: str = "mndwi"
         return (mndwi > dynamic_thresh).astype('uint8')
 
     elif mode == "awei":
-        if len(bands) < 5:
-            raise ValueError("AWEI extraction needs 5 bands at least")
+        if len(bands) < 6:
+            raise ValueError("AWEI extraction needs 6 bands at least")
         b, g, r, nir, sw1, sw2 = bands[0], bands[1], bands[2], bands[3], bands[4], bands[5]
         awei = 4 * (g - sw1) - (0.25 * nir + 2.75 * sw2)
         return (awei > threshold).astype("uint8")

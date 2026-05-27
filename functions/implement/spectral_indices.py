@@ -16,14 +16,20 @@ def _normalized_difference(
     - 除零保护
     - NaN / Inf 清理
     """
-    band1 = band1.astype("float32", copy=False)
-    band2 = band2.astype("float32", copy=False)
+    band1 = np.asarray(band1, dtype=np.float32)
+    band2 = np.asarray(band2, dtype=np.float32)
+    out_shape = np.broadcast_shapes(band1.shape, band2.shape)
 
+    result = np.empty(out_shape, dtype=np.float32)
+    denominator = np.empty(out_shape, dtype=np.float32)
     with np.errstate(divide="ignore", invalid="ignore"):
-        result = (band1 - band2) / (band1 + band2)
+        np.subtract(band1, band2, out=result)
+        np.add(band1, band2, out=denominator)
+        np.divide(result, denominator, out=result)
 
     return np.nan_to_num(
         result,
+        copy=False,
         nan=0.0,
         posinf=1.0,
         neginf=-1.0,
