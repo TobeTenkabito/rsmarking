@@ -43,6 +43,7 @@ task_queues = (
 task_routes = {
     "worker_cluster.tasks.preprocess.*": {"queue": "preprocess"},
     "worker_cluster.tasks.index.*": {"queue": "index"},
+    "worker_cluster.tasks.algorithm.*": {"queue": "index"},
     "worker_cluster.tasks.export.*": {"queue": "export"},
     "worker_cluster.tasks.extraction.*": {"queue": "extraction"},
 }

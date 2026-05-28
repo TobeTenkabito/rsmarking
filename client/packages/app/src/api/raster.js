@@ -1,4 +1,6 @@
 const BASE_URL = window.location.origin;
+const JOB_POLL_INTERVAL_MS = 1000;
+const JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
 
 function buildFormData(fields) {
@@ -22,6 +24,60 @@ async function request(url, options = {}, errorMsg = 'Request failed') {
     throw new Error(err.detail ?? `${errorMsg}: ${response.status}`);
   }
   return response.json();
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+
+function statusFromJob(job) {
+  return {
+    task_id: job.celery_task_id,
+    status: job.status,
+    progress: job.status === 'success' ? 100 : 0,
+    message: job.error || '',
+    result: job.result || {},
+    updated_at: job.finished_at || job.started_at || job.created_at,
+  };
+}
+
+
+async function fetchJobStatus(jobResponse) {
+  try {
+    return await request(
+      `${BASE_URL}/tasks/${jobResponse.task_id}/status`,
+      {},
+      'Task status failed'
+    );
+  } catch (taskError) {
+    if (!jobResponse.job_url) throw taskError;
+    const job = await request(`${BASE_URL}${jobResponse.job_url}`, {}, 'Job status failed');
+    return job.task_status || statusFromJob(job);
+  }
+}
+
+
+async function waitForAcceptedJob(result) {
+  if (!result || result.status !== 'accepted' || !result.task_id) return result;
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < JOB_TIMEOUT_MS) {
+    await sleep(JOB_POLL_INTERVAL_MS);
+    const status = await fetchJobStatus(result);
+    if (status.status === 'success') {
+      return {
+        ...(status.result || {}),
+        job: result,
+        task_status: status,
+      };
+    }
+    if (['failed', 'revoked'].includes(status.status)) {
+      throw new Error(status.message || 'Cluster task failed');
+    }
+  }
+
+  throw new Error('Cluster task timed out');
 }
 
 
@@ -59,16 +115,17 @@ function filenameFromDisposition(header) {
 
 
 async function postForm(path, fields, errorMsg) {
-  return request(
+  const result = await request(
     `${BASE_URL}${path}`,
     { method: 'POST', body: buildFormData(fields) },
     errorMsg
   );
+  return waitForAcceptedJob(result);
 }
 
 
 async function postJSON(path, payload, errorMsg) {
-  return request(
+  const result = await request(
     `${BASE_URL}${path}`,
     {
       method: 'POST',
@@ -77,6 +134,7 @@ async function postJSON(path, payload, errorMsg) {
     },
     errorMsg
   );
+  return waitForAcceptedJob(result);
 }
 
 

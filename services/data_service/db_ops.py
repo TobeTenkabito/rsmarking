@@ -15,6 +15,7 @@ import services.data_service.models as models
 from services.data_service.processor import RasterProcessor
 from services.data_service.crud.raster_crud import RasterCRUD
 from services.data_service.crud.raster_field_crud import RasterFieldCRUD
+from services.data_service.bridges import worker_bridge
 
 logger = logging.getLogger("data_service.db_ops")
 
@@ -106,21 +107,75 @@ async def _get_band_paths(db: AsyncSession, band_ids: List[int]) -> List[str]:
     """
     批量获取 band path
     """
+    unique_ids = list(dict.fromkeys(band_ids))
     stmt = select(models.RasterMetadata).where(
-        models.RasterMetadata.index_id.in_(band_ids)
+        models.RasterMetadata.index_id.in_(unique_ids)
     )
     res = await db.execute(stmt)
     records = res.scalars().all()
-    if len(records) != len(band_ids):
+    if len(records) != len(unique_ids):
         raise HTTPException(status_code=404, detail="部分波段ID不存在")
     record_map = {r.index_id: r for r in records}
-    return [record_map[i].file_path for i in band_ids]
+    paths = []
+    for band_id in band_ids:
+        path = resolve_raster_record_path(record_map[band_id])
+        if not path:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Raster file not found for index_id={band_id}",
+            )
+        paths.append(path)
+    return paths
+
+
+def _submit_cluster_job_or_none(
+    *,
+    operation: str,
+    inputs: dict,
+    new_name: str,
+    prefix: str,
+    params: dict | None = None,
+    raster_index_id: int | str | None = None,
+) -> dict | None:
+    if not worker_bridge.cluster_enabled():
+        return None
+    try:
+        return worker_bridge.submit_raster_product_job(
+            operation=operation,
+            inputs=inputs,
+            new_name=new_name,
+            prefix=prefix,
+            params=params,
+            raster_index_id=raster_index_id,
+        )
+    except worker_bridge.ClusterDispatchError as exc:
+        if worker_bridge.cluster_fallback_enabled():
+            logger.warning(
+                "Falling back to inline processing for %s after cluster dispatch failed: %s",
+                operation,
+                exc,
+            )
+            return None
+        raise HTTPException(
+            status_code=503,
+            detail=f"Compute cluster dispatch failed: {exc}",
+        ) from exc
 
 
 async def process_index_task(db: AsyncSession, band_ids: list, new_name: str, prefix: str, processor_func):
     try:
 
         paths = await _get_band_paths(db, band_ids)
+        cluster_result = _submit_cluster_job_or_none(
+            operation=prefix,
+            inputs={"paths": paths},
+            new_name=new_name,
+            prefix=prefix,
+            raster_index_id=band_ids[0] if band_ids else None,
+        )
+        if cluster_result is not None:
+            return cluster_result
+
         task_id = str(uuid.uuid4())
         tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
         cog_filename = f"{task_id}_{prefix}.tif"
@@ -140,6 +195,23 @@ async def process_index_task(db: AsyncSession, band_ids: list, new_name: str, pr
 async def process_extraction_task(db: AsyncSession, band_ids: List[int], new_name: str, prefix: str, processor_func, **kwargs):
     try:
         paths = await _get_band_paths(db, band_ids)
+        operation = {
+            "veg": "vegetation",
+            "water": "water",
+            "building": "building",
+            "cloud": "cloud",
+        }.get(prefix, prefix)
+        cluster_result = _submit_cluster_job_or_none(
+            operation=operation,
+            inputs={"paths": paths},
+            new_name=new_name,
+            prefix=prefix,
+            params=kwargs,
+            raster_index_id=band_ids[0] if band_ids else None,
+        )
+        if cluster_result is not None:
+            return cluster_result
+
         task_id = str(uuid.uuid4())
         tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
         cog_filename = f"{task_id}_{prefix}.tif"
@@ -168,9 +240,20 @@ async def process_calculator_task(
         paths = await _get_band_paths(db, raster_ids)
 
         path_mapping = {
-            var_name: paths[raster_ids.index(r_id)]
-            for var_name, r_id in var_mapping.items()
+            var_name: paths[index]
+            for index, (var_name, _) in enumerate(var_mapping.items())
         }
+
+        cluster_result = _submit_cluster_job_or_none(
+            operation="calculator",
+            inputs={"path_mapping": path_mapping},
+            new_name=new_name,
+            prefix=prefix,
+            params={"expression": expression},
+            raster_index_id=raster_ids[0] if raster_ids else None,
+        )
+        if cluster_result is not None:
+            return cluster_result
 
         task_id = str(uuid.uuid4())
         tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")

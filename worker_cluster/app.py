@@ -20,6 +20,7 @@ if BASE_DIR not in sys.path:
 TASK_MODULES = (
     "worker_cluster.tasks.preprocess.pipeline",
     "worker_cluster.tasks.index.spectral",
+    "worker_cluster.tasks.algorithm.raster_product",
     "worker_cluster.tasks.export.geojson",
 )
 

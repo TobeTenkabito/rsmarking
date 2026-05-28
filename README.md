@@ -102,6 +102,44 @@ resources/                      README screenshots and benchmark images
 
 From the repository root:
 
+### One-click Windows launch
+
+Double-click `launch_rsmarking.bat`, or run:
+
+```powershell
+.\launch_rsmarking.ps1
+```
+
+The launcher starts Docker infrastructure, prepares databases/extensions,
+runs migrations, starts the Celery worker, starts all six FastAPI services,
+writes logs to `logs/launch`, and opens:
+
+```text
+http://localhost:8002/client/index.html
+```
+
+Stop the launched processes with:
+
+```powershell
+.\stop_rsmarking.ps1
+```
+
+Useful options:
+
+```powershell
+.\launch_rsmarking.ps1 -Reload
+.\launch_rsmarking.ps1 -AllowInlineFallback
+.\launch_rsmarking.ps1 -NoBrowser
+.\stop_rsmarking.ps1 -StopDocker
+```
+
+The script uses the active `python` when it has the required packages; if not,
+it tries `conda run -n rsmarking python`.
+
+### Manual launch
+
+From the repository root:
+
 ```powershell
 conda env create -f environment.yml
 conda activate rsmarking
@@ -200,6 +238,8 @@ Data service (`:8002`):
 - `POST /extract-vegetation`, `/extract-water`, `/extract-buildings`, `/extract-clouds`
 - `POST /clip-raster-by-vector`
 - `POST /raster-calculator`
+- `GET /tasks/{task_id}/status`
+- `GET /jobs/{job_id}`
 - `GET /raster/{raster_id}/statistics`
 - `GET /raster/{raster_id}/spectrum`
 - `POST /execute-script`
@@ -229,7 +269,7 @@ Executor service (`:8004`):
 
 ## Optional Worker Cluster
 
-`worker_cluster` contains Celery tasks for offline raster/vector jobs. It is implemented, but most current `data_service` routes still call processing functions synchronously, so the worker is an optional integration path rather than the default product path.
+`worker_cluster` contains Celery tasks for offline raster/vector jobs. Core raster product routes in `data_service` submit cluster jobs when `RS_PROCESSING_BACKEND` is `cluster`, `celery`, `worker`, or `async`.
 
 Start a worker after RabbitMQ and Redis are running:
 
@@ -237,7 +277,9 @@ Start a worker after RabbitMQ and Redis are running:
 celery -A worker_cluster.app.celery_app worker --loglevel=info --concurrency=4 -Q preprocess,index,export
 ```
 
-See `worker_cluster/README.md` for task names, producer examples, Redis status tracking, and the recommended integration path.
+`RS_CLUSTER_FALLBACK=1` keeps local development working by falling back to inline processing if dispatch is unavailable or no ready worker is consuming the target queue. Set `RS_PROCESSING_BACKEND=inline` to force inline execution, or `RS_CLUSTER_FALLBACK=0` to fail fast when the cluster is unavailable.
+
+See `worker_cluster/README.md` for task names, producer examples, Redis status tracking, and cluster integration details.
 
 ## Testing
 

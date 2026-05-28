@@ -4,16 +4,19 @@
 
 ## Current status
 
-The folder contains real task implementations and, after the registration fix in `app.py`, a worker can load and execute them. The main FastAPI routes in `services/data_service` are still mostly synchronous, so this cluster is not yet the default execution path for the product.
+The folder contains real task implementations and `services/data_service` can submit core raster product jobs through the cluster when `RS_PROCESSING_BACKEND` is `cluster`, `celery`, `worker`, or `async`.
 
 What works now:
 - Celery workers can import and execute the task modules under `worker_cluster/tasks`.
 - Progress is written to Redis through `BaseRasterTask.report(...)`.
 - Optional `task_jobs` persistence is available when you submit work through `worker_cluster/producer.py`.
+- The data service can enqueue spectral indices, raster calculator, feature extraction, band merge/extract, and raster clipping jobs and return `job_id`/`task_id`.
 
-What is still not fully wired:
-- `services/data_service/routers/*.py` still call raster processing functions inline instead of enqueueing Celery tasks.
-- The worker Docker image still needs its dependency path refreshed before it becomes the easiest startup method. The documented path below uses the repo's Python environment plus Dockerized infra.
+Local-development fallback:
+- `RS_CLUSTER_FALLBACK=1` runs the same workflow inline if RabbitMQ/Celery dispatch is unavailable.
+- `RS_CLUSTER_FALLBACK=0` makes dispatch failures fail fast.
+- `RS_PROCESSING_BACKEND=inline` forces inline execution.
+- Restart workers after code changes so they register `worker_cluster.tasks.algorithm.raster_product`.
 
 ## Available tasks
 
@@ -29,6 +32,9 @@ Index:
 - `worker_cluster.tasks.index.ndbi`
 - `worker_cluster.tasks.index.mndwi`
 - `worker_cluster.tasks.index.calculator`
+
+Raster products:
+- `worker_cluster.tasks.algorithm.raster_product`
 
 Export:
 - `worker_cluster.tasks.export.geojson`

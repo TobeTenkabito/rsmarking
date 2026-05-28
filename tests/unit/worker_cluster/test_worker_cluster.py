@@ -19,8 +19,14 @@ def test_index_tasks_are_registered_and_routed_to_index_queue():
     celery_app.loader.import_default_modules()
 
     assert "worker_cluster.tasks.index.ndvi" in celery_app.tasks
+    assert "worker_cluster.tasks.algorithm.raster_product" in celery_app.tasks
     route = celery_app.amqp.router.route({}, "worker_cluster.tasks.index.ndvi")
     assert route["queue"].name == "index"
+    product_route = celery_app.amqp.router.route(
+        {},
+        "worker_cluster.tasks.algorithm.raster_product",
+    )
+    assert product_route["queue"].name == "index"
 
 
 def test_status_payload_is_json_safe_and_clamps_progress(monkeypatch):

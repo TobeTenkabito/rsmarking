@@ -67,10 +67,22 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
         )
         r = result.scalars().first()
         if r:
-            input_paths.append(r.file_path)
+            path = db_ops.resolve_raster_record_path(r)
+            if path:
+                input_paths.append(path)
 
     if not input_paths:
         raise HTTPException(status_code=400, detail="未找到有效波段路径")
+
+    cluster_result = db_ops._submit_cluster_job_or_none(
+        operation="merge_bands",
+        inputs={"paths": input_paths},
+        new_name=new_name,
+        prefix="merged",
+        raster_index_id=ids[0] if ids else None,
+    )
+    if cluster_result is not None:
+        return cluster_result
 
     upload_id = str(uuid.uuid4())
     tmp_tiff = os.path.join(UPLOAD_DIR, f"{upload_id}_merged.tif")
@@ -104,8 +116,21 @@ async def extract_raster_bands_task(raster_id: int, band_indices: str, new_name:
     if not r:
         raise HTTPException(status_code=404, detail="未找到对应栅格文件")
 
-    input_path = r.file_path
+    input_path = db_ops.resolve_raster_record_path(r)
+    if not input_path:
+        raise HTTPException(status_code=404, detail="Raster file not found")
     indices = [int(i) for i in band_indices.split(',')]
+
+    cluster_result = db_ops._submit_cluster_job_or_none(
+        operation="extract_bands",
+        inputs={"paths": [input_path]},
+        new_name=new_name,
+        prefix="extracted",
+        params={"band_indices": indices},
+        raster_index_id=raster_id,
+    )
+    if cluster_result is not None:
+        return cluster_result
 
     upload_id = str(uuid.uuid4())
     tmp_tiff = os.path.join(UPLOAD_DIR, f"{upload_id}_extracted.tif")

@@ -36,6 +36,29 @@ async def clip_raster_by_vector(
     if not raster_record:
         raise HTTPException(status_code=404, detail="栅格不存在")
 
+    raster_path = db_ops.resolve_raster_record_path(raster_record)
+    if not raster_path:
+        raise HTTPException(status_code=404, detail="Raster file not found")
+
+    cluster_result = db_ops._submit_cluster_job_or_none(
+        operation="clip_raster_by_vector",
+        inputs={
+            "raster_path": raster_path,
+            "geometries": body.geometries,
+        },
+        new_name=body.new_name,
+        prefix="clip_raster",
+        params={
+            "src_vector_crs": body.src_vector_crs,
+            "crop": body.crop,
+            "nodata": body.nodata,
+            "all_touched": body.all_touched,
+        },
+        raster_index_id=body.raster_id,
+    )
+    if cluster_result is not None:
+        return cluster_result
+
     output_id = str(uuid.uuid4())
     output_name = (
         body.new_name if body.new_name.endswith(".tif") else f"{body.new_name}.tif"
@@ -46,7 +69,7 @@ async def clip_raster_by_vector(
 
     try:
         clip_meta = RasterProcessor.clip_raster_by_vector(
-            raster_path=raster_record.file_path,
+            raster_path=raster_path,
             output_path=tmp_path,
             geojson_geometries=body.geometries,
             src_vector_crs=body.src_vector_crs,
