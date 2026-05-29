@@ -27,6 +27,7 @@ $RequiredPythonModules = @(
     "rasterio",
     "psycopg2"
 )
+
 $Services = @(
     @{ Name = "annotation_service"; Port = 8001; App = "services.annotation_service.main:app" },
     @{ Name = "data_service";       Port = 8002; App = "services.data_service.main:app" },
@@ -62,11 +63,21 @@ function Invoke-Checked {
     )
 
     Push-Location $WorkingDirectory
+    $oldErrorActionPreference = $ErrorActionPreference
+
     try {
+        # Important:
+        # Some native commands, especially Docker Compose v2, write normal progress/status
+        # messages to stderr. With $ErrorActionPreference = "Stop", PowerShell can treat
+        # those stderr records as terminating errors even when the native command exits 0.
+        # Temporarily relax it while invoking native commands.
+        $ErrorActionPreference = "Continue"
+
         $output = & $FilePath @ArgumentList 2>&1
         $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
     }
     finally {
+        $ErrorActionPreference = $oldErrorActionPreference
         Pop-Location
     }
 
@@ -75,9 +86,40 @@ function Invoke-Checked {
     }
 
     if ($exitCode -ne 0 -and -not $AllowFailure) {
-        Fail "Command failed with exit code ${exitCode}: $FilePath $($ArgumentList -join ' ')"
+        $outText = if ($output) { $output -join "`n" } else { "" }
+        Fail "Command failed with exit code ${exitCode}: $FilePath $($ArgumentList -join ' ')`n$outText"
     }
+
     return $exitCode
+}
+
+function Invoke-DockerComposeUp {
+    param(
+        [string]$WorkingDirectory
+    )
+
+    Push-Location $WorkingDirectory
+    $oldErrorActionPreference = $ErrorActionPreference
+
+    try {
+        $ErrorActionPreference = "Continue"
+
+        $output = & docker compose up -d 2>&1
+        $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+        Pop-Location
+    }
+
+    if ($output) {
+        $output | ForEach-Object { Write-Host $_ }
+    }
+
+    if ($exitCode -ne 0) {
+        $outText = if ($output) { $output -join "`n" } else { "" }
+        Fail "docker compose up -d failed with exit code $exitCode`n$outText"
+    }
 }
 
 function Test-PythonLauncher {
@@ -91,11 +133,15 @@ function Test-PythonLauncher {
     $args = @($Launcher.ArgsPrefix) + @("-c", $script)
 
     Push-Location $RepoRoot
+    $oldErrorActionPreference = $ErrorActionPreference
+
     try {
+        $ErrorActionPreference = "Continue"
         $output = & $Launcher.FilePath @args 2>&1
         $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
     }
     finally {
+        $ErrorActionPreference = $oldErrorActionPreference
         Pop-Location
     }
 
@@ -124,10 +170,12 @@ function Resolve-PythonLauncher {
             ArgsPrefix = @("run", "--no-capture-output", "-n", $CondaEnv, "python")
             Label = "conda run -n $CondaEnv python"
         }
+
         $condaTest = Test-PythonLauncher -Launcher $condaLauncher -Modules $RequiredPythonModules
         if ($condaTest.Ok) {
             return $condaLauncher
         }
+
         Write-Warn "Conda env '$CondaEnv' is available, but required modules are missing: $($condaTest.Output)"
     }
 
@@ -154,7 +202,16 @@ function Stop-TrackedProcesses {
     }
 
     Write-Step "Stopping previously tracked RSMarking processes"
-    $items = Get-Content $PidFile -Raw | ConvertFrom-Json
+
+    try {
+        $items = Get-Content $PidFile -Raw | ConvertFrom-Json
+    }
+    catch {
+        Write-Warn "Could not parse existing pid file. Removing it."
+        Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+        return
+    }
+
     foreach ($item in @($items)) {
         $proc = Get-Process -Id $item.Pid -ErrorAction SilentlyContinue
         if ($proc) {
@@ -162,6 +219,7 @@ function Stop-TrackedProcesses {
             & taskkill /PID $item.Pid /T /F | Out-Null
         }
     }
+
     Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
 }
 
@@ -172,22 +230,39 @@ function Wait-ContainerHealthy {
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
     while ((Get-Date) -lt $deadline) {
         $status = (& docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' $Name 2>$null)
+
         if ($status -in @("healthy", "running")) {
             Write-Ok "$Name is $status"
             return
         }
+
         Start-Sleep -Seconds 2
     }
+
     Fail "Container '$Name' did not become healthy within $TimeoutSeconds seconds."
 }
 
 function Ensure-DatabaseBasics {
     Write-Step "Ensuring PostgreSQL databases and PostGIS extensions"
-    Invoke-Checked -FilePath "docker" -ArgumentList @("exec", "rsmarking-postgres", "createdb", "-U", "rs_admin", "vector_db") -AllowFailure -SuppressOutput | Out-Null
-    Invoke-Checked -FilePath "docker" -ArgumentList @("exec", "rsmarking-postgres", "psql", "-U", "rs_admin", "-d", "rsmarking", "-c", "CREATE EXTENSION IF NOT EXISTS postgis;") -SuppressOutput | Out-Null
-    Invoke-Checked -FilePath "docker" -ArgumentList @("exec", "rsmarking-postgres", "psql", "-U", "rs_admin", "-d", "vector_db", "-c", "CREATE EXTENSION IF NOT EXISTS postgis;") -SuppressOutput | Out-Null
+
+    Invoke-Checked `
+        -FilePath "docker" `
+        -ArgumentList @("exec", "rsmarking-postgres", "createdb", "-U", "rs_admin", "vector_db") `
+        -AllowFailure `
+        -SuppressOutput | Out-Null
+
+    Invoke-Checked `
+        -FilePath "docker" `
+        -ArgumentList @("exec", "rsmarking-postgres", "psql", "-U", "rs_admin", "-d", "rsmarking", "-c", "CREATE EXTENSION IF NOT EXISTS postgis;") `
+        -SuppressOutput | Out-Null
+
+    Invoke-Checked `
+        -FilePath "docker" `
+        -ArgumentList @("exec", "rsmarking-postgres", "psql", "-U", "rs_admin", "-d", "vector_db", "-c", "CREATE EXTENSION IF NOT EXISTS postgis;") `
+        -SuppressOutput | Out-Null
 }
 
 function Ensure-ExecutorImage {
@@ -195,19 +270,27 @@ function Ensure-ExecutorImage {
         return
     }
 
-    $exists = Invoke-Checked -FilePath "docker" -ArgumentList @("image", "inspect", "rs-worker-python:latest") -AllowFailure -SuppressOutput
+    $exists = Invoke-Checked `
+        -FilePath "docker" `
+        -ArgumentList @("image", "inspect", "rs-worker-python:latest") `
+        -AllowFailure `
+        -SuppressOutput
+
     if ($exists -eq 0) {
         Write-Ok "Executor sandbox image exists"
         return
     }
 
     Write-Step "Building executor sandbox image"
-    Invoke-Checked -FilePath "docker" -ArgumentList @(
-        "build",
-        "-t", "rs-worker-python:latest",
-        "-f", "services/executor_service/runtime/python_base.Dockerfile",
-        "services/executor_service/runtime"
-    )
+
+    Invoke-Checked `
+        -FilePath "docker" `
+        -ArgumentList @(
+            "build",
+            "-t", "rs-worker-python:latest",
+            "-f", "services/executor_service/runtime/python_base.Dockerfile",
+            "services/executor_service/runtime"
+        )
 }
 
 function Run-Migrations {
@@ -216,21 +299,30 @@ function Run-Migrations {
     }
 
     Write-Step "Running data database migrations"
-    Invoke-Python -ArgumentList @("-m", "alembic", "upgrade", "head") -WorkingDirectory (Join-Path $RepoRoot "infrastructure\db_migrations") | Out-Null
+
+    Invoke-Python `
+        -ArgumentList @("-m", "alembic", "upgrade", "head") `
+        -WorkingDirectory (Join-Path $RepoRoot "infrastructure\db_migrations") | Out-Null
 
     Write-Step "Running annotation database migrations"
-    Invoke-Python -ArgumentList @("-m", "alembic", "upgrade", "head") -WorkingDirectory (Join-Path $RepoRoot "infrastructure\annot_migrations") | Out-Null
+
+    Invoke-Python `
+        -ArgumentList @("-m", "alembic", "upgrade", "head") `
+        -WorkingDirectory (Join-Path $RepoRoot "infrastructure\annot_migrations") | Out-Null
 }
 
 function Test-PortOpen {
     param([int]$Port)
 
     $client = New-Object System.Net.Sockets.TcpClient
+
     try {
         $async = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+
         if (-not $async.AsyncWaitHandle.WaitOne(500)) {
             return $false
         }
+
         $client.EndConnect($async)
         return $true
     }
@@ -248,6 +340,7 @@ function ConvertTo-CmdArgument {
     if ($Value -notmatch '[\s"]') {
         return $Value
     }
+
     return '"' + ($Value -replace '"', '\"') + '"'
 }
 
@@ -268,13 +361,16 @@ function Wait-Port {
     )
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
     while ((Get-Date) -lt $deadline) {
         if (Test-PortOpen -Port $Port) {
             Write-Ok "$Name is listening on port $Port"
             return
         }
+
         Start-Sleep -Seconds 1
     }
+
     Write-Warn "$Name did not open port $Port within $TimeoutSeconds seconds. Check its log files."
 }
 
@@ -289,7 +385,9 @@ function Start-ManagedProcess {
 
     $stdout = Join-Path $LogDir "$Name.out.log"
     $stderr = Join-Path $LogDir "$Name.err.log"
+
     Remove-Item -LiteralPath $stdout, $stderr -Force -ErrorAction SilentlyContinue
+
     $commandLine = Join-CmdCommandLine -FilePath $FilePath -ArgumentList $ArgumentList
 
     $startArgs = @{
@@ -300,12 +398,15 @@ function Start-ManagedProcess {
         RedirectStandardOutput = $stdout
         RedirectStandardError = $stderr
     }
+
     if (-not $VisibleLogs) {
         $startArgs.WindowStyle = "Hidden"
     }
 
     $proc = Start-Process @startArgs
+
     Write-Host "    started $Name pid=$($proc.Id)"
+
     return [pscustomobject]@{
         Name = $Name
         Pid = $proc.Id
@@ -316,15 +417,28 @@ function Start-ManagedProcess {
 }
 
 function Test-WorkerReady {
-    $args = @($script:PythonLauncher.ArgsPrefix) + @("-m", "celery", "-A", "worker_cluster.app.celery_app", "inspect", "registered")
+    $args = @($script:PythonLauncher.ArgsPrefix) + @(
+        "-m",
+        "celery",
+        "-A",
+        "worker_cluster.app.celery_app",
+        "inspect",
+        "registered"
+    )
+
     Push-Location $RepoRoot
+    $oldErrorActionPreference = $ErrorActionPreference
+
     try {
+        $ErrorActionPreference = "Continue"
         $output = & $script:PythonLauncher.FilePath @args 2>&1
         $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
     }
     finally {
+        $ErrorActionPreference = $oldErrorActionPreference
         Pop-Location
     }
+
     return ($exitCode -eq 0 -and (($output -join "`n") -match "worker_cluster.tasks.algorithm.raster_product"))
 }
 
@@ -332,13 +446,16 @@ function Wait-WorkerReady {
     param([int]$TimeoutSeconds = 60)
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
     while ((Get-Date) -lt $deadline) {
         if (Test-WorkerReady) {
             Write-Ok "Celery worker registered raster_product task"
             return
         }
+
         Start-Sleep -Seconds 2
     }
+
     Write-Warn "Celery worker readiness was not confirmed. Check logs\launch\worker_cluster.err.log."
 }
 
@@ -353,26 +470,60 @@ try {
     Stop-TrackedProcesses
 
     $script:PythonLauncher = Resolve-PythonLauncher
+
     Write-Ok "Using Python launcher: $($script:PythonLauncher.Label)"
 
     $env:PYTHONPATH = "$RepoRoot;$env:PYTHONPATH"
-    $env:DATABASE_URL = if ($env:DATABASE_URL) { $env:DATABASE_URL } else { "postgresql+asyncpg://rs_admin:rs_password@localhost:5432/rsmarking" }
-    $env:SYNC_DATABASE_URL = if ($env:SYNC_DATABASE_URL) { $env:SYNC_DATABASE_URL } else { "postgresql+psycopg2://rs_admin:rs_password@localhost:5432/rsmarking" }
-    $env:CELERY_BROKER_URL = if ($env:CELERY_BROKER_URL) { $env:CELERY_BROKER_URL } else { "amqp://rs_admin:rs_password@localhost:5672/rsmarking_vhost" }
-    $env:CELERY_RESULT_BACKEND = if ($env:CELERY_RESULT_BACKEND) { $env:CELERY_RESULT_BACKEND } else { "redis://localhost:6379/0" }
+
+    $env:DATABASE_URL = if ($env:DATABASE_URL) {
+        $env:DATABASE_URL
+    }
+    else {
+        "postgresql+asyncpg://rs_admin:rs_password@localhost:5432/rsmarking"
+    }
+
+    $env:SYNC_DATABASE_URL = if ($env:SYNC_DATABASE_URL) {
+        $env:SYNC_DATABASE_URL
+    }
+    else {
+        "postgresql+psycopg2://rs_admin:rs_password@localhost:5432/rsmarking"
+    }
+
+    $env:CELERY_BROKER_URL = if ($env:CELERY_BROKER_URL) {
+        $env:CELERY_BROKER_URL
+    }
+    else {
+        "amqp://rs_admin:rs_password@localhost:5672/rsmarking_vhost"
+    }
+
+    $env:CELERY_RESULT_BACKEND = if ($env:CELERY_RESULT_BACKEND) {
+        $env:CELERY_RESULT_BACKEND
+    }
+    else {
+        "redis://localhost:6379/0"
+    }
+
     $env:RS_PROCESSING_BACKEND = "cluster"
     $env:RS_CLUSTER_REQUIRE_WORKER = "1"
     $env:RS_CLUSTER_FALLBACK = if ($AllowInlineFallback) { "1" } else { "0" }
 
     if (-not $SkipDocker) {
         Write-Step "Checking Docker"
-        Invoke-Checked -FilePath "docker" -ArgumentList @("version") -SuppressOutput | Out-Null
+
+        Invoke-Checked `
+            -FilePath "docker" `
+            -ArgumentList @("version") `
+            -SuppressOutput | Out-Null
 
         Write-Step "Starting PostgreSQL, RabbitMQ, and Redis"
-        Invoke-Checked -FilePath "docker" -ArgumentList @("compose", "up", "-d") -WorkingDirectory (Join-Path $RepoRoot "infrastructure\docker") | Out-Null
+
+        Invoke-DockerComposeUp `
+            -WorkingDirectory (Join-Path $RepoRoot "infrastructure\docker")
+
         Wait-ContainerHealthy -Name "rsmarking-postgres"
         Wait-ContainerHealthy -Name "rsmarking-rabbitmq"
         Wait-ContainerHealthy -Name "rsmarking-redis"
+
         Ensure-DatabaseBasics
         Ensure-ExecutorImage
     }
@@ -382,33 +533,52 @@ try {
     $started = @()
 
     Write-Step "Starting Celery worker"
+
     $workerArgs = @($script:PythonLauncher.ArgsPrefix) + @(
-        "-m", "celery",
-        "-A", "worker_cluster.app.celery_app",
+        "-m",
+        "celery",
+        "-A",
+        "worker_cluster.app.celery_app",
         "worker",
         "--loglevel=info",
         "--concurrency=4",
-        "-Q", "preprocess,index,export"
+        "-Q",
+        "preprocess,index,export"
     )
-    $started += Start-ManagedProcess -Name "worker_cluster" -FilePath $script:PythonLauncher.FilePath -ArgumentList $workerArgs
+
+    $started += Start-ManagedProcess `
+        -Name "worker_cluster" `
+        -FilePath $script:PythonLauncher.FilePath `
+        -ArgumentList $workerArgs
 
     Write-Step "Starting FastAPI services"
+
     foreach ($svc in $Services) {
         $args = @($script:PythonLauncher.ArgsPrefix) + @(
-            "-m", "uvicorn",
+            "-m",
+            "uvicorn",
             $svc.App,
-            "--host", "0.0.0.0",
-            "--port", [string]$svc.Port
+            "--host",
+            "0.0.0.0",
+            "--port",
+            [string]$svc.Port
         )
+
         if ($Reload) {
             $args += "--reload"
         }
-        $started += Start-ManagedProcess -Name $svc.Name -FilePath $script:PythonLauncher.FilePath -ArgumentList $args -Port $svc.Port
+
+        $started += Start-ManagedProcess `
+            -Name $svc.Name `
+            -FilePath $script:PythonLauncher.FilePath `
+            -ArgumentList $args `
+            -Port $svc.Port
     }
 
     $started | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $PidFile -Encoding UTF8
 
     Wait-WorkerReady
+
     foreach ($svc in $Services) {
         Wait-Port -Name $svc.Name -Port $svc.Port
     }
@@ -429,9 +599,11 @@ catch {
     Write-Host ""
     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Check logs in $LogDir if any processes were started." -ForegroundColor Yellow
+
     if (-not $NoPause) {
         Read-Host "Press Enter to exit"
     }
+
     exit 1
 }
 

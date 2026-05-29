@@ -61,3 +61,5 @@ benchmark_results/
 .VsCodeCounter/
 
 services/.tile_cache
+
+logs/
