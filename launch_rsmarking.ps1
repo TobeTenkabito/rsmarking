@@ -235,6 +235,46 @@ function Test-PythonLauncher {
     }
 }
 
+function Resolve-CondaPythonExecutable {
+    param(
+        [string]$CondaCommand,
+        [string]$EnvName
+    )
+
+    $oldErrorActionPreference = $ErrorActionPreference
+
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & $CondaCommand run --no-capture-output -n $EnvName python -c "import sys; print(sys.executable)" 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            foreach ($line in $output) {
+                $candidate = "$line".Trim()
+                if ($candidate -and (Test-Path $candidate) -and ([IO.Path]::GetFileName($candidate) -ieq "python.exe")) {
+                    return (Resolve-Path $candidate).Path
+                }
+            }
+        }
+
+        $envOutput = & $CondaCommand env list --json 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $envInfo = ($envOutput -join "`n") | ConvertFrom-Json
+            foreach ($prefix in @($envInfo.envs)) {
+                if ((Split-Path -Leaf $prefix) -ieq $EnvName) {
+                    $candidate = Join-Path $prefix "python.exe"
+                    if (Test-Path $candidate) {
+                        return (Resolve-Path $candidate).Path
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+
+    return $null
+}
+
 function Resolve-PythonLauncher {
     $direct = @{
         FilePath = $PythonCommand
@@ -257,10 +297,28 @@ function Resolve-PythonLauncher {
 
         $condaTest = Test-PythonLauncher -Launcher $condaLauncher -Modules $RequiredPythonModules
         if ($condaTest.Ok) {
-            return $condaLauncher
-        }
+            # Do not keep using `conda run` for background services. On Windows,
+            # concurrent conda runs can race over __conda_tmp_*.txt files in TEMP.
+            # Resolve the env's python.exe once, then start every process directly.
+            $condaPython = Resolve-CondaPythonExecutable -CondaCommand $conda.Source -EnvName $CondaEnv
+            if ($condaPython) {
+                $resolvedLauncher = @{
+                    FilePath = $condaPython
+                    ArgsPrefix = @()
+                    Label = $condaPython
+                }
+                $resolvedTest = Test-PythonLauncher -Launcher $resolvedLauncher -Modules $RequiredPythonModules
+                if ($resolvedTest.Ok) {
+                    return $resolvedLauncher
+                }
+                Write-Warn "Resolved Conda python '$condaPython' did not pass module checks: $($resolvedTest.Output)"
+            }
 
-        Write-Warn "Conda env '$CondaEnv' is available, but required modules are missing: $($condaTest.Output)"
+            Write-Warn "Conda env '$CondaEnv' passed module checks via conda run, but its python.exe could not be resolved safely."
+        }
+        else {
+            Write-Warn "Conda env '$CondaEnv' is available, but required modules are missing: $($condaTest.Output)"
+        }
     }
 
     Fail "No Python environment with required modules was found. Activate/install the '$CondaEnv' env from environment.yml, or pass -PythonCommand."
