@@ -104,7 +104,8 @@ From the repository root:
 
 ### One-click Windows launch
 
-Double-click `launch_rsmarking.bat`, or run:
+Double-click `rsmarking.exe` when it has been built, double-click
+`launch_rsmarking.bat`, or run:
 
 ```powershell
 .\launch_rsmarking.ps1
@@ -134,6 +135,27 @@ Useful options:
 .\launch_rsmarking.ps1 -RequireExecutorImage
 .\stop_rsmarking.ps1 -StopDocker
 ```
+
+The executable is intentionally a thin wrapper over `launch_rsmarking.ps1`, so
+the PowerShell launcher remains the single startup source of truth. It forwards
+arguments to the script, for example:
+
+Keep `rsmarking.exe` in the repository root. At runtime it enters that folder
+and starts `.\launch_rsmarking.bat` with relative paths.
+
+```powershell
+.\rsmarking.exe -NoBrowser -AllowInlineFallback
+```
+
+Build or rebuild the executable from the repository root with:
+
+```powershell
+.\tools\build_rsmarking_exe.ps1
+```
+
+The build script uses the `rsmarking` Conda environment when available and
+installs PyInstaller into that environment if it is missing. The output is
+written to `.\rsmarking.exe`.
 
 The script uses the active `python` when it has the required packages; if not,
 it tries `conda run -n rsmarking python`.
