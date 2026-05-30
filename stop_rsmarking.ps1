@@ -9,6 +9,36 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LogDir = Join-Path $RepoRoot "logs\launch"
 $PidFile = Join-Path $LogDir "processes.json"
 
+function Resolve-DockerComposeCommand {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($docker) {
+        $oldErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            & $docker.Source compose version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return @{
+                    FilePath = $docker.Source
+                    ArgsPrefix = @("compose")
+                }
+            }
+        }
+        finally {
+            $ErrorActionPreference = $oldErrorActionPreference
+        }
+    }
+
+    $dockerCompose = Get-Command docker-compose -ErrorAction SilentlyContinue
+    if ($dockerCompose) {
+        return @{
+            FilePath = $dockerCompose.Source
+            ArgsPrefix = @()
+        }
+    }
+
+    throw "Docker Compose was not found."
+}
+
 try {
     if (Test-Path $PidFile) {
         $items = Get-Content $PidFile -Raw | ConvertFrom-Json
@@ -27,9 +57,10 @@ try {
 
     if ($StopDocker) {
         Write-Host "Stopping Docker infrastructure" -ForegroundColor Yellow
+        $compose = Resolve-DockerComposeCommand
         Push-Location (Join-Path $RepoRoot "infrastructure\docker")
         try {
-            docker compose down
+            & $compose.FilePath @($compose.ArgsPrefix + @("down"))
         }
         finally {
             Pop-Location

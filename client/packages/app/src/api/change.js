@@ -1,4 +1,6 @@
-const BASE_URL = window.location.origin;
+import { API_CONFIG } from './config.js';
+
+const BASE_URL = API_CONFIG.dataServiceUrl;
 
 /**
  * ChangeAPI — 变化检测接口

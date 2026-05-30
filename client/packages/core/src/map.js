@@ -9,7 +9,7 @@ export class MapEngine {
         this._vectorLayerOrder = [];
 
         this.isReady = false;
-        this.tileServiceBase = "http://localhost:8005";
+        this.tileServiceBase = window.RSMARKING_CONFIG?.tileServiceUrl || "http://localhost:8005";
         this.PROJ_DEFS = {
             "EPSG:32651": "+proj=utm +zone=51 +datum=WGS84 +units=m +no_defs",
             "WGS84": "+proj=longlat +datum=WGS84 +no_defs"

@@ -110,9 +110,10 @@ Double-click `launch_rsmarking.bat`, or run:
 .\launch_rsmarking.ps1
 ```
 
-The launcher starts Docker infrastructure, prepares databases/extensions,
-runs migrations, starts the Celery worker, starts all six FastAPI services,
-writes logs to `logs/launch`, and opens:
+The launcher starts Docker Desktop when it can find it, runs `docker compose up -d`,
+prepares databases/extensions, runs migrations, writes the frontend runtime
+configuration, starts the Celery worker, starts all six FastAPI services,
+checks that the frontend is reachable, writes logs to `logs/launch`, and opens:
 
 ```text
 http://localhost:8002/client/index.html
@@ -130,11 +131,18 @@ Useful options:
 .\launch_rsmarking.ps1 -Reload
 .\launch_rsmarking.ps1 -AllowInlineFallback
 .\launch_rsmarking.ps1 -NoBrowser
+.\launch_rsmarking.ps1 -RequireExecutorImage
 .\stop_rsmarking.ps1 -StopDocker
 ```
 
 The script uses the active `python` when it has the required packages; if not,
 it tries `conda run -n rsmarking python`.
+
+The executor sandbox image is built automatically when missing. If Docker Hub
+or the base image pull is unavailable, the launcher warns and continues so the
+frontend and normal backend workflows still start; use `-RequireExecutorImage`
+when custom script execution must be available before startup is considered
+successful.
 
 ### Manual launch
 

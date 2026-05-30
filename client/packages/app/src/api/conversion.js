@@ -3,7 +3,9 @@
  * 对应后端 rasterize_router.py
  */
 
-const BASE_URL = window.location.origin;
+import { API_CONFIG } from './config.js';
+
+const BASE_URL = API_CONFIG.dataServiceUrl;
 
 export const ConversionAPI = {
     /**

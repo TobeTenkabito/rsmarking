@@ -1,4 +1,6 @@
-const BASE_URL = 'http://localhost:8006';
+import { API_CONFIG } from './config.js';
+
+const BASE_URL = API_CONFIG.aiGatewayUrl;
 
 async function requestAI(path, payload, fallbackMessage) {
     try {

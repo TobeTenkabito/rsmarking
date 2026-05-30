@@ -4,11 +4,14 @@ param(
     [switch]$SkipDocker,
     [switch]$SkipMigrations,
     [switch]$SkipExecutorImage,
+    [switch]$RequireExecutorImage,
     [switch]$Reload,
     [switch]$VisibleLogs,
     [switch]$AllowInlineFallback,
     [switch]$NoBrowser,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [int]$ExecutorImageBuildRetries = 1,
+    [int]$DockerStartupTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = "Stop"
@@ -93,10 +96,91 @@ function Invoke-Checked {
     return $exitCode
 }
 
+function Resolve-DockerComposeCommand {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($docker) {
+        $oldErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            & $docker.Source compose version 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return @{
+                    FilePath = $docker.Source
+                    ArgsPrefix = @("compose")
+                    Label = "docker compose"
+                }
+            }
+        }
+        finally {
+            $ErrorActionPreference = $oldErrorActionPreference
+        }
+    }
+
+    $dockerCompose = Get-Command docker-compose -ErrorAction SilentlyContinue
+    if ($dockerCompose) {
+        return @{
+            FilePath = $dockerCompose.Source
+            ArgsPrefix = @()
+            Label = "docker-compose"
+        }
+    }
+
+    Fail "Docker Compose was not found. Install Docker Desktop or docker-compose."
+}
+
+function Test-DockerRunning {
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        docker version 2>&1 | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        return $false
+    }
+    finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+}
+
+function Start-DockerDesktopIfNeeded {
+    if (Test-DockerRunning) {
+        Write-Ok "Docker is running"
+        return
+    }
+
+    $candidates = @(
+        "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+        "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
+        "$env:LOCALAPPDATA\Docker\Docker Desktop.exe"
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    if ($candidates.Count -gt 0) {
+        Write-Step "Starting Docker Desktop"
+        Start-Process -FilePath $candidates[0] | Out-Null
+    }
+    else {
+        Write-Warn "Docker is not running and Docker Desktop executable was not found automatically."
+    }
+
+    $deadline = (Get-Date).AddSeconds($DockerStartupTimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-DockerRunning) {
+            Write-Ok "Docker is running"
+            return
+        }
+        Start-Sleep -Seconds 3
+    }
+
+    Fail "Docker did not become available within $DockerStartupTimeoutSeconds seconds."
+}
+
 function Invoke-DockerComposeUp {
     param(
         [string]$WorkingDirectory
     )
+
+    $compose = Resolve-DockerComposeCommand
 
     Push-Location $WorkingDirectory
     $oldErrorActionPreference = $ErrorActionPreference
@@ -104,7 +188,7 @@ function Invoke-DockerComposeUp {
     try {
         $ErrorActionPreference = "Continue"
 
-        $output = & docker compose up -d 2>&1
+        $output = & $compose.FilePath @($compose.ArgsPrefix + @("up", "-d")) 2>&1
         $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE }
     }
     finally {
@@ -267,6 +351,7 @@ function Ensure-DatabaseBasics {
 
 function Ensure-ExecutorImage {
     if ($SkipExecutorImage) {
+        Write-Warn "Skipping executor sandbox image check because -SkipExecutorImage was provided."
         return
     }
 
@@ -283,14 +368,37 @@ function Ensure-ExecutorImage {
 
     Write-Step "Building executor sandbox image"
 
-    Invoke-Checked `
-        -FilePath "docker" `
-        -ArgumentList @(
-            "build",
-            "-t", "rs-worker-python:latest",
-            "-f", "services/executor_service/runtime/python_base.Dockerfile",
-            "services/executor_service/runtime"
-        )
+    $attempts = [Math]::Max(1, $ExecutorImageBuildRetries + 1)
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        Write-Host "    build attempt $attempt/$attempts"
+
+        $exitCode = Invoke-Checked `
+            -FilePath "docker" `
+            -ArgumentList @(
+                "build",
+                "-t", "rs-worker-python:latest",
+                "-f", "services/executor_service/runtime/python_base.Dockerfile",
+                "services/executor_service/runtime"
+            ) `
+            -AllowFailure
+
+        if ($exitCode -eq 0) {
+            Write-Ok "Executor sandbox image built"
+            return
+        }
+
+        if ($attempt -lt $attempts) {
+            Write-Warn "Executor image build failed. Retrying after 5 seconds."
+            Start-Sleep -Seconds 5
+        }
+    }
+
+    $message = "Executor sandbox image could not be built. Backend services will still start, but custom script execution will be unavailable until image rs-worker-python:latest exists."
+    if ($RequireExecutorImage) {
+        Fail $message
+    }
+
+    Write-Warn $message
 }
 
 function Run-Migrations {
@@ -309,6 +417,22 @@ function Run-Migrations {
     Invoke-Python `
         -ArgumentList @("-m", "alembic", "upgrade", "head") `
         -WorkingDirectory (Join-Path $RepoRoot "infrastructure\annot_migrations") | Out-Null
+}
+
+function Write-FrontendRuntimeConfig {
+    Write-Step "Writing frontend runtime configuration"
+
+    $config = [ordered]@{
+        dataServiceUrl = "http://localhost:8002"
+        annotationServiceUrl = "http://localhost:8001"
+        vectorTileServiceUrl = "http://localhost:8003"
+        executorServiceUrl = "http://localhost:8004"
+        tileServiceUrl = "http://localhost:8005"
+        aiGatewayUrl = "http://localhost:8006"
+    }
+    $json = $config | ConvertTo-Json -Depth 4
+    $content = "window.RSMARKING_CONFIG = $json;`n"
+    Set-Content -LiteralPath (Join-Path $RepoRoot "client\runtime-config.js") -Value $content -Encoding UTF8
 }
 
 function Test-PortOpen {
@@ -332,6 +456,35 @@ function Test-PortOpen {
     finally {
         $client.Close()
     }
+}
+
+function Test-HttpOk {
+    param([string]$Url)
+
+    try {
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 2
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-FrontendReady {
+    param([int]$TimeoutSeconds = 90)
+
+    $url = "http://localhost:8002/client/index.html"
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+        if (Test-HttpOk -Url $url) {
+            Write-Ok "Frontend is available at $url"
+            return
+        }
+        Start-Sleep -Seconds 1
+    }
+
+    Write-Warn "Frontend did not respond at $url within $TimeoutSeconds seconds. Check data_service logs."
 }
 
 function ConvertTo-CmdArgument {
@@ -510,10 +663,9 @@ try {
     if (-not $SkipDocker) {
         Write-Step "Checking Docker"
 
-        Invoke-Checked `
-            -FilePath "docker" `
-            -ArgumentList @("version") `
-            -SuppressOutput | Out-Null
+        Start-DockerDesktopIfNeeded
+        $compose = Resolve-DockerComposeCommand
+        Write-Ok "Using Docker Compose command: $($compose.Label)"
 
         Write-Step "Starting PostgreSQL, RabbitMQ, and Redis"
 
@@ -529,6 +681,7 @@ try {
     }
 
     Run-Migrations
+    Write-FrontendRuntimeConfig
 
     $started = @()
 
@@ -582,6 +735,8 @@ try {
     foreach ($svc in $Services) {
         Wait-Port -Name $svc.Name -Port $svc.Port
     }
+
+    Wait-FrontendReady
 
     Write-Host ""
     Write-Host "RSMarking is launching." -ForegroundColor Green

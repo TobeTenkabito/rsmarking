@@ -2,9 +2,10 @@
  * VectorAPI - 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
  */
 
-// 优先从 Vite 环境变量读取地址，否则回退到本地默认端口
-const ANNO_BASE_URL = import.meta.env?.VITE_ANNO_SERVICE_URL || "http://localhost:8001";
-const VTILE_BASE_URL = import.meta.env?.VITE_VTILE_SERVICE_URL || "http://localhost:8003";
+import { API_CONFIG } from './config.js';
+
+const ANNO_BASE_URL = API_CONFIG.annotationServiceUrl;
+const VTILE_BASE_URL = API_CONFIG.vectorTileServiceUrl;
 
 /**
  * 通用 Fetch 封装

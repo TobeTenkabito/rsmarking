@@ -1,4 +1,6 @@
-const BASE_URL = window.location.origin;
+import { API_CONFIG } from './config.js';
+
+const BASE_URL = API_CONFIG.dataServiceUrl;
 const JOB_POLL_INTERVAL_MS = 1000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
