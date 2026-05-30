@@ -282,7 +282,7 @@ Executor service (`:8004`):
 Start a worker after RabbitMQ and Redis are running:
 
 ```powershell
-celery -A worker_cluster.app.celery_app worker --loglevel=info --concurrency=4 -Q preprocess,index,export
+celery -A worker_cluster.app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q preprocess,index,export
 ```
 
 `RS_CLUSTER_FALLBACK=1` keeps local development working by falling back to inline processing if dispatch is unavailable or no ready worker is consuming the target queue. Set `RS_PROCESSING_BACKEND=inline` to force inline execution, or `RS_CLUSTER_FALLBACK=0` to fail fast when the cluster is unavailable.

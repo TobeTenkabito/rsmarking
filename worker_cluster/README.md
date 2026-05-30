@@ -82,8 +82,12 @@ EXPORT_DIR=/storage/exports
 From the repo root:
 
 ```powershell
-celery -A worker_cluster.app.celery_app worker --loglevel=info --concurrency=4 -Q preprocess,index,export
+celery -A worker_cluster.app.celery_app worker --loglevel=info --pool=solo --concurrency=1 -Q preprocess,index,export
 ```
+
+On Windows, use `--pool=solo`. Celery's default `prefork` pool can receive a
+task and then fail before invoking project code with errors like
+`ValueError: not enough values to unpack (expected 3, got 0)`.
 
 If you want to inspect queues and task events, you can also run Flower:
 

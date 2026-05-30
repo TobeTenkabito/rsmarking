@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 
 from kombu import Queue
 
@@ -24,7 +25,9 @@ timezone = "Asia/Shanghai"
 enable_utc = True
 result_expires = 60 * 60 * 24
 
-worker_concurrency = int(os.getenv("WORKER_CONCURRENCY", "4"))
+_is_windows = platform.system() == "Windows"
+worker_pool = os.getenv("WORKER_POOL", "solo" if _is_windows else "prefork")
+worker_concurrency = int(os.getenv("WORKER_CONCURRENCY", "1" if worker_pool == "solo" else "4"))
 worker_prefetch_multiplier = 1
 task_acks_late = True
 task_reject_on_worker_lost = True

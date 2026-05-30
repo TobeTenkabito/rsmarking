@@ -164,10 +164,49 @@ def submit_raster_product_job(
 
 
 def get_cluster_task_status(task_id: str) -> dict[str, Any] | None:
+    redis_status = None
     try:
         from worker_cluster.bridge.status_reporter import get_task_status
 
-        return get_task_status(task_id)
+        redis_status = get_task_status(task_id)
     except Exception as exc:
         logger.warning("Cluster status lookup failed for %s: %s", task_id, exc)
-        return None
+
+    try:
+        from celery.result import AsyncResult
+        from worker_cluster.app import celery_app
+
+        result = AsyncResult(task_id, app=celery_app)
+        state = (result.state or "").lower()
+
+        if state == "success":
+            payload = result.result if isinstance(result.result, dict) else {"value": result.result}
+            return {
+                "task_id": task_id,
+                "status": "success",
+                "progress": 100,
+                "message": "Task completed",
+                "result": payload,
+            }
+
+        if state in {"failure", "revoked"}:
+            return {
+                "task_id": task_id,
+                "status": "failed" if state == "failure" else "revoked",
+                "progress": 0,
+                "message": str(result.info or result.result or state),
+                "result": {},
+            }
+
+        if state == "retry":
+            return {
+                "task_id": task_id,
+                "status": "retrying",
+                "progress": redis_status.get("progress", 0) if redis_status else 0,
+                "message": str(result.info or "Task retrying"),
+                "result": {},
+            }
+    except Exception as exc:
+        logger.warning("Celery result lookup failed for %s: %s", task_id, exc)
+
+    return redis_status

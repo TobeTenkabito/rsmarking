@@ -11,7 +11,9 @@ param(
     [switch]$NoBrowser,
     [switch]$NoPause,
     [int]$ExecutorImageBuildRetries = 1,
-    [int]$DockerStartupTimeoutSeconds = 180
+    [int]$DockerStartupTimeoutSeconds = 180,
+    [string]$WorkerPool = "",
+    [int]$WorkerConcurrency = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -718,6 +720,28 @@ try {
     $env:RS_CLUSTER_REQUIRE_WORKER = "1"
     $env:RS_CLUSTER_FALLBACK = if ($AllowInlineFallback) { "1" } else { "0" }
 
+    $effectiveWorkerPool = if ($WorkerPool) {
+        $WorkerPool
+    }
+    elseif ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+        "solo"
+    }
+    else {
+        "prefork"
+    }
+    $effectiveWorkerConcurrency = if ($WorkerConcurrency -gt 0) {
+        $WorkerConcurrency
+    }
+    elseif ($effectiveWorkerPool -eq "solo") {
+        1
+    }
+    else {
+        4
+    }
+    $env:WORKER_POOL = $effectiveWorkerPool
+    $env:WORKER_CONCURRENCY = [string]$effectiveWorkerConcurrency
+    Write-Ok "Using Celery worker pool: $effectiveWorkerPool (concurrency=$effectiveWorkerConcurrency)"
+
     if (-not $SkipDocker) {
         Write-Step "Checking Docker"
 
@@ -752,7 +776,8 @@ try {
         "worker_cluster.app.celery_app",
         "worker",
         "--loglevel=info",
-        "--concurrency=4",
+        "--pool=$effectiveWorkerPool",
+        "--concurrency=$effectiveWorkerConcurrency",
         "-Q",
         "preprocess,index,export"
     )
