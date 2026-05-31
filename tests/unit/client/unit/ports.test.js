@@ -46,6 +46,12 @@ describe('service port routing', () => {
         );
     });
 
+    it('runs AI agent requests through the AI gateway port', async () => {
+        await AIAPI.agent({ user_prompt: 'Create NDVI', language: 'en' });
+
+        expect(global.fetch.mock.calls[0][0]).toBe('http://localhost:8006/ai/agent');
+    });
+
     it('keeps raster tile requests on the tile service port', () => {
         const map = {
             setView: vi.fn(function setView() {

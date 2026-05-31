@@ -83,6 +83,7 @@ export const aiModal =`
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
                         <option value="analyze">分析模式</option>
                         <option value="modify">修改模式</option>
+                        <option value="agent">Agent mode</option>
                     </select>
                 </div>
                 <div class="space-y-1.5">

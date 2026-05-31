@@ -449,6 +449,23 @@ def list_registered_functions(format_type: str = "openai") -> dict[str, Any]:
     }
 
 
+def select_registered_functions(names: list[str] | None = None) -> list[RegisteredFunction]:
+    if names is None:
+        return list(REGISTERED_FUNCTIONS.values())
+
+    unknown = sorted(set(names) - set(REGISTERED_FUNCTIONS))
+    if unknown:
+        available = ", ".join(sorted(REGISTERED_FUNCTIONS))
+        requested = ", ".join(unknown)
+        raise ValueError(f"Unknown AI function(s): {requested}. Available: {available}")
+
+    return [REGISTERED_FUNCTIONS[name] for name in names]
+
+
+def get_registered_openai_tools(names: list[str] | None = None) -> list[dict[str, Any]]:
+    return [function.to_openai_tool() for function in select_registered_functions(names)]
+
+
 async def invoke_registered_function(
     request: AIFunctionInvokeRequest,
     db: AsyncSession,

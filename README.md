@@ -248,12 +248,15 @@ Core endpoints:
 | `GET` | `/ai/functions?format=openai` | Return callable tools in OpenAI tool schema format |
 | `GET` | `/ai/functions?format=catalog` | Return a readable function catalog |
 | `POST` | `/ai/functions/invoke` | Invoke a registered algorithm function directly |
+| `POST` | `/ai/agent` | Run a minimal tool-using agent over the registered function catalog |
 
 `/ai/process` accepts `target_id`, `data_type` (`raster` or `vector`), `mode` (`analyze` or `modify`), `language`, `user_prompt`, optional `overwrite`, optional `session_id`, and optional `map_context`.
 
 In modify mode, the Pydantic layer only accepts currently modifiable fields such as raster/vector `name`; read-only spatial statistics and metadata are not written back from model output.
 
 Registered AI-callable functions include spectral indices, raster calculator, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
+
+`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, and `max_steps`. The agent can call registered AI gateway functions, observes validated tool results, and returns a final `answer`, `used_tools`, and a compact `steps` trace.
 
 ## API Quick Reference
 

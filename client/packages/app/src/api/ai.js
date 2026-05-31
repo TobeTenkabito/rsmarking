@@ -53,6 +53,13 @@ export const AIAPI = {
         }, 'Modify request failed');
     },
 
+    async agent(payload) {
+        return requestAI('/ai/agent', {
+            ...payload,
+            max_steps: payload.max_steps ?? 4,
+        }, 'Agent request failed');
+    },
+
     async confirmOverwrite(payload) {
         return requestAI('/ai/process', {
             ...payload,

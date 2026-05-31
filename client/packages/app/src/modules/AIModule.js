@@ -45,7 +45,7 @@ export class AIModule {
     async execute() {
         const targetId  = document.getElementById('ai-target-select')?.value;
         const dataType  = document.getElementById('ai-datatype-select')?.value;   // 'raster' | 'vector'
-        const mode      = document.getElementById('ai-mode-select')?.value;       // 'analyze' | 'modify'
+        const mode      = document.getElementById('ai-mode-select')?.value;       // 'analyze' | 'modify' | 'agent'
         const language  = document.getElementById('ai-language-select')?.value;   // 'zh' | 'en' | 'ja'
         const prompt    = document.getElementById('ai-prompt-input')?.value?.trim();
 
@@ -67,8 +67,10 @@ export class AIModule {
         try {
             if (mode === 'analyze') {
                 await this._runAnalyze(payload);
-            } else {
+            } else if (mode === 'modify') {
                 await this._runModify(payload);
+            } else {
+                await this._runAgent(payload);
             }
         } catch (err) {
             this._showError(err.message);
@@ -109,6 +111,13 @@ export class AIModule {
 
         // 显示"新建"和"覆盖"两个确认按钮
         document.getElementById('ai-confirm-section')?.classList.remove('hidden');
+        document.getElementById('ai-result-section')?.classList.remove('hidden');
+    }
+
+    async _runAgent(payload) {
+        const result = await AIAPI.agent(payload);
+        const reportEl = document.getElementById('ai-result-content');
+        if (reportEl) reportEl.textContent = this._formatAgentResult(result);
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
 
@@ -581,6 +590,22 @@ export class AIModule {
         const reportEl = document.getElementById('ai-result-content');
         if (reportEl) reportEl.textContent = JSON.stringify(result, null, 2);
         document.getElementById('ai-result-section')?.classList.remove('hidden');
+    }
+
+    _formatAgentResult(result) {
+        const lines = [result.answer || 'Agent completed without a text answer.'];
+        const steps = result.steps ?? [];
+
+        if (steps.length) {
+            lines.push('', 'Tool trace:');
+            for (const step of steps) {
+                const status = step.status === 'success' ? 'ok' : 'error';
+                lines.push(`- ${step.name} (${status})`);
+                if (step.error) lines.push(`  ${step.error}`);
+            }
+        }
+
+        return lines.join('\n');
     }
 
     async _refreshAfterFunctionRun() {
