@@ -683,10 +683,180 @@ export class AIModule {
             <div class="flex ${wrapperClass} gap-2">
                 ${avatar}
                 <div class="max-w-[82%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${bubbleClass}">
-                    <div class="whitespace-pre-wrap break-words">${this._escapeHTML(message.content)}</div>
+                    <div class="break-words">${this._renderMarkdown(message.content)}</div>
                     ${trace}
                 </div>
             </div>`;
+    }
+
+    _renderMarkdown(markdown = '') {
+        const lines = String(markdown).replace(/\r\n/g, '\n').split('\n');
+        const blocks = [];
+        let paragraph = [];
+        let i = 0;
+
+        const flushParagraph = () => {
+            if (!paragraph.length) return;
+            blocks.push(`<p class="mb-2 last:mb-0">${this._renderInlineMarkdown(paragraph.join(' '))}</p>`);
+            paragraph = [];
+        };
+
+        while (i < lines.length) {
+            const rawLine = lines[i];
+            const line = rawLine.trim();
+
+            if (!line) {
+                flushParagraph();
+                i += 1;
+                continue;
+            }
+
+            if (line.startsWith('```')) {
+                flushParagraph();
+                const language = line.slice(3).trim();
+                const code = [];
+                i += 1;
+                while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                    code.push(lines[i]);
+                    i += 1;
+                }
+                if (i < lines.length) i += 1;
+                blocks.push(this._renderCodeBlock(code.join('\n'), language));
+                continue;
+            }
+
+            const heading = line.match(/^(#{1,4})\s+(.+)$/);
+            if (heading) {
+                flushParagraph();
+                const level = heading[1].length;
+                const size = level === 1 ? 'text-sm' : 'text-xs';
+                blocks.push(`<h${level} class="mb-2 mt-3 first:mt-0 font-black ${size} text-slate-800">${this._renderInlineMarkdown(heading[2])}</h${level}>`);
+                i += 1;
+                continue;
+            }
+
+            if (this._isMarkdownTableStart(lines, i)) {
+                flushParagraph();
+                const tableLines = [lines[i], lines[i + 1]];
+                i += 2;
+                while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
+                    tableLines.push(lines[i]);
+                    i += 1;
+                }
+                blocks.push(this._renderMarkdownTable(tableLines));
+                continue;
+            }
+
+            if (/^[-*+]\s+/.test(line)) {
+                flushParagraph();
+                const items = [];
+                while (i < lines.length && /^[-*+]\s+/.test(lines[i].trim())) {
+                    items.push(lines[i].trim().replace(/^[-*+]\s+/, ''));
+                    i += 1;
+                }
+                blocks.push(`<ul class="mb-2 ml-4 list-disc space-y-1">${items.map(item => `<li>${this._renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
+                continue;
+            }
+
+            if (/^\d+\.\s+/.test(line)) {
+                flushParagraph();
+                const items = [];
+                while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+                    items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
+                    i += 1;
+                }
+                blocks.push(`<ol class="mb-2 ml-4 list-decimal space-y-1">${items.map(item => `<li>${this._renderInlineMarkdown(item)}</li>`).join('')}</ol>`);
+                continue;
+            }
+
+            if (line.startsWith('>')) {
+                flushParagraph();
+                const quote = [];
+                while (i < lines.length && lines[i].trim().startsWith('>')) {
+                    quote.push(lines[i].trim().replace(/^>\s?/, ''));
+                    i += 1;
+                }
+                blocks.push(`<blockquote class="mb-2 border-l-2 border-violet-200 pl-3 text-slate-500">${this._renderInlineMarkdown(quote.join(' '))}</blockquote>`);
+                continue;
+            }
+
+            paragraph.push(line);
+            i += 1;
+        }
+
+        flushParagraph();
+        return `<div class="ai-markdown space-y-1">${blocks.join('') || '<p class="mb-0"></p>'}</div>`;
+    }
+
+    _renderInlineMarkdown(text = '') {
+        const codeTokens = [];
+        let rendered = this._escapeHTML(text).replace(/`([^`]+)`/g, (_match, code) => {
+            const token = `@@CODE_${codeTokens.length}@@`;
+            codeTokens.push(`<code class="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">${code}</code>`);
+            return token;
+        });
+
+        rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+            const href = url.replace(/&amp;/g, '&').trim();
+            if (!this._isSafeMarkdownUrl(href)) return label;
+            return `<a href="${this._escapeHTML(href)}" target="_blank" rel="noopener noreferrer" class="font-bold text-violet-600 underline decoration-violet-200 underline-offset-2">${label}</a>`;
+        });
+
+        rendered = rendered
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+            .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+            .replace(/(^|[\s(])_([^_\n]+)_/g, '$1<em>$2</em>');
+
+        codeTokens.forEach((html, index) => {
+            rendered = rendered.replace(`@@CODE_${index}@@`, html);
+        });
+        return rendered;
+    }
+
+    _renderCodeBlock(code = '', language = '') {
+        const lang = language ? `<div class="border-b border-slate-800 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">${this._escapeHTML(language)}</div>` : '';
+        return `
+            <div class="my-3 overflow-hidden rounded-xl bg-slate-950 text-slate-100">
+                ${lang}
+                <pre class="overflow-x-auto p-3 text-[11px] leading-relaxed"><code>${this._escapeHTML(code)}</code></pre>
+            </div>`;
+    }
+
+    _isMarkdownTableStart(lines, index) {
+        const current = lines[index]?.trim() ?? '';
+        const next = lines[index + 1]?.trim() ?? '';
+        return current.includes('|') && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(next);
+    }
+
+    _renderMarkdownTable(tableLines) {
+        const header = this._splitMarkdownTableRow(tableLines[0]);
+        const rows = tableLines.slice(2).map(line => this._splitMarkdownTableRow(line));
+        return `
+            <div class="my-3 overflow-x-auto rounded-xl border border-slate-200">
+                <table class="min-w-full border-collapse text-left text-[11px]">
+                    <thead class="bg-slate-100 text-slate-600">
+                        <tr>${header.map(cell => `<th class="border-b border-slate-200 px-3 py-2 font-black">${this._renderInlineMarkdown(cell)}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(row => `<tr class="odd:bg-white even:bg-slate-50">${row.map(cell => `<td class="border-t border-slate-100 px-3 py-2 align-top">${this._renderInlineMarkdown(cell)}</td>`).join('')}</tr>`).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    _splitMarkdownTableRow(row = '') {
+        return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
+    }
+
+    _isSafeMarkdownUrl(url = '') {
+        if (url.startsWith('#') || url.startsWith('/')) return true;
+        try {
+            const parsed = new URL(url);
+            return ['http:', 'https:', 'mailto:'].includes(parsed.protocol);
+        } catch (_err) {
+            return false;
+        }
     }
 
     _renderAgentToolTrace(steps) {

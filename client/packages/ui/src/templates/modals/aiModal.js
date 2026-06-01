@@ -1,6 +1,7 @@
 export const aiModal =`
     <div id="ai-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-5xl rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+    <div id="ai-window" class="bg-white rounded-3xl shadow-2xl relative overflow-hidden flex flex-col"
+        style="width:min(96vw, 1080px); height:min(90vh, 780px); min-width:min(92vw, 560px); min-height:560px; max-width:calc(100vw - 2rem); max-height:calc(100vh - 2rem); resize:both;">
 
         <!-- 顶部色条 -->
         <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 to-indigo-500"></div>
@@ -21,7 +22,7 @@ export const aiModal =`
         </div>
 
         <!-- 表单区（可滚动） -->
-        <div class="px-8 pb-4 space-y-4 overflow-y-auto sidebar-scroll flex-1">
+        <div class="px-8 pb-4 space-y-4 overflow-y-auto sidebar-scroll flex-1 min-h-0">
 
             <!-- 目标数据 + 数据类型 -->
             <div class="grid grid-cols-2 gap-3">
@@ -127,7 +128,8 @@ export const aiModal =`
                         </svg>
                     </button>
                 </div>
-                <div id="ai-agent-messages" class="h-80 space-y-4 overflow-y-auto px-4 py-4 sidebar-scroll"></div>
+                <div id="ai-agent-messages" class="space-y-4 overflow-y-auto px-4 py-4 sidebar-scroll"
+                    style="height:clamp(18rem, 42vh, 34rem); min-height:14rem; max-height:62vh; resize:vertical;"></div>
             </div>
 
             <div id="ai-function-panel" class="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-sky-50/40 p-4 space-y-3">
@@ -222,6 +224,12 @@ export const aiModal =`
                 class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">
                 返回工作站
             </button>
+        </div>
+
+        <div class="pointer-events-none absolute bottom-2 right-2 text-slate-300">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 20h12M14 14h6M20 8v12"/>
+            </svg>
         </div>
 
     </div>
