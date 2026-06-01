@@ -107,6 +107,24 @@ def _run_operation(
         RasterProcessor.extract_bands(source_path, raw_path, [int(i) for i in band_indices])
         return {"operation": operation, "band_indices": band_indices}
 
+    if operation == "resample":
+        source_path = _path_list(inputs, min_count=1)[0]
+        RasterProcessor.resample_raster(
+            source_path,
+            raw_path,
+            float(params["target_resolution_x"]),
+            params.get("target_resolution_y"),
+            params.get("resolution_unit", "source"),
+            params.get("resampling_method", "bilinear"),
+        )
+        return {
+            "operation": operation,
+            "target_resolution_x": params.get("target_resolution_x"),
+            "target_resolution_y": params.get("target_resolution_y"),
+            "resolution_unit": params.get("resolution_unit", "source"),
+            "resampling_method": params.get("resampling_method", "bilinear"),
+        }
+
     if operation == "clip_raster_by_vector":
         raster_path = inputs.get("raster_path")
         geometries = inputs.get("geometries") or []

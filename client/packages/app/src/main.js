@@ -19,6 +19,7 @@ import { ClipModule } from './modules/ClipModule.js';
 import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
 import { ConversionModule } from './modules/ConversionModule.js';
 import { RasterStatisticsModule } from './modules/RasterStatisticsModule.js';
+import { ResampleModule } from './modules/ResampleModule.js';
 import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
@@ -43,6 +44,7 @@ class App {
         this.change = null;
         this.conversion = null;
         this.rasterStatistics = null;
+        this.resample = null;
     }
 
     async init() {
@@ -67,6 +69,7 @@ class App {
             this.change = new ChangeDetectionModule(this);
             this.conversion = new ConversionModule(this);
             this.rasterStatistics = new RasterStatisticsModule(this);
+            this.resample = new ResampleModule(this);
 
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();

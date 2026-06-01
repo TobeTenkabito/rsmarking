@@ -11,6 +11,7 @@ from services.data_service.routers.change_router import router as change_router
 from services.data_service.routers.rasterize_router import router as rasterize_router
 from services.data_service.routers.export_router import router as export_router
 from services.data_service.routers.task_router import router as task_router
+from services.data_service.routers.resample_router import router as resample_router
 
 router = APIRouter()
 
@@ -25,3 +26,4 @@ router.include_router(script_router)
 router.include_router(change_router)
 router.include_router(rasterize_router)
 router.include_router(export_router)
+router.include_router(resample_router)

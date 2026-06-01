@@ -63,6 +63,8 @@ def _task_type(operation: str, prefix: str) -> str:
         return "clip_raster"
     if operation in {"merge_bands", "extract_bands"}:
         return prefix
+    if operation == "resample":
+        return "resample_raster"
     return operation
 
 

@@ -69,6 +69,12 @@ export class GlobalBridge {
             extractStepBack: () => this.app.raster.handleExtractStepBack(),
             selectExtractSource: (rasterId) => this.app.raster.handleSelectExtractSource(rasterId),
 
+            // --- 重采样 ---
+            openResampleModal: (rasterId) => this.app.resample?.openModal(rasterId),
+            closeResampleModal: () => this.app.resample?.closeModal(),
+            handleResampleInputChange: () => this.app.resample?.handleInputChange(),
+            executeResample: () => this.app.resample?.execute(),
+
             // --- UI 辅助 ---
             hideDetail: () => this.app.ui.hideDetail(),
 

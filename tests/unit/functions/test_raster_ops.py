@@ -7,6 +7,7 @@ from rasterio.transform import from_origin
 from shapely.geometry import box
 
 from functions.implement.manipulation import extract_raster_bands, merge_raster_bands
+from functions.implement.resampling import resample_raster
 from functions.implement.rasterize_ops import raster_to_vector, vector_to_raster
 
 
@@ -74,6 +75,61 @@ def test_merge_raster_bands_writes_all_input_bands(tmp_path):
         assert result.read(1)[0, 0] == 7
         assert result.read(2)[0, 0] == 8
         assert result.read(3)[0, 0] == 9
+
+
+def test_resample_raster_uses_source_resolution_units(tmp_path):
+    src = tmp_path / "source.tif"
+    out = tmp_path / "resampled.tif"
+    _write_raster(src, np.arange(16, dtype=np.float32).reshape(4, 4))
+
+    result = resample_raster(
+        str(src),
+        str(out),
+        target_resolution_x=2,
+        target_resolution_y=2,
+        resolution_unit="source",
+        resampling_method="nearest",
+    )
+
+    with rasterio.open(out) as ds:
+        assert ds.width == 2
+        assert ds.height == 2
+        assert ds.res == (2.0, 2.0)
+        assert ds.crs.to_string() == "EPSG:3857"
+        assert result["resolution"] == (2.0, 2.0)
+
+
+def test_resample_raster_meter_mode_projects_geographic_sources(tmp_path):
+    src = tmp_path / "wgs84.tif"
+    out = tmp_path / "meters.tif"
+    data = np.arange(100, dtype=np.float32).reshape(10, 10)
+
+    with rasterio.open(
+        src,
+        "w",
+        driver="GTiff",
+        height=10,
+        width=10,
+        count=1,
+        dtype="float32",
+        crs="EPSG:4326",
+        transform=from_origin(116.0, 40.0, 0.0001, 0.0001),
+    ) as dst:
+        dst.write(data, 1)
+
+    resample_raster(
+        str(src),
+        str(out),
+        target_resolution_x=30,
+        resolution_unit="meters",
+        resampling_method="bilinear",
+    )
+
+    with rasterio.open(out) as ds:
+        assert ds.crs.is_projected
+        assert ds.res == (30.0, 30.0)
+        assert ds.width > 0
+        assert ds.height > 0
 
 
 def test_vector_to_raster_burns_values_from_shapely_geometry(tmp_path):

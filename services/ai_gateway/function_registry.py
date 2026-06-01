@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,10 @@ from services.data_service.routers.clip_router import (
     clip_raster_by_vector as clip_raster_by_vector_api,
 )
 from services.data_service.routers.indices_router import calculate_index_task
+from services.data_service.routers.upload_router import (
+    extract_raster_bands_task,
+    merge_raster_bands_task,
+)
 from services.data_service.schemas import (
     ClipRasterByVectorRequest as ClipRasterByGeometryArgs,
 )
@@ -37,6 +41,58 @@ class RasterCalculatorArgs(BaseModel):
         ...,
         description="Mapping from expression variable names to raster index_id values.",
     )
+
+
+class BandSynthesisArgs(BaseModel):
+    raster_ids: list[int] = Field(
+        ...,
+        min_length=2,
+        description="Ordered raster index_id list to stack into a synthesized multi-band raster.",
+    )
+    new_name: str = Field(..., description="Name for the generated raster.")
+
+
+class BandExtractionArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    band_indices: list[int] = Field(
+        ...,
+        min_length=1,
+        description="One-based source band numbers to extract, preserving this order.",
+    )
+    new_name: str = Field(..., description="Name for the generated raster.")
+
+
+class ResampleRasterArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    target_resolution_x: float = Field(
+        ...,
+        gt=0,
+        description="Target pixel width. Degrees for degree mode, meters for meter mode, source CRS units for source mode.",
+    )
+    target_resolution_y: float | None = Field(
+        default=None,
+        gt=0,
+        description="Target pixel height. Uses target_resolution_x when omitted.",
+    )
+    resolution_unit: Literal["source", "degrees", "meters"] = Field(
+        default="source",
+        description="Unit for the target resolution.",
+    )
+    resampling_method: Literal[
+        "nearest",
+        "bilinear",
+        "cubic",
+        "cubic_spline",
+        "lanczos",
+        "average",
+        "mode",
+        "max",
+        "min",
+        "med",
+        "q1",
+        "q3",
+    ] = Field(default="bilinear", description="Rasterio resampling method.")
+    new_name: str = Field(..., description="Name for the generated raster.")
 
 
 class ExtractionArgs(BaseModel):
@@ -209,6 +265,50 @@ async def _run_raster_calculator(
     )
 
 
+async def _run_band_synthesis(
+    args: BandSynthesisArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    return await merge_raster_bands_task(
+        ",".join(str(raster_id) for raster_id in args.raster_ids),
+        args.new_name,
+        db,
+    )
+
+
+async def _run_band_extraction(
+    args: BandExtractionArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    return await extract_raster_bands_task(
+        args.raster_id,
+        ",".join(str(index) for index in args.band_indices),
+        args.new_name,
+        db,
+    )
+
+
+async def _run_resample_raster(
+    args: ResampleRasterArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    return await db_ops.process_resampling_task(
+        db=db,
+        raster_id=args.raster_id,
+        target_resolution_x=args.target_resolution_x,
+        target_resolution_y=args.target_resolution_y,
+        resolution_unit=args.resolution_unit,
+        resampling_method=args.resampling_method,
+        new_name=args.new_name,
+    )
+
+
 async def _run_extraction(
     args: ExtractionArgs,
     db: AsyncSession,
@@ -367,6 +467,27 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="raster_manipulation",
             arguments_model=RasterCalculatorArgs,
             handler=_run_raster_calculator,
+        ),
+        RegisteredFunction(
+            name="synthesize_raster_bands",
+            description="Stack two or more raster products into a synthesized multi-band raster.",
+            category="raster_manipulation",
+            arguments_model=BandSynthesisArgs,
+            handler=_run_band_synthesis,
+        ),
+        RegisteredFunction(
+            name="extract_raster_bands",
+            description="Extract one or more one-based bands from a raster and save them as a new raster.",
+            category="raster_manipulation",
+            arguments_model=BandExtractionArgs,
+            handler=_run_band_extraction,
+        ),
+        RegisteredFunction(
+            name="resample_raster",
+            description="Resample a raster to a requested resolution in source CRS units, degrees, or meters.",
+            category="raster_manipulation",
+            arguments_model=ResampleRasterArgs,
+            handler=_run_resample_raster,
         ),
         RegisteredFunction(
             name="extract_vegetation",

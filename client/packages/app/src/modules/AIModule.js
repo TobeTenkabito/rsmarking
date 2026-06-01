@@ -419,6 +419,21 @@ export class AIModule {
         if (name === 'band_ids') {
             return this._getRasterIds().slice(0, 2);
         }
+        if (name === 'raster_ids') {
+            return this._getRasterIds().slice(0, 2);
+        }
+        if (name === 'band_indices') {
+            return [1];
+        }
+        if (name === 'target_resolution_x' || name === 'target_resolution_y') {
+            return 1;
+        }
+        if (name === 'resolution_unit') {
+            return 'source';
+        }
+        if (name === 'resampling_method') {
+            return 'bilinear';
+        }
         if (name === 'geometries') {
             const geometry = this._viewportGeometry();
             return geometry ? [geometry] : [];
@@ -495,6 +510,35 @@ export class AIModule {
                     A: primary,
                     B: secondary,
                 },
+            };
+        }
+
+        if (name === 'synthesize_raster_bands') {
+            return {
+                raster_ids: rasterIds.slice(0, 2),
+                new_name: this._defaultNewName('band_stack'),
+            };
+        }
+
+        if (name === 'extract_raster_bands') {
+            return {
+                raster_id: primary,
+                band_indices: [1],
+                new_name: this._defaultNewName('band_extract'),
+            };
+        }
+
+        if (name === 'resample_raster') {
+            const raster = Store.getRasters().find(item => Number(item.index_id ?? item.id) === Number(primary));
+            const xResolution = Number(raster?.resolution_x);
+            const yResolution = Number(raster?.resolution_y);
+            return {
+                raster_id: primary,
+                target_resolution_x: Number.isFinite(xResolution) && xResolution > 0 ? xResolution : 1,
+                target_resolution_y: Number.isFinite(yResolution) && yResolution > 0 ? yResolution : null,
+                resolution_unit: 'source',
+                resampling_method: 'bilinear',
+                new_name: this._defaultNewName('resample'),
             };
         }
 

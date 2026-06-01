@@ -280,6 +280,83 @@ async def process_calculator_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_resampling_task(
+    db: AsyncSession,
+    raster_id: int,
+    target_resolution_x: float,
+    target_resolution_y: float | None,
+    resolution_unit: str,
+    resampling_method: str,
+    new_name: str,
+):
+    try:
+        stmt = select(models.RasterMetadata).where(
+            models.RasterMetadata.index_id == raster_id
+        )
+        res = await db.execute(stmt)
+        raster_record = res.scalar_one_or_none()
+        if not raster_record:
+            raise HTTPException(status_code=404, detail="Raster not found")
+
+        input_path = resolve_raster_record_path(raster_record)
+        if not input_path:
+            raise HTTPException(status_code=404, detail="Raster file not found")
+
+        params = {
+            "target_resolution_x": target_resolution_x,
+            "target_resolution_y": target_resolution_y,
+            "resolution_unit": resolution_unit,
+            "resampling_method": resampling_method,
+        }
+        cluster_result = _submit_cluster_job_or_none(
+            operation="resample",
+            inputs={"paths": [input_path]},
+            new_name=new_name,
+            prefix="resampled",
+            params=params,
+            raster_index_id=raster_id,
+        )
+        if cluster_result is not None:
+            return cluster_result
+
+        task_id = str(uuid.uuid4())
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_resampled_raw.tif")
+        cog_filename = f"{task_id}_resampled.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        RasterProcessor.resample_raster(
+            input_path=input_path,
+            output_path=tmp_path,
+            target_resolution_x=target_resolution_x,
+            target_resolution_y=target_resolution_y,
+            resolution_unit=resolution_unit,
+            resampling_method=resampling_method,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        return await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "resampled",
+            bands_count=actual_bands,
+            metadata_source=tmp_path,
+        )
+
+    except Exception as e:
+        logger.error(f"resampling task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def get_dynamic_band_ids(request: Request) -> List[int]:
     form_data = await request.form()
     id_keys = [

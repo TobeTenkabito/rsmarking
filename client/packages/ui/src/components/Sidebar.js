@@ -172,6 +172,14 @@ export const SidebarComponent = {
                                   d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-5"/>
                         </svg>
                     </button>
+                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openResampleModal('${indexId}')"
+                            class="p-1.5 text-slate-400 hover:text-teal-500 hover:bg-teal-50 rounded transition-colors"
+                            title="Resample raster">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M4 7h10m0 0l-3-3m3 3l-3 3M20 17H10m0 0l3-3m-3 3l3 3"/>
+                        </svg>
+                    </button>
                     <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster('${indexId}','${fileName}')"
                             class="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded transition-colors"
                             title="${t('sidebar.raster.attrTitle')}">

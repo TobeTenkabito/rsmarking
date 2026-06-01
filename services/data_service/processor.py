@@ -32,6 +32,7 @@ from functions.implement.manipulation import (
     extract_raster_bands,
     merge_raster_bands,
 )
+from functions.implement.resampling import resample_raster
 from functions.implement.extraction import (
     extract_vegetation,
     extract_water,
@@ -93,6 +94,26 @@ class RasterProcessor:
     def merge_bands(input_paths: list[str], output_path: str,) -> None:
         merge_raster_bands(input_paths, output_path)
         build_raster_overviews(output_path)
+
+    @staticmethod
+    def resample_raster(
+        input_path: str,
+        output_path: str,
+        target_resolution_x: float,
+        target_resolution_y: float | None = None,
+        resolution_unit: str = "source",
+        resampling_method: str = "bilinear",
+    ) -> dict[str, object]:
+        result = resample_raster(
+            input_path,
+            output_path,
+            target_resolution_x,
+            target_resolution_y,
+            resolution_unit,
+            resampling_method,
+        )
+        build_raster_overviews(output_path)
+        return result
 
     @staticmethod
     def convert_to_cog(input_path: str, output_path: str,) -> None:

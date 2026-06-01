@@ -8,6 +8,7 @@ import { indexModal }             from './modals/indexModal.js';
 import { extractionModal }        from './modals/extractionModal.js';
 import { mergeModal }             from './modals/mergeModal.js';
 import { extractModal }           from './modals/extractModal.js';
+import { resampleModal }          from './modals/resampleModal.js';
 import { calculatorModal }        from './modals/calculatorModal.js';
 import { scriptModal }            from './modals/scriptModal.js';
 import { detailPanel }            from './modals/detailPanel.js';
@@ -24,6 +25,7 @@ export const ModalTemplates = {
     extractionModal,
     mergeModal,
     extractModal,
+    resampleModal,
     calculatorModal,
     scriptModal,
     detailPanel,

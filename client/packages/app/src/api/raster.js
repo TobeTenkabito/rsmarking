@@ -218,6 +218,28 @@ export const RasterAPI = {
     );
   },
 
+  async resampleRaster({
+    rasterId,
+    targetResolutionX,
+    targetResolutionY = null,
+    resolutionUnit = 'source',
+    resamplingMethod = 'bilinear',
+    newName,
+  }) {
+    return postForm(
+      '/resample-raster',
+      {
+        raster_id: rasterId,
+        target_resolution_x: targetResolutionX,
+        target_resolution_y: targetResolutionY,
+        resolution_unit: resolutionUnit,
+        resampling_method: resamplingMethod,
+        new_name: newName,
+      },
+      'Raster resampling failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },
