@@ -117,6 +117,58 @@ def test_agent_invokes_registered_tool_and_returns_trace(monkeypatch):
     assert any(message["role"] == "tool" for message in calls[1]["messages"])
 
 
+def test_agent_reuses_session_history(monkeypatch):
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return _response("First answer.")
+        return _response("Second answer.")
+
+    async def empty_workspace_context(db, vector_db, limit):
+        return ""
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"calculate_ndvi"})
+    monkeypatch.setattr(agent_handler, "_build_workspace_context", empty_workspace_context)
+
+    first = _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="Remember this dataset is coastal.",
+                language="en",
+                session_id="session-memory-test",
+                reset_session=True,
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+    second = _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="What did I say about it?",
+                language="en",
+                session_id="session-memory-test",
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+
+    second_messages = calls[1]["messages"]
+
+    assert first["history_length"] == 2
+    assert second["session_id"] == "session-memory-test"
+    assert second["history_length"] == 4
+    assert {"role": "user", "content": "Remember this dataset is coastal."} in second_messages
+    assert {"role": "assistant", "content": "First answer."} in second_messages
+
+
 def test_agent_rejects_unknown_tool_allow_list(monkeypatch):
     def raise_unknown_tool(names):
         raise ValueError("Unknown AI function(s): missing_tool")

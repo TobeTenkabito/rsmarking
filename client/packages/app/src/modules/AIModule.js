@@ -13,6 +13,7 @@ export class AIModule {
         this._pendingPayload = null;
         this._pendingResult  = null;
         this._sessionId = this._createSessionId();
+        this._agentConversation = [];
         this._functionCatalog = [];
         this._selectedFunction = null;
         this._functionsLoading = false;
@@ -49,7 +50,7 @@ export class AIModule {
         const language  = document.getElementById('ai-language-select')?.value;   // 'zh' | 'en' | 'ja'
         const prompt    = document.getElementById('ai-prompt-input')?.value?.trim();
 
-        if (!targetId || !prompt) {
+        if (!prompt || (mode !== 'agent' && !targetId)) {
             this._showError(t('ai.error.missingTargetPrompt'));
             return;
         }
@@ -62,7 +63,11 @@ export class AIModule {
         });
 
         this._setLoading(true);
-        this._clearResult();
+        if (mode === 'agent') {
+            this._clearTransientMessages();
+        } else {
+            this._clearResult();
+        }
 
         try {
             if (mode === 'analyze') {
@@ -116,9 +121,19 @@ export class AIModule {
 
     async _runAgent(payload) {
         const result = await AIAPI.agent(payload);
+        if (result.session_id) this._sessionId = result.session_id;
+        this._agentConversation.push({ role: 'user', content: payload.user_prompt });
+        this._agentConversation.push({
+            role: 'assistant',
+            content: result.answer || 'Agent completed without a text answer.',
+            steps: result.steps ?? [],
+        });
+
         const reportEl = document.getElementById('ai-result-content');
-        if (reportEl) reportEl.textContent = this._formatAgentResult(result);
+        if (reportEl) reportEl.textContent = this._formatAgentConversation();
         document.getElementById('ai-result-section')?.classList.remove('hidden');
+        const promptInput = document.getElementById('ai-prompt-input');
+        if (promptInput) promptInput.value = '';
     }
 
     async confirmCreate() {
@@ -255,14 +270,19 @@ export class AIModule {
     _buildRequestPayload({ targetId, dataType, language, prompt }) {
         const mapContext = this._collectMapContext(targetId, dataType);
 
-        return {
-            target_id: targetId,
-            data_type: dataType,
+        const request = {
             language,
             user_prompt: prompt,
             session_id: this._sessionId,
             map_context: mapContext,
         };
+
+        if (targetId) {
+            request.target_id = targetId;
+            request.data_type = dataType;
+        }
+
+        return request;
     }
 
     _bindModalEvents() {
@@ -592,20 +612,27 @@ export class AIModule {
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
 
-    _formatAgentResult(result) {
-        const lines = [result.answer || 'Agent completed without a text answer.'];
-        const steps = result.steps ?? [];
+    _formatAgentConversation() {
+        const lines = [];
 
-        if (steps.length) {
-            lines.push('', 'Tool trace:');
-            for (const step of steps) {
-                const status = step.status === 'success' ? 'ok' : 'error';
-                lines.push(`- ${step.name} (${status})`);
-                if (step.error) lines.push(`  ${step.error}`);
+        for (const message of this._agentConversation) {
+            const label = message.role === 'user' ? 'You' : 'Agent';
+            lines.push(`${label}: ${message.content}`);
+
+            const steps = message.steps ?? [];
+            if (steps.length) {
+                lines.push('Tool trace:');
+                for (const step of steps) {
+                    const status = step.status === 'success' ? 'ok' : 'error';
+                    lines.push(`- ${step.name} (${status})`);
+                    if (step.error) lines.push(`  ${step.error}`);
+                }
             }
+
+            lines.push('');
         }
 
-        return lines.join('\n');
+        return lines.join('\n').trim();
     }
 
     async _refreshAfterFunctionRun() {
@@ -719,9 +746,15 @@ export class AIModule {
     _clearResult() {
         const resultEl = document.getElementById('ai-result-content');
         if (resultEl) resultEl.textContent = '';
+        this._clearTransientMessages();
+        document.getElementById('ai-result-section')?.classList.add('hidden');
+        document.getElementById('ai-confirm-section')?.classList.add('hidden');
+        document.getElementById('ai-download-btn')?.classList.add('hidden');
+    }
+
+    _clearTransientMessages() {
         document.getElementById('ai-error-msg')?.classList.add('hidden');
         document.getElementById('ai-success-msg')?.classList.add('hidden');
-        document.getElementById('ai-result-section')?.classList.add('hidden');
         document.getElementById('ai-confirm-section')?.classList.add('hidden');
         document.getElementById('ai-download-btn')?.classList.add('hidden');
     }
