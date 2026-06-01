@@ -32,6 +32,7 @@ export class AIModule {
 
         this._bindModalEvents();
         this._syncDataTypeWithTarget();
+        this._syncModeUI();
         this._renderFunctionCatalog();
         void this.loadFunctionCatalog();
 
@@ -129,11 +130,19 @@ export class AIModule {
             steps: result.steps ?? [],
         });
 
-        const reportEl = document.getElementById('ai-result-content');
-        if (reportEl) reportEl.textContent = this._formatAgentConversation();
-        document.getElementById('ai-result-section')?.classList.remove('hidden');
+        this._renderAgentConversation();
         const promptInput = document.getElementById('ai-prompt-input');
         if (promptInput) promptInput.value = '';
+    }
+
+    startNewAgentChat() {
+        this._sessionId = this._createSessionId();
+        this._agentConversation = [];
+        this._pendingPayload = null;
+        this._pendingResult = null;
+        this._clearTransientMessages();
+        this._renderAgentConversation();
+        document.getElementById('ai-prompt-input')?.focus();
     }
 
     async confirmCreate() {
@@ -294,6 +303,12 @@ export class AIModule {
                 this.resetFunctionArgs();
             });
         }
+
+        const modeSelect = document.getElementById('ai-mode-select');
+        if (modeSelect && modeSelect.dataset.aiBound !== 'true') {
+            modeSelect.dataset.aiBound = 'true';
+            modeSelect.addEventListener('change', () => this._syncModeUI());
+        }
     }
 
     _syncDataTypeWithTarget() {
@@ -304,6 +319,34 @@ export class AIModule {
 
         if (dataTypeSelect && selectedType) {
             dataTypeSelect.value = selectedType;
+        }
+    }
+
+    _syncModeUI() {
+        const mode = document.getElementById('ai-mode-select')?.value ?? 'analyze';
+        const isAgent = mode === 'agent';
+        const promptInput = document.getElementById('ai-prompt-input');
+        const promptBlock = promptInput?.closest('.space-y-1\\.5');
+        const agentPanel = document.getElementById('ai-agent-panel');
+        const executeLabel = document.getElementById('ai-execute-label')
+            ?? document.querySelector('#ai-execute-btn span:last-child');
+
+        agentPanel?.classList.toggle('hidden', !isAgent);
+        document.getElementById('ai-function-panel')?.classList.toggle('hidden', isAgent);
+
+        if (isAgent) {
+            if (agentPanel && promptBlock?.parentElement && agentPanel.nextElementSibling !== promptBlock) {
+                promptBlock.parentElement.insertBefore(agentPanel, promptBlock);
+            }
+            document.getElementById('ai-result-section')?.classList.add('hidden');
+            document.getElementById('ai-confirm-section')?.classList.add('hidden');
+            if (promptInput) promptInput.rows = 2;
+            if (executeLabel) executeLabel.textContent = 'Send Message';
+            this._renderAgentConversation();
+        } else {
+            document.getElementById('ai-agent-panel')?.classList.add('hidden');
+            if (promptInput) promptInput.rows = 3;
+            if (executeLabel) executeLabel.textContent = 'Run AI Task';
         }
     }
 
@@ -612,27 +655,69 @@ export class AIModule {
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
 
-    _formatAgentConversation() {
-        const lines = [];
+    _renderAgentConversation() {
+        const messagesEl = document.getElementById('ai-agent-messages');
+        const sessionEl = document.getElementById('ai-agent-session-label');
+        if (sessionEl) sessionEl.textContent = this._sessionId.slice(-8);
+        if (!messagesEl) return;
 
-        for (const message of this._agentConversation) {
-            const label = message.role === 'user' ? 'You' : 'Agent';
-            lines.push(`${label}: ${message.content}`);
+        messagesEl.innerHTML = this._agentConversation.length
+            ? this._agentConversation.map(message => this._renderAgentMessage(message)).join('')
+            : '<div class="h-full"></div>';
 
-            const steps = message.steps ?? [];
-            if (steps.length) {
-                lines.push('Tool trace:');
-                for (const step of steps) {
-                    const status = step.status === 'success' ? 'ok' : 'error';
-                    lines.push(`- ${step.name} (${status})`);
-                    if (step.error) lines.push(`  ${step.error}`);
-                }
-            }
+        this._scrollAgentChatToBottom();
+    }
 
-            lines.push('');
-        }
+    _renderAgentMessage(message) {
+        const isUser = message.role === 'user';
+        const wrapperClass = isUser ? 'justify-end' : 'justify-start';
+        const bubbleClass = isUser
+            ? 'bg-slate-900 text-white'
+            : 'border border-slate-200 bg-white text-slate-700 shadow-sm';
+        const avatar = isUser
+            ? ''
+            : `<div class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-black text-violet-700">AI</div>`;
+        const trace = this._renderAgentToolTrace(message.steps ?? []);
 
-        return lines.join('\n').trim();
+        return `
+            <div class="flex ${wrapperClass} gap-2">
+                ${avatar}
+                <div class="max-w-[82%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${bubbleClass}">
+                    <div class="whitespace-pre-wrap break-words">${this._escapeHTML(message.content)}</div>
+                    ${trace}
+                </div>
+            </div>`;
+    }
+
+    _renderAgentToolTrace(steps) {
+        if (!steps.length) return '';
+
+        const items = steps.map((step) => {
+            const isSuccess = step.status === 'success';
+            const statusClass = isSuccess
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                : 'bg-red-50 text-red-700 border-red-100';
+            const statusText = isSuccess ? 'ok' : 'error';
+            const error = step.error
+                ? `<div class="mt-1 text-[10px] leading-relaxed text-red-600">${this._escapeHTML(step.error)}</div>`
+                : '';
+
+            return `
+                <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="truncate font-mono text-[10px] font-bold text-slate-500">${this._escapeHTML(step.name)}</span>
+                        <span class="shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${statusClass}">${statusText}</span>
+                    </div>
+                    ${error}
+                </div>`;
+        }).join('');
+
+        return `<div class="mt-3 space-y-1.5 border-t border-slate-100 pt-2">${items}</div>`;
+    }
+
+    _scrollAgentChatToBottom() {
+        const messagesEl = document.getElementById('ai-agent-messages');
+        if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
     }
 
     async _refreshAfterFunctionRun() {
@@ -719,6 +804,16 @@ export class AIModule {
 
     _trimFeatureProperties(properties = {}) {
         return Object.fromEntries(Object.entries(properties).slice(0, 10));
+    }
+
+    _escapeHTML(value = '') {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+        }[char]));
     }
 
     _createSessionId() {

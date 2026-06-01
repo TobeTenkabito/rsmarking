@@ -1,6 +1,6 @@
 export const aiModal =`
     <div id="ai-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-4xl rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+    <div class="bg-white w-full max-w-5xl rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
 
         <!-- 顶部色条 -->
         <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 to-indigo-500"></div>
@@ -108,7 +108,29 @@ export const aiModal =`
             </div>
 
             <!-- Backend function launcher -->
-            <div class="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-sky-50/40 p-4 space-y-3">
+            <div id="ai-agent-panel" class="hidden overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                <div class="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+                    <div class="flex items-center gap-2">
+                        <div class="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-[10px] font-black text-white">
+                            AI
+                        </div>
+                        <div>
+                            <div class="text-xs font-black text-slate-700">Agent Chat</div>
+                            <div id="ai-agent-session-label" class="font-mono text-[9px] font-bold uppercase tracking-widest text-slate-400"></div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="RS.aiStartNewAgentChat()"
+                        title="New chat"
+                        class="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-all hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600">
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0119 5M19 5h-5M19 5v5"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="ai-agent-messages" class="h-80 space-y-4 overflow-y-auto px-4 py-4 sidebar-scroll"></div>
+            </div>
+
+            <div id="ai-function-panel" class="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-sky-50/40 p-4 space-y-3">
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <label class="text-[11px] font-black text-slate-600 uppercase tracking-widest">Backend Functions</label>

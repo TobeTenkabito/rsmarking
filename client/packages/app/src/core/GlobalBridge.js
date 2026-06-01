@@ -107,6 +107,7 @@ export class GlobalBridge {
             aiSelectFunction:   (name) => this.app.ai?.selectFunction(name),
             aiResetFunctionArgs: () => this.app.ai?.resetFunctionArgs(),
             aiRunSelectedFunction: () => this.app.ai?.runSelectedFunction(),
+            aiStartNewAgentChat: () => this.app.ai?.startNewAgentChat(),
 
             // --- 属性表 ---
             openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),
