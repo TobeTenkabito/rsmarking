@@ -205,3 +205,30 @@ def test_agent_registry_wrappers_can_be_restricted(monkeypatch):
     tools = agent_handler._get_agent_tools(["calculate_ndvi"])
 
     assert [tool["function"]["name"] for tool in tools] == ["calculate_ndvi"]
+
+
+def test_agent_system_prompt_mentions_sandbox_fallback():
+    prompt = agent_handler._build_agent_system_prompt(agent_handler.AILanguage.EN)
+
+    assert "run_script_sandbox" in prompt
+    assert "no dedicated tool" in prompt
+
+
+def test_agent_session_can_be_restored():
+    session_id = "restore-session-test"
+    count = agent_handler.restore_session_messages(
+        session_id,
+        [
+            {"role": "system", "content": "ignore"},
+            {"role": "user", "content": "Original request"},
+            {"role": "assistant", "content": "Original answer"},
+        ],
+    )
+
+    history = agent_handler.get_session_messages(session_id)
+
+    assert count == 2
+    assert history == [
+        {"role": "user", "content": "Original request"},
+        {"role": "assistant", "content": "Original answer"},
+    ]

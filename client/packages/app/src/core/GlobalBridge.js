@@ -114,6 +114,10 @@ export class GlobalBridge {
             aiResetFunctionArgs: () => this.app.ai?.resetFunctionArgs(),
             aiRunSelectedFunction: () => this.app.ai?.runSelectedFunction(),
             aiStartNewAgentChat: () => this.app.ai?.startNewAgentChat(),
+            aiArchiveConversation: () => this.app.ai?.archiveAgentConversation(),
+            aiToggleArchivePanel: () => this.app.ai?.toggleArchivePanel(),
+            aiLoadConversationArchive: (id) => this.app.ai?.loadConversationArchive(id),
+            aiDeleteConversationArchive: (id) => this.app.ai?.deleteConversationArchive(id),
 
             // --- 属性表 ---
             openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),

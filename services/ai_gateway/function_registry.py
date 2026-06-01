@@ -27,9 +27,11 @@ from services.data_service.routers.upload_router import (
     extract_raster_bands_task,
     merge_raster_bands_task,
 )
+from services.data_service.bridges.executor_bridge import dispatch_user_script
 from services.data_service.schemas import (
     ClipRasterByVectorRequest as ClipRasterByGeometryArgs,
 )
+from services.executor_service.security import validate_script_content
 
 logger = logging.getLogger("ai_gateway.function_registry")
 
@@ -93,6 +95,27 @@ class ResampleRasterArgs(BaseModel):
         "q3",
     ] = Field(default="bilinear", description="Rasterio resampling method.")
     new_name: str = Field(..., description="Name for the generated raster.")
+
+
+class ScriptSandboxArgs(BaseModel):
+    raster_ids: list[int] = Field(
+        ...,
+        min_length=1,
+        description="Raster index_id inputs exposed as input_file, input_0, input_1, ... inside the sandbox.",
+    )
+    output_name: str = Field(
+        ...,
+        description="Name for the generated raster output. The script must write OUTPUT_FILE.",
+    )
+    script: str = Field(
+        ...,
+        min_length=20,
+        max_length=20000,
+        description=(
+            "Safe Python script for the isolated executor sandbox. Use rasterio/numpy/scipy/skimage; "
+            "read input_file or input_0..N and write the final GeoTIFF to OUTPUT_FILE."
+        ),
+    )
 
 
 class ExtractionArgs(BaseModel):
@@ -309,6 +332,24 @@ async def _run_resample_raster(
     )
 
 
+async def _run_script_sandbox(
+    args: ScriptSandboxArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    is_valid, blocked_label = validate_script_content(args.script)
+    if not is_valid:
+        raise ValueError(f"Script contains a blocked operation: {blocked_label}")
+
+    return await dispatch_user_script(
+        db=db,
+        script=args.script,
+        raster_ids=args.raster_ids,
+        output_name=args.output_name,
+    )
+
+
 async def _run_extraction(
     args: ExtractionArgs,
     db: AsyncSession,
@@ -488,6 +529,16 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="raster_manipulation",
             arguments_model=ResampleRasterArgs,
             handler=_run_resample_raster,
+        ),
+        RegisteredFunction(
+            name="run_script_sandbox",
+            description=(
+                "Generate and run a safe Python raster-processing script in the isolated sandbox when "
+                "no dedicated gateway function can satisfy the request."
+            ),
+            category="script_sandbox",
+            arguments_model=ScriptSandboxArgs,
+            handler=_run_script_sandbox,
         ),
         RegisteredFunction(
             name="extract_vegetation",

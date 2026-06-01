@@ -274,6 +274,9 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "You may call only the registered AI gateway tools provided in this request.",
             "Use tools when they materially advance the task; otherwise answer directly.",
             "Tool calls can create new raster/vector outputs or run analysis jobs.",
+            "Prefer dedicated geospatial tools when one fits the request.",
+            "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
+            "Sandbox scripts must read input_file or input_0/input_1/... and write a GeoTIFF to OUTPUT_FILE.",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Use the workspace context to stay familiar with available projects, layers, and rasters.",
             "If required ids, bands, thresholds, or geometries are missing, ask a concise clarification.",
@@ -560,6 +563,30 @@ def _append_session_turn(session_id: str, user_prompt: str, answer: str) -> None
         session["messages"].append({"role": "user", "content": user_prompt})
         session["messages"].append({"role": "assistant", "content": answer})
         session["updated_at"] = time.time()
+
+
+def get_session_messages(session_id: str, limit: int = MAX_SESSION_MESSAGES) -> list[dict[str, str]]:
+    return _get_session_history(session_id, limit)
+
+
+def restore_session_messages(session_id: str, messages: list[dict[str, Any]]) -> int:
+    if not session_id:
+        return 0
+
+    normalized = deque(maxlen=MAX_SESSION_MESSAGES)
+    for message in messages:
+        role = message.get("role")
+        content = str(message.get("content") or "")
+        if role not in {"user", "assistant"} or not content:
+            continue
+        normalized.append({"role": role, "content": content})
+
+    with _SESSION_LOCK:
+        _AGENT_SESSIONS[session_id] = {
+            "messages": normalized,
+            "updated_at": time.time(),
+        }
+    return len(normalized)
 
 
 def _clear_session(session_id: str) -> None:

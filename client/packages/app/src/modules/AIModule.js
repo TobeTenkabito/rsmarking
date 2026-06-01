@@ -18,6 +18,9 @@ export class AIModule {
         this._selectedFunction = null;
         this._functionsLoading = false;
         this._functionCatalogError = '';
+        this._conversationArchives = [];
+        this._archivePanelOpen = false;
+        this._archivesLoading = false;
     }
 
     openModal() {
@@ -35,6 +38,7 @@ export class AIModule {
         this._syncModeUI();
         this._renderFunctionCatalog();
         void this.loadFunctionCatalog();
+        void this.loadConversationArchives();
 
         modal.classList.remove('hidden');
     }
@@ -131,6 +135,9 @@ export class AIModule {
         });
 
         this._renderAgentConversation();
+        if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
+            await this._refreshSidebar('raster');
+        }
         const promptInput = document.getElementById('ai-prompt-input');
         if (promptInput) promptInput.value = '';
     }
@@ -143,6 +150,95 @@ export class AIModule {
         this._clearTransientMessages();
         this._renderAgentConversation();
         document.getElementById('ai-prompt-input')?.focus();
+    }
+
+    async archiveAgentConversation() {
+        if (!this._agentConversation.length) {
+            this._showError('No agent conversation to archive yet.');
+            return;
+        }
+
+        try {
+            const title = this._agentConversation.find(message => message.role === 'user')?.content?.slice(0, 80)
+                || `Agent chat ${new Date().toLocaleString()}`;
+            await AIAPI.archiveConversation({
+                session_id: this._sessionId,
+                title,
+                messages: this._agentConversation,
+                metadata: { source: 'agent-ui' },
+            });
+            this._showSuccess('Conversation archived.');
+            await this.loadConversationArchives({ force: true });
+            this._archivePanelOpen = true;
+            this._renderArchivePanel();
+        } catch (err) {
+            this._showError(err.message);
+        }
+    }
+
+    async loadConversationArchives({ force = false } = {}) {
+        if (this._archivesLoading) return;
+        if (this._conversationArchives.length && !force) {
+            this._renderArchivePanel();
+            return;
+        }
+
+        this._archivesLoading = true;
+        this._renderArchivePanel();
+        try {
+            const result = await AIAPI.listConversations();
+            this._conversationArchives = result.conversations ?? [];
+        } catch (err) {
+            console.warn('[AIModule] failed to load conversation archives:', err);
+        } finally {
+            this._archivesLoading = false;
+            this._renderArchivePanel();
+        }
+    }
+
+    async toggleArchivePanel() {
+        this._archivePanelOpen = !this._archivePanelOpen;
+        this._renderArchivePanel();
+        if (this._archivePanelOpen) {
+            await this.loadConversationArchives({ force: true });
+        }
+    }
+
+    async loadConversationArchive(archiveId) {
+        if (!archiveId) return;
+        try {
+            const result = await AIAPI.getConversation(archiveId);
+            const archive = result.conversation;
+            const sessionId = archive.session_id || archive.archive_id || this._createSessionId();
+            await AIAPI.restoreConversation(archiveId, sessionId);
+            this._sessionId = sessionId;
+            this._agentConversation = (archive.messages ?? [])
+                .filter(message => ['user', 'assistant'].includes(message.role))
+                .map(message => ({
+                    role: message.role,
+                    content: message.content,
+                    steps: Array.isArray(message.steps) ? message.steps : [],
+                }));
+            this._archivePanelOpen = false;
+            this._renderArchivePanel();
+            this._renderAgentConversation();
+            this._showSuccess('Conversation restored.');
+        } catch (err) {
+            this._showError(err.message);
+        }
+    }
+
+    async deleteConversationArchive(archiveId) {
+        if (!archiveId) return;
+        try {
+            await AIAPI.deleteConversation(archiveId);
+            this._conversationArchives = this._conversationArchives
+                .filter(item => item.archive_id !== archiveId);
+            this._renderArchivePanel();
+            this._showSuccess('Conversation archive deleted.');
+        } catch (err) {
+            this._showError(err.message);
+        }
     }
 
     async confirmCreate() {
@@ -343,6 +439,7 @@ export class AIModule {
             if (promptInput) promptInput.rows = 2;
             if (executeLabel) executeLabel.textContent = 'Send Message';
             this._renderAgentConversation();
+            this._renderArchivePanel();
         } else {
             document.getElementById('ai-agent-panel')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 3;
@@ -421,6 +518,12 @@ export class AIModule {
         }
         if (name === 'raster_ids') {
             return this._getRasterIds().slice(0, 2);
+        }
+        if (name === 'output_name') {
+            return this._defaultNewName(fn.name);
+        }
+        if (name === 'script') {
+            return this._defaultSandboxScript();
         }
         if (name === 'band_indices') {
             return [1];
@@ -539,6 +642,14 @@ export class AIModule {
                 resolution_unit: 'source',
                 resampling_method: 'bilinear',
                 new_name: this._defaultNewName('resample'),
+            };
+        }
+
+        if (name === 'run_script_sandbox') {
+            return {
+                raster_ids: rasterIds.slice(0, 1),
+                output_name: this._defaultNewName('sandbox_script'),
+                script: this._defaultSandboxScript(),
             };
         }
 
@@ -661,6 +772,25 @@ export class AIModule {
         return `${safePrefix}_${Date.now()}.tif`;
     }
 
+    _defaultSandboxScript() {
+        return [
+            'import rasterio',
+            'import numpy as np',
+            '',
+            'with rasterio.open(input_file) as src:',
+            '    data = src.read()',
+            '    profile = src.profile',
+            '',
+            '# Replace this with the custom raster operation.',
+            'result = data',
+            '',
+            'with rasterio.open(OUTPUT_FILE, "w", **profile) as dst:',
+            '    dst.write(result)',
+            '',
+            'print("Sandbox script completed")',
+        ].join('\n');
+    }
+
     _viewportGeometry() {
         const bbox = this._collectViewport()?.bbox;
         if (!bbox || bbox.length !== 4) return null;
@@ -710,6 +840,46 @@ export class AIModule {
             : '<div class="h-full"></div>';
 
         this._scrollAgentChatToBottom();
+    }
+
+    _renderArchivePanel() {
+        const panel = document.getElementById('ai-agent-archive-panel');
+        const list = document.getElementById('ai-agent-archive-list');
+        if (!panel || !list) return;
+
+        panel.classList.toggle('hidden', !this._archivePanelOpen);
+        if (!this._archivePanelOpen) return;
+
+        if (this._archivesLoading) {
+            list.innerHTML = '<div class="py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">Loading archives...</div>';
+            return;
+        }
+
+        if (!this._conversationArchives.length) {
+            list.innerHTML = '<div class="py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">No archived chats</div>';
+            return;
+        }
+
+        list.innerHTML = this._conversationArchives.map((archive) => {
+            const title = this._escapeHTML(archive.title || 'Agent conversation');
+            const date = archive.updated_at ? new Date(archive.updated_at).toLocaleString() : '';
+            const id = this._escapeHTML(archive.archive_id);
+            return `
+                <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <button type="button" onclick="RS.aiLoadConversationArchive('${id}')"
+                        class="min-w-0 flex-1 text-left">
+                        <div class="truncate text-[11px] font-bold text-slate-700">${title}</div>
+                        <div class="mt-0.5 truncate text-[9px] font-mono text-slate-400">${this._escapeHTML(date)} · ${archive.message_count ?? 0} messages</div>
+                    </button>
+                    <button type="button" onclick="RS.aiDeleteConversationArchive('${id}')"
+                        title="Delete archive"
+                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500">
+                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862A2 2 0 015.867 19.142L5 7m5 4v6m4-6v6M4 7h16m-6-3h-4"/>
+                        </svg>
+                    </button>
+                </div>`;
+        }).join('');
     }
 
     _renderAgentMessage(message) {

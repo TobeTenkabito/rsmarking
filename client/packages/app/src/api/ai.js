@@ -36,6 +36,34 @@ async function requestAIFunctions(format = 'openai') {
     }
 }
 
+async function requestAIGet(path, fallbackMessage) {
+    try {
+        const response = await fetch(`${BASE_URL}${path}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `${fallbackMessage} (${response.status})`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`[AIAPI] ${path} Error:`, error);
+        throw error;
+    }
+}
+
+async function requestAIDelete(path, fallbackMessage) {
+    try {
+        const response = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `${fallbackMessage} (${response.status})`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error(`[AIAPI] ${path} Error:`, error);
+        throw error;
+    }
+}
+
 export const AIAPI = {
     async analyze(payload) {
         return requestAI('/ai/process', {
@@ -77,5 +105,32 @@ export const AIAPI = {
             name,
             arguments: args,
         }, 'AI function invocation failed');
+    },
+
+    async listConversations() {
+        return requestAIGet('/ai/conversations', 'Failed to list AI conversations');
+    },
+
+    async archiveConversation(payload) {
+        return requestAI('/ai/conversations', payload, 'Failed to archive AI conversation');
+    },
+
+    async getConversation(archiveId) {
+        return requestAIGet(`/ai/conversations/${encodeURIComponent(archiveId)}`, 'Failed to load AI conversation');
+    },
+
+    async restoreConversation(archiveId, sessionId = null) {
+        return requestAI(
+            `/ai/conversations/${encodeURIComponent(archiveId)}/restore`,
+            sessionId ? { session_id: sessionId } : {},
+            'Failed to restore AI conversation'
+        );
+    },
+
+    async deleteConversation(archiveId) {
+        return requestAIDelete(
+            `/ai/conversations/${encodeURIComponent(archiveId)}`,
+            'Failed to delete AI conversation'
+        );
     },
 };

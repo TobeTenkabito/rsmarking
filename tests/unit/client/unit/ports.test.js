@@ -52,6 +52,15 @@ describe('service port routing', () => {
         expect(global.fetch.mock.calls[0][0]).toBe('http://localhost:8006/ai/agent');
     });
 
+    it('archives AI conversations through the AI gateway port', async () => {
+        await AIAPI.archiveConversation({
+            session_id: 'session-a',
+            messages: [{ role: 'user', content: 'hello' }],
+        });
+
+        expect(global.fetch.mock.calls[0][0]).toBe('http://localhost:8006/ai/conversations');
+    });
+
     it('keeps raster tile requests on the tile service port', () => {
         const map = {
             setView: vi.fn(function setView() {

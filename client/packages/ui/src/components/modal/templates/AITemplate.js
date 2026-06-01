@@ -7,6 +7,7 @@ import { esc } from '../utils.js';
 const CATEGORY_LABELS = {
     spectral_indices: 'Spectral Indices',
     raster_manipulation: 'Raster Tools',
+    script_sandbox: 'Script Sandbox',
     extraction: 'Feature Extraction',
     clip: 'Spatial Clip',
     change_detection: 'Change Detection',

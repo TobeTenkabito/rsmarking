@@ -8,7 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.annotation_service.database import get_db as get_vector_db
 from services.data_service.database import get_db
 
-from .agent_handler import AgentRequestPayload, handle_agent
+from .agent_handler import (
+    AgentRequestPayload,
+    handle_agent,
+    restore_session_messages,
+)
+from .conversation_archive import (
+    ConversationArchiveRequest,
+    ConversationRestoreRequest,
+    archive_conversation,
+    delete_conversation_archive,
+    get_conversation_archive,
+    list_conversation_archives,
+)
 from .function_registry import (
     AIFunctionInvokeRequest,
     invoke_registered_function,
@@ -86,3 +98,61 @@ async def run_ai_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI agent execution failed",
         )
+
+
+@router.get("/conversations", summary="List archived AI agent conversations")
+async def list_ai_conversations():
+    return {
+        "status": "success",
+        "conversations": list_conversation_archives(),
+    }
+
+
+@router.post("/conversations", summary="Archive an AI agent conversation")
+async def archive_ai_conversation(payload: ConversationArchiveRequest):
+    try:
+        return {"status": "success", "conversation": archive_conversation(payload)}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.error("[router] archive conversation failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Conversation archive failed",
+        )
+
+
+@router.get("/conversations/{archive_id}", summary="Get an archived AI agent conversation")
+async def get_ai_conversation(archive_id: str):
+    try:
+        return {"status": "success", "conversation": get_conversation_archive(archive_id)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+
+@router.delete("/conversations/{archive_id}", summary="Delete an archived AI agent conversation")
+async def delete_ai_conversation(archive_id: str):
+    try:
+        return delete_conversation_archive(archive_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+
+@router.post("/conversations/{archive_id}/restore", summary="Restore an archive into agent session memory")
+async def restore_ai_conversation(
+    archive_id: str,
+    payload: ConversationRestoreRequest | None = None,
+):
+    try:
+        archive = get_conversation_archive(archive_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+    session_id = payload.session_id if payload and payload.session_id else archive.get("session_id") or archive_id
+    restored_count = restore_session_messages(session_id, archive.get("messages", []))
+    return {
+        "status": "success",
+        "archive_id": archive_id,
+        "session_id": session_id,
+        "restored_messages": restored_count,
+    }

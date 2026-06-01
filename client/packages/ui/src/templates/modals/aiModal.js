@@ -120,13 +120,32 @@ export const aiModal =`
                             <div id="ai-agent-session-label" class="font-mono text-[9px] font-bold uppercase tracking-widest text-slate-400"></div>
                         </div>
                     </div>
-                    <button type="button" onclick="RS.aiStartNewAgentChat()"
-                        title="New chat"
-                        class="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-all hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600">
-                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0119 5M19 5h-5M19 5v5"/>
-                        </svg>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button type="button" onclick="RS.aiArchiveConversation()"
+                            title="Archive chat"
+                            class="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-all hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-600">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M7 8v10h10V8M9 12h6M8 4h8l1 4H7l1-4z"/>
+                            </svg>
+                        </button>
+                        <button type="button" onclick="RS.aiToggleArchivePanel()"
+                            title="Conversation archive"
+                            class="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-all hover:border-sky-200 hover:bg-sky-50 hover:text-sky-600">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 2M4 6h16M5 6v13h14V6M9 3h6"/>
+                            </svg>
+                        </button>
+                        <button type="button" onclick="RS.aiStartNewAgentChat()"
+                            title="New chat"
+                            class="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition-all hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0119 5M19 5h-5M19 5v5"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="ai-agent-archive-panel" class="hidden border-b border-slate-200 bg-white px-4 py-3">
+                    <div id="ai-agent-archive-list" class="max-h-40 space-y-2 overflow-y-auto sidebar-scroll"></div>
                 </div>
                 <div id="ai-agent-messages" class="space-y-4 overflow-y-auto px-4 py-4 sidebar-scroll"
                     style="height:clamp(18rem, 42vh, 34rem); min-height:14rem; max-height:62vh; resize:vertical;"></div>
