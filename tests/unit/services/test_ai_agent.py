@@ -169,6 +169,38 @@ def test_agent_reuses_session_history(monkeypatch):
     assert {"role": "assistant", "content": "First answer."} in second_messages
 
 
+def test_agent_includes_archive_memory_context(monkeypatch):
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        return _response("I remember the archive.")
+
+    async def empty_workspace_context(db, vector_db, limit):
+        return ""
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"calculate_ndvi"})
+    monkeypatch.setattr(agent_handler, "_build_workspace_context", empty_workspace_context)
+    monkeypatch.setattr(agent_handler, "_build_archive_memory_context", lambda limit: "[Conversation Archive Memory]\nremembered")
+
+    _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="Use what we saved.",
+                language="en",
+                include_archive_memory=True,
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+
+    assert {"role": "system", "content": "[Conversation Archive Memory]\nremembered"} in calls[0]["messages"]
+
+
 def test_agent_rejects_unknown_tool_allow_list(monkeypatch):
     def raise_unknown_tool(names):
         raise ValueError("Unknown AI function(s): missing_tool")

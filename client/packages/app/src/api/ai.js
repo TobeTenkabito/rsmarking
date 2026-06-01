@@ -133,4 +133,8 @@ export const AIAPI = {
             'Failed to delete AI conversation'
         );
     },
+
+    async clearConversations() {
+        return requestAIDelete('/ai/conversations', 'Failed to clear AI conversations');
+    },
 };

@@ -145,6 +145,13 @@ export const aiModal =`
                     </div>
                 </div>
                 <div id="ai-agent-archive-panel" class="hidden border-b border-slate-200 bg-white px-4 py-3">
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <div class="text-[10px] font-black uppercase tracking-widest text-slate-400">Saved memory</div>
+                        <button type="button" onclick="RS.aiClearConversationArchives()"
+                            class="rounded-lg border border-slate-200 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-500">
+                            Clear all
+                        </button>
+                    </div>
                     <div id="ai-agent-archive-list" class="max-h-40 space-y-2 overflow-y-auto sidebar-scroll"></div>
                 </div>
                 <div id="ai-agent-messages" class="space-y-4 overflow-y-auto px-4 py-4 sidebar-scroll"

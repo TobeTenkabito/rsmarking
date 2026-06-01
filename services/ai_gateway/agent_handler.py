@@ -70,6 +70,16 @@ class AgentRequestPayload(BaseModel):
         default=True,
         description="Include a compact overview of current rasters, projects, and layers.",
     )
+    include_archive_memory: bool = Field(
+        default=True,
+        description="Include compact memory from user-saved archived conversations.",
+    )
+    archive_memory_limit: int = Field(
+        default=5,
+        ge=0,
+        le=20,
+        description="Maximum number of archived conversations to summarize for memory.",
+    )
     workspace_limit: int = Field(
         default=30,
         ge=1,
@@ -261,6 +271,11 @@ async def _build_agent_messages(
         if workspace_context:
             messages.append({"role": "system", "content": workspace_context})
 
+    if payload.include_archive_memory and payload.archive_memory_limit > 0:
+        archive_context = _build_archive_memory_context(payload.archive_memory_limit)
+        if archive_context:
+            messages.append({"role": "system", "content": archive_context})
+
     messages.extend(conversation_history)
     messages.append({"role": "user", "content": await _build_agent_user_prompt(payload, db, vector_db)})
     return messages
@@ -279,10 +294,21 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "Sandbox scripts must read input_file or input_0/input_1/... and write a GeoTIFF to OUTPUT_FILE.",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Use the workspace context to stay familiar with available projects, layers, and rasters.",
+            "Use conversation archive memory only as background from user-saved prior chats.",
             "If required ids, bands, thresholds, or geometries are missing, ask a concise clarification.",
             "Final answers should summarize actions taken, important output ids or names, and any remaining caveats.",
         ]
     )
+
+
+def _build_archive_memory_context(limit: int) -> str:
+    try:
+        from services.ai_gateway.conversation_archive import build_archive_memory_context
+
+        return build_archive_memory_context(limit)
+    except Exception as exc:
+        logger.warning("[agent] conversation archive memory unavailable: %s", exc)
+        return ""
 
 
 async def _build_agent_user_prompt(

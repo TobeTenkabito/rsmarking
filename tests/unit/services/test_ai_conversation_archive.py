@@ -24,6 +24,29 @@ def test_conversation_archive_roundtrip(tmp_path, monkeypatch):
     assert loaded["messages"][1]["steps"][0]["name"] == "run_script_sandbox"
 
 
+def test_conversation_archive_memory_context_and_clear(tmp_path, monkeypatch):
+    monkeypatch.setattr(conversation_archive, "ARCHIVE_DIR", str(tmp_path))
+
+    conversation_archive.archive_conversation(
+        ConversationArchiveRequest(
+            session_id="session-memory",
+            title="Water workflow",
+            messages=[
+                {"role": "user", "content": "Remember this water extraction approach."},
+                {"role": "assistant", "content": "Use MNDWI and then clean the mask."},
+            ],
+        )
+    )
+
+    memory = conversation_archive.build_archive_memory_context(limit=3)
+    result = conversation_archive.clear_conversation_archives()
+
+    assert "Conversation Archive Memory" in memory
+    assert "Water workflow" in memory
+    assert result["deleted"] == 1
+    assert conversation_archive.list_conversation_archives() == []
+
+
 def test_conversation_archive_rejects_empty_messages(tmp_path, monkeypatch):
     monkeypatch.setattr(conversation_archive, "ARCHIVE_DIR", str(tmp_path))
 

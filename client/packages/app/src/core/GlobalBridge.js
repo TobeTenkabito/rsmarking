@@ -118,6 +118,7 @@ export class GlobalBridge {
             aiToggleArchivePanel: () => this.app.ai?.toggleArchivePanel(),
             aiLoadConversationArchive: (id) => this.app.ai?.loadConversationArchive(id),
             aiDeleteConversationArchive: (id) => this.app.ai?.deleteConversationArchive(id),
+            aiClearConversationArchives: () => this.app.ai?.clearConversationArchives(),
 
             // --- 属性表 ---
             openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),

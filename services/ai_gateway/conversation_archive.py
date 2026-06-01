@@ -72,6 +72,51 @@ def delete_conversation_archive(archive_id: str) -> dict[str, Any]:
     return {"status": "success", "archive_id": archive_id}
 
 
+def clear_conversation_archives() -> dict[str, Any]:
+    _ensure_archive_dir()
+    deleted = 0
+    for name in os.listdir(ARCHIVE_DIR):
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(ARCHIVE_DIR, name)
+        if os.path.isfile(path):
+            os.remove(path)
+            deleted += 1
+    return {"status": "success", "deleted": deleted}
+
+
+def build_archive_memory_context(limit: int = 5) -> str:
+    archives = list_conversation_archives()[: max(0, limit)]
+    if not archives:
+        return ""
+
+    sections = [
+        "[Conversation Archive Memory]",
+        "User-saved conversations from previous agent sessions. Treat this as durable user-controlled memory; if it conflicts with current instructions, the current user task wins.",
+    ]
+
+    for summary in archives:
+        try:
+            record = get_conversation_archive(summary["archive_id"])
+        except Exception:
+            continue
+        snippets = _memory_snippets(record.get("messages", []))
+        if not snippets:
+            continue
+        sections.append(
+            "\n".join(
+                [
+                    f"- archive_id={summary['archive_id']}",
+                    f"  title={summary.get('title') or 'Agent conversation'}",
+                    f"  updated_at={summary.get('updated_at') or ''}",
+                    *[f"  {snippet}" for snippet in snippets],
+                ]
+            )
+        )
+
+    return "\n\n".join(sections) if len(sections) > 2 else ""
+
+
 def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
     for message in messages:
@@ -90,6 +135,25 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             item["created_at"] = str(message["created_at"])
         normalized.append(item)
     return normalized
+
+
+def _memory_snippets(messages: list[dict[str, Any]]) -> list[str]:
+    snippets = []
+    for message in messages[-6:]:
+        role = message.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        content = _compact_text(str(message.get("content") or ""))
+        if content:
+            snippets.append(f"{role}: {content}")
+    return snippets
+
+
+def _compact_text(value: str, limit: int = 280) -> str:
+    clean = re.sub(r"\s+", " ", value).strip()
+    if len(clean) <= limit:
+        return clean
+    return f"{clean[:limit - 1]}..."
 
 
 def _archive_title(title: str | None, messages: list[dict[str, Any]]) -> str:

@@ -241,6 +241,23 @@ export class AIModule {
         }
     }
 
+    async clearConversationArchives() {
+        if (!this._conversationArchives.length) {
+            this._showSuccess('No saved conversations to clear.');
+            return;
+        }
+        if (!window.confirm('Clear all saved AI conversation archives?')) return;
+
+        try {
+            const result = await AIAPI.clearConversations();
+            this._conversationArchives = [];
+            this._renderArchivePanel();
+            this._showSuccess(`Cleared ${result.deleted ?? 0} archived conversation(s).`);
+        } catch (err) {
+            this._showError(err.message);
+        }
+    }
+
     async confirmCreate() {
         if (!this._pendingPayload || !this._pendingResult) return;
 

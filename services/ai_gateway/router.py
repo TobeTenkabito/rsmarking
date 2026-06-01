@@ -17,6 +17,7 @@ from .conversation_archive import (
     ConversationArchiveRequest,
     ConversationRestoreRequest,
     archive_conversation,
+    clear_conversation_archives,
     delete_conversation_archive,
     get_conversation_archive,
     list_conversation_archives,
@@ -120,6 +121,11 @@ async def archive_ai_conversation(payload: ConversationArchiveRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Conversation archive failed",
         )
+
+
+@router.delete("/conversations", summary="Clear all archived AI agent conversations")
+async def clear_ai_conversations():
+    return clear_conversation_archives()
 
 
 @router.get("/conversations/{archive_id}", summary="Get an archived AI agent conversation")
