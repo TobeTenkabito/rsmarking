@@ -290,6 +290,7 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "Use tools when they materially advance the task; otherwise answer directly.",
             "Tool calls can create new raster/vector outputs or run analysis jobs.",
             "Prefer dedicated geospatial tools when one fits the request.",
+            "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
             "Sandbox scripts must read input_file or input_0/input_1/... and write a GeoTIFF to OUTPUT_FILE.",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
