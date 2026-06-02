@@ -131,8 +131,34 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         if isinstance(message.get("steps"), list):
             item["steps"] = message["steps"]
+        if isinstance(message.get("attachments"), list):
+            item["attachments"] = _normalize_attachments(message["attachments"])
         if message.get("created_at"):
             item["created_at"] = str(message["created_at"])
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_attachments(attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = []
+    for attachment in attachments[:10]:
+        if not isinstance(attachment, dict):
+            continue
+        item = {
+            "name": _compact_text(str(attachment.get("name") or "attachment"), 255),
+            "kind": str(attachment.get("kind") or "file"),
+            "mime_type": _compact_text(str(attachment.get("mime_type") or ""), 120),
+            "size": attachment.get("size"),
+            "width": attachment.get("width"),
+            "height": attachment.get("height"),
+            "truncated": bool(attachment.get("truncated")),
+        }
+        text_excerpt = str(attachment.get("text_excerpt") or "")
+        if text_excerpt:
+            item["text_excerpt"] = text_excerpt[:12000]
+        image_data_url = str(attachment.get("image_data_url") or "")
+        if image_data_url and len(image_data_url) <= 4_500_000:
+            item["image_data_url"] = image_data_url
         normalized.append(item)
     return normalized
 

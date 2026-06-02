@@ -4,6 +4,11 @@ import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
 import { t } from '../i18n/index.js';
 
+const AGENT_ATTACHMENT_LIMIT = 6;
+const AGENT_TEXT_EXCERPT_CHARS = 12000;
+const AGENT_TEXT_FILE_BYTES = 512 * 1024;
+const AGENT_IMAGE_FILE_BYTES = 3 * 1024 * 1024;
+
 export class AIModule {
     constructor(app) {
         this.app = app;
@@ -21,6 +26,7 @@ export class AIModule {
         this._conversationArchives = [];
         this._archivePanelOpen = false;
         this._archivesLoading = false;
+        this._agentAttachments = [];
     }
 
     openModal() {
@@ -53,7 +59,11 @@ export class AIModule {
         const dataType  = document.getElementById('ai-datatype-select')?.value;   // 'raster' | 'vector'
         const mode      = document.getElementById('ai-mode-select')?.value;       // 'analyze' | 'modify' | 'agent'
         const language  = document.getElementById('ai-language-select')?.value;   // 'zh' | 'en' | 'ja'
-        const prompt    = document.getElementById('ai-prompt-input')?.value?.trim();
+        let prompt      = document.getElementById('ai-prompt-input')?.value?.trim();
+
+        if (mode === 'agent' && !prompt && this._agentAttachments.length) {
+            prompt = 'Please analyze the attached file(s).';
+        }
 
         if (!prompt || (mode !== 'agent' && !targetId)) {
             this._showError(t('ai.error.missingTargetPrompt'));
@@ -65,6 +75,7 @@ export class AIModule {
             dataType,
             language,
             prompt,
+            mode,
         });
 
         this._setLoading(true);
@@ -125,21 +136,45 @@ export class AIModule {
     }
 
     async _runAgent(payload) {
-        const result = await AIAPI.agent(payload);
-        if (result.session_id) this._sessionId = result.session_id;
-        this._agentConversation.push({ role: 'user', content: payload.user_prompt });
-        this._agentConversation.push({
+        const promptInput = document.getElementById('ai-prompt-input');
+        const userMessage = {
+            id: this._createMessageId(),
+            role: 'user',
+            content: payload.user_prompt,
+            attachments: this._displayAttachments(payload.attachments ?? []),
+        };
+        const assistantMessage = {
+            id: this._createMessageId(),
             role: 'assistant',
-            content: result.answer || 'Agent completed without a text answer.',
-            steps: result.steps ?? [],
-        });
+            content: '',
+            pending: true,
+            steps: [],
+        };
 
+        this._agentConversation.push(userMessage, assistantMessage);
+        this._renderAgentConversation();
+        if (promptInput) promptInput.value = '';
+        this._clearAgentAttachments();
+
+        let result;
+        try {
+            result = await AIAPI.agent(payload);
+        } catch (err) {
+            assistantMessage.pending = false;
+            assistantMessage.error = true;
+            assistantMessage.content = err.message || 'Agent request failed.';
+            this._renderAgentConversation();
+            throw err;
+        }
+
+        if (result.session_id) this._sessionId = result.session_id;
+        assistantMessage.pending = false;
+        assistantMessage.content = result.answer || 'Agent completed without a text answer.';
+        assistantMessage.steps = result.steps ?? [];
         this._renderAgentConversation();
         if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
             await this._refreshSidebar('raster');
         }
-        const promptInput = document.getElementById('ai-prompt-input');
-        if (promptInput) promptInput.value = '';
     }
 
     startNewAgentChat() {
@@ -147,6 +182,7 @@ export class AIModule {
         this._agentConversation = [];
         this._pendingPayload = null;
         this._pendingResult = null;
+        this._clearAgentAttachments();
         this._clearTransientMessages();
         this._renderAgentConversation();
         document.getElementById('ai-prompt-input')?.focus();
@@ -164,7 +200,7 @@ export class AIModule {
             await AIAPI.archiveConversation({
                 session_id: this._sessionId,
                 title,
-                messages: this._agentConversation,
+                messages: this._archiveableAgentMessages(),
                 metadata: { source: 'agent-ui' },
             });
             this._showSuccess('Conversation archived.');
@@ -218,6 +254,9 @@ export class AIModule {
                     role: message.role,
                     content: message.content,
                     steps: Array.isArray(message.steps) ? message.steps : [],
+                    attachments: Array.isArray(message.attachments)
+                        ? this._displayAttachments(message.attachments)
+                        : [],
                 }));
             this._archivePanelOpen = false;
             this._renderArchivePanel();
@@ -389,7 +428,7 @@ export class AIModule {
         }
     }
 
-    _buildRequestPayload({ targetId, dataType, language, prompt }) {
+    _buildRequestPayload({ targetId, dataType, language, prompt, mode = 'analyze' }) {
         const mapContext = this._collectMapContext(targetId, dataType);
 
         const request = {
@@ -402,6 +441,10 @@ export class AIModule {
         if (targetId) {
             request.target_id = targetId;
             request.data_type = dataType;
+        }
+
+        if (mode === 'agent' && this._agentAttachments.length) {
+            request.attachments = this._requestAttachments(this._agentAttachments);
         }
 
         return request;
@@ -422,6 +465,8 @@ export class AIModule {
             modeSelect.dataset.aiBound = 'true';
             modeSelect.addEventListener('change', () => this._syncModeUI());
         }
+
+        this._bindAgentAttachmentEvents();
     }
 
     _syncDataTypeWithTarget() {
@@ -441,10 +486,12 @@ export class AIModule {
         const promptInput = document.getElementById('ai-prompt-input');
         const promptBlock = promptInput?.closest('.space-y-1\\.5');
         const agentPanel = document.getElementById('ai-agent-panel');
+        const attachmentControls = document.getElementById('ai-agent-attachment-controls');
         const executeLabel = document.getElementById('ai-execute-label')
             ?? document.querySelector('#ai-execute-btn span:last-child');
 
         agentPanel?.classList.toggle('hidden', !isAgent);
+        attachmentControls?.classList.toggle('hidden', !isAgent);
         document.getElementById('ai-function-panel')?.classList.toggle('hidden', isAgent);
 
         if (isAgent) {
@@ -457,11 +504,224 @@ export class AIModule {
             if (executeLabel) executeLabel.textContent = 'Send Message';
             this._renderAgentConversation();
             this._renderArchivePanel();
+            this._renderAgentAttachments();
         } else {
             document.getElementById('ai-agent-panel')?.classList.add('hidden');
+            document.getElementById('ai-agent-attachment-controls')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 3;
             if (executeLabel) executeLabel.textContent = 'Run AI Task';
         }
+    }
+
+    _bindAgentAttachmentEvents() {
+        const input = document.getElementById('ai-agent-file-input');
+        if (input && input.dataset.aiBound !== 'true') {
+            input.dataset.aiBound = 'true';
+            input.addEventListener('change', async () => {
+                await this._handleAgentAttachmentFiles(input.files);
+                input.value = '';
+            });
+        }
+
+        const picker = document.getElementById('ai-agent-attachment-picker');
+        if (picker && picker.dataset.aiBound !== 'true') {
+            picker.dataset.aiBound = 'true';
+            picker.addEventListener('click', () => input?.click());
+        }
+
+        const list = document.getElementById('ai-agent-attachment-list');
+        if (list && list.dataset.aiBound !== 'true') {
+            list.dataset.aiBound = 'true';
+            list.addEventListener('click', (event) => {
+                const button = event.target?.closest?.('[data-ai-attachment-remove]');
+                if (!button) return;
+                this._removeAgentAttachment(button.dataset.aiAttachmentRemove);
+            });
+        }
+    }
+
+    async _handleAgentAttachmentFiles(fileList) {
+        const files = Array.from(fileList ?? []);
+        if (!files.length) return;
+
+        const remainingSlots = Math.max(0, AGENT_ATTACHMENT_LIMIT - this._agentAttachments.length);
+        if (remainingSlots === 0) {
+            this._showError(`You can attach up to ${AGENT_ATTACHMENT_LIMIT} files per message.`);
+            return;
+        }
+
+        const acceptedFiles = files.slice(0, remainingSlots);
+        if (files.length > remainingSlots) {
+            this._showError(`Only ${remainingSlots} more attachment(s) can be added.`);
+        }
+
+        for (const file of acceptedFiles) {
+            try {
+                this._agentAttachments.push(await this._readAgentAttachment(file));
+            } catch (err) {
+                this._showError(err.message || `Failed to attach ${file.name}`);
+            }
+        }
+        this._renderAgentAttachments();
+    }
+
+    async _readAgentAttachment(file) {
+        const kind = file.type?.startsWith('image/') ? 'image' : this._isTextAttachment(file) ? 'text' : 'file';
+        const attachment = {
+            id: this._createMessageId(),
+            name: file.name || 'attachment',
+            kind,
+            mime_type: file.type || '',
+            size: file.size ?? 0,
+            truncated: false,
+        };
+
+        if (kind === 'image') {
+            if (file.size <= AGENT_IMAGE_FILE_BYTES) {
+                attachment.image_data_url = await this._readFileAsDataURL(file);
+                const dimensions = await this._readImageDimensions(attachment.image_data_url);
+                if (dimensions) {
+                    attachment.width = dimensions.width;
+                    attachment.height = dimensions.height;
+                }
+            } else {
+                attachment.truncated = true;
+            }
+            return attachment;
+        }
+
+        if (kind === 'text') {
+            if (file.size > AGENT_TEXT_FILE_BYTES) {
+                attachment.truncated = true;
+            }
+            const readableFile = file.size > AGENT_TEXT_FILE_BYTES
+                ? file.slice(0, AGENT_TEXT_FILE_BYTES)
+                : file;
+            const text = await this._readFileAsText(readableFile);
+            attachment.text_excerpt = text.slice(0, AGENT_TEXT_EXCERPT_CHARS);
+            attachment.truncated = attachment.truncated || text.length > AGENT_TEXT_EXCERPT_CHARS;
+        }
+
+        return attachment;
+    }
+
+    _isTextAttachment(file) {
+        const name = (file.name || '').toLowerCase();
+        const type = file.type || '';
+        return type.startsWith('text/')
+            || type.includes('json')
+            || [
+                '.md',
+                '.markdown',
+                '.txt',
+                '.json',
+                '.geojson',
+                '.csv',
+                '.xml',
+                '.log',
+                '.py',
+                '.js',
+                '.ts',
+                '.html',
+                '.css',
+                '.yml',
+                '.yaml',
+            ].some(ext => name.endsWith(ext));
+    }
+
+    _readFileAsText(file) {
+        if (typeof file.text === 'function') {
+            return file.text();
+        }
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+            reader.readAsText(file);
+        });
+    }
+
+    _readFileAsDataURL(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    _readImageDimensions(dataUrl) {
+        if (!dataUrl || typeof Image === 'undefined') return Promise.resolve(null);
+        return new Promise((resolve) => {
+            const image = new Image();
+            image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+            image.onerror = () => resolve(null);
+            image.src = dataUrl;
+        });
+    }
+
+    _requestAttachments(attachments = []) {
+        return attachments.map((attachment) => ({
+            name: attachment.name,
+            kind: attachment.kind,
+            mime_type: attachment.mime_type || null,
+            size: attachment.size ?? null,
+            text_excerpt: attachment.text_excerpt || null,
+            image_data_url: attachment.image_data_url || null,
+            width: attachment.width ?? null,
+            height: attachment.height ?? null,
+            truncated: Boolean(attachment.truncated),
+        }));
+    }
+
+    _displayAttachments(attachments = []) {
+        return attachments.map((attachment) => ({
+            id: attachment.id || this._createMessageId(),
+            name: attachment.name,
+            kind: attachment.kind || 'file',
+            mime_type: attachment.mime_type || '',
+            size: attachment.size ?? 0,
+            text_excerpt: attachment.text_excerpt || '',
+            image_data_url: attachment.image_data_url || '',
+            width: attachment.width ?? null,
+            height: attachment.height ?? null,
+            truncated: Boolean(attachment.truncated),
+        }));
+    }
+
+    _clearAgentAttachments() {
+        this._agentAttachments = [];
+        this._renderAgentAttachments();
+    }
+
+    _removeAgentAttachment(id) {
+        this._agentAttachments = this._agentAttachments.filter(item => item.id !== id);
+        this._renderAgentAttachments();
+    }
+
+    _archiveableAgentMessages() {
+        return this._agentConversation
+            .filter(message => !message.pending)
+            .map(message => ({
+                role: message.role,
+                content: message.content || '',
+                steps: Array.isArray(message.steps) ? message.steps : [],
+                attachments: this._archiveableAttachments(message.attachments ?? []),
+            }));
+    }
+
+    _archiveableAttachments(attachments = []) {
+        return attachments.map((attachment) => ({
+            name: attachment.name,
+            kind: attachment.kind,
+            mime_type: attachment.mime_type || '',
+            size: attachment.size ?? 0,
+            width: attachment.width ?? null,
+            height: attachment.height ?? null,
+            truncated: Boolean(attachment.truncated),
+            text_excerpt: attachment.text_excerpt || '',
+            image_data_url: attachment.image_data_url || '',
+        }));
     }
 
     _renderFunctionCatalog() {
@@ -859,6 +1119,15 @@ export class AIModule {
         this._scrollAgentChatToBottom();
     }
 
+    _renderAgentAttachments() {
+        const list = document.getElementById('ai-agent-attachment-list');
+        if (!list) return;
+
+        list.innerHTML = this._agentAttachments.length
+            ? this._agentAttachments.map(attachment => this._renderAttachmentChip(attachment, { removable: true })).join('')
+            : '';
+    }
+
     _renderArchivePanel() {
         const panel = document.getElementById('ai-agent-archive-panel');
         const list = document.getElementById('ai-agent-archive-list');
@@ -904,20 +1173,111 @@ export class AIModule {
         const wrapperClass = isUser ? 'justify-end' : 'justify-start';
         const bubbleClass = isUser
             ? 'bg-slate-900 text-white'
-            : 'border border-slate-200 bg-white text-slate-700 shadow-sm';
+            : message.error
+                ? 'border border-red-100 bg-red-50 text-red-700 shadow-sm'
+                : 'border border-slate-200 bg-white text-slate-700 shadow-sm';
         const avatar = isUser
             ? ''
             : `<div class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-black text-violet-700">AI</div>`;
         const trace = this._renderAgentToolTrace(message.steps ?? []);
+        const attachments = this._renderMessageAttachments(message.attachments ?? [], isUser);
+        const content = message.pending
+            ? this._renderPendingAgentMessage()
+            : `<div class="break-words">${this._renderMarkdown(message.content)}</div>`;
 
         return `
             <div class="flex ${wrapperClass} gap-2">
                 ${avatar}
                 <div class="max-w-[82%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${bubbleClass}">
-                    <div class="break-words">${this._renderMarkdown(message.content)}</div>
+                    ${content}
+                    ${attachments}
                     ${trace}
                 </div>
             </div>`;
+    }
+
+    _renderPendingAgentMessage() {
+        return `
+            <div class="flex items-center gap-2 text-slate-500">
+                <span class="font-bold">Thinking</span>
+                <span class="flex gap-1">
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400"></span>
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:120ms"></span>
+                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:240ms"></span>
+                </span>
+            </div>`;
+    }
+
+    _renderMessageAttachments(attachments = [], isUser = false) {
+        if (!attachments.length) return '';
+
+        const imageAttachments = attachments.filter(item => item.kind === 'image' && item.image_data_url);
+        const fileAttachments = attachments.filter(item => item.kind !== 'image' || !item.image_data_url);
+        const chips = fileAttachments.map(attachment => this._renderAttachmentChip(attachment, { compact: true })).join('');
+        const images = imageAttachments.map(attachment => `
+            <div class="overflow-hidden rounded-xl border ${isUser ? 'border-white/15 bg-white/10' : 'border-slate-200 bg-slate-50'}">
+                <img src="${this._escapeHTML(attachment.image_data_url)}" alt="${this._escapeHTML(attachment.name)}"
+                    class="max-h-44 w-full object-cover">
+                <div class="truncate px-2 py-1 text-[10px] ${isUser ? 'text-slate-200' : 'text-slate-500'}">
+                    ${this._escapeHTML(attachment.name)}
+                </div>
+            </div>
+        `).join('');
+
+        return `
+            <div class="mt-3 space-y-2">
+                ${images ? `<div class="grid grid-cols-2 gap-2">${images}</div>` : ''}
+                ${chips ? `<div class="flex flex-wrap gap-2">${chips}</div>` : ''}
+            </div>`;
+    }
+
+    _renderAttachmentChip(attachment, { removable = false, compact = false } = {}) {
+        const icon = attachment.kind === 'image' ? this._imageIcon() : attachment.kind === 'text' ? this._textIcon() : this._fileIcon();
+        const name = this._escapeHTML(attachment.name || 'attachment');
+        const meta = [
+            attachment.mime_type || attachment.kind || 'file',
+            this._formatBytes(attachment.size),
+            attachment.width && attachment.height ? `${attachment.width}x${attachment.height}` : '',
+            attachment.truncated ? 'truncated' : '',
+        ].filter(Boolean).join(' · ');
+        const removeButton = removable
+            ? `<button type="button" data-ai-attachment-remove="${this._escapeHTML(attachment.id)}"
+                    class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-500"
+                    title="Remove attachment">
+                    <svg class="h-3 w-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 6l12 12M18 6L6 18"/>
+                    </svg>
+                </button>`
+            : '';
+
+        return `
+            <div class="flex min-w-0 max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-slate-600 shadow-sm ${compact ? 'text-[10px]' : 'text-[11px]'}">
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">${icon}</span>
+                <span class="min-w-0">
+                    <span class="block truncate font-bold">${name}</span>
+                    <span class="block truncate text-[9px] text-slate-400">${this._escapeHTML(meta)}</span>
+                </span>
+                ${removeButton}
+            </div>`;
+    }
+
+    _imageIcon() {
+        return `<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4-4 4 4 4-5 4 5M5 5h14v14H5z"/></svg>`;
+    }
+
+    _textIcon() {
+        return `<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4h7l5 5v11H7zM13 4v6h6M9 14h6M9 17h6"/></svg>`;
+    }
+
+    _fileIcon() {
+        return `<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4h8l3 3v13H8zM16 4v4h4"/></svg>`;
+    }
+
+    _formatBytes(size = 0) {
+        const bytes = Number(size) || 0;
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     }
 
     _renderMarkdown(markdown = '') {
@@ -1223,6 +1583,10 @@ export class AIModule {
         }
 
         return `ai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    _createMessageId() {
+        return `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
     _setLoading(isLoading) {

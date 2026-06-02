@@ -201,6 +201,97 @@ def test_agent_includes_archive_memory_context(monkeypatch):
     assert {"role": "system", "content": "[Conversation Archive Memory]\nremembered"} in calls[0]["messages"]
 
 
+def test_agent_includes_uploaded_text_attachment_context(monkeypatch):
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        return _response("I read the attachment.")
+
+    async def empty_workspace_context(db, vector_db, limit):
+        return ""
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"calculate_ndvi"})
+    monkeypatch.setattr(agent_handler, "_build_workspace_context", empty_workspace_context)
+
+    _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="Use the attached notes.",
+                language="en",
+                attachments=[
+                    {
+                        "name": "notes.md",
+                        "kind": "text",
+                        "mime_type": "text/markdown",
+                        "size": 42,
+                        "text_excerpt": "Important project note",
+                    }
+                ],
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+
+    user_message = next(message for message in calls[0]["messages"] if message["role"] == "user")
+    assert "[Uploaded Attachments]" in user_message["content"]
+    assert "notes.md" in user_message["content"]
+    assert "Important project note" in user_message["content"]
+
+
+def test_agent_sends_image_attachment_as_multimodal_part(monkeypatch):
+    calls = []
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        return _response("I can see the attached image.")
+
+    async def empty_workspace_context(db, vector_db, limit):
+        return ""
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"calculate_ndvi"})
+    monkeypatch.setattr(agent_handler, "_build_workspace_context", empty_workspace_context)
+
+    _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="Inspect this image.",
+                language="en",
+                attachments=[
+                    {
+                        "name": "preview.png",
+                        "kind": "image",
+                        "mime_type": "image/png",
+                        "size": 16,
+                        "image_data_url": "data:image/png;base64,AAAA",
+                        "width": 2,
+                        "height": 2,
+                    }
+                ],
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+
+    user_message = next(message for message in calls[0]["messages"] if message["role"] == "user")
+    content = user_message["content"]
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert "preview.png" in content[0]["text"]
+    assert content[1] == {
+        "type": "image_url",
+        "image_url": {"url": "data:image/png;base64,AAAA", "detail": "auto"},
+    }
+
+
 def test_agent_rejects_unknown_tool_allow_list(monkeypatch):
     def raise_unknown_tool(names):
         raise ValueError("Unknown AI function(s): missing_tool")

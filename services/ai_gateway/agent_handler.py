@@ -99,6 +99,10 @@ class AgentRequestPayload(BaseModel):
         default=None,
         description="Optional allow-list of registered gateway tools the agent may call.",
     )
+    attachments: list["AgentAttachment"] = Field(
+        default_factory=list,
+        description="Optional files or images uploaded with the agent message.",
+    )
 
     @field_validator("tool_names")
     @classmethod
@@ -115,6 +119,18 @@ class AgentRequestPayload(BaseModel):
         if has_target != has_type:
             raise ValueError("target_id and data_type must be provided together")
         return self
+
+
+class AgentAttachment(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    kind: Literal["image", "text", "file"] = "file"
+    mime_type: str | None = Field(default=None, max_length=120)
+    size: int | None = Field(default=None, ge=0)
+    text_excerpt: str | None = Field(default=None, max_length=12000)
+    image_data_url: str | None = Field(default=None, max_length=4_500_000)
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
+    truncated: bool = False
 
 
 class AgentStep(BaseModel):
@@ -280,7 +296,17 @@ async def _build_agent_messages(
             messages.append({"role": "system", "content": archive_context})
 
     messages.extend(conversation_history)
-    messages.append({"role": "user", "content": await _build_agent_user_prompt(payload, db, vector_db)})
+    user_prompt = await _build_agent_user_prompt(payload, db, vector_db)
+    image_parts = _build_image_content_parts(payload.attachments)
+    if image_parts:
+        messages.append(
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": user_prompt}, *image_parts],
+            }
+        )
+    else:
+        messages.append({"role": "user", "content": user_prompt})
     return messages
 
 
@@ -330,8 +356,56 @@ async def _build_agent_user_prompt(
     if target_context:
         sections.append(target_context)
 
+    attachment_context = _build_attachment_context(payload.attachments)
+    if attachment_context:
+        sections.append(attachment_context)
+
     sections.append(f"[User Task]\n{payload.user_prompt}")
     return "\n\n".join(sections)
+
+
+def _build_attachment_context(attachments: list[AgentAttachment]) -> str:
+    if not attachments:
+        return ""
+
+    lines = ["[Uploaded Attachments]"]
+    for index, attachment in enumerate(attachments, start=1):
+        parts = [
+            f"{index}. name={attachment.name}",
+            f"kind={attachment.kind}",
+        ]
+        if attachment.mime_type:
+            parts.append(f"mime_type={attachment.mime_type}")
+        if attachment.size is not None:
+            parts.append(f"size_bytes={attachment.size}")
+        if attachment.width and attachment.height:
+            parts.append(f"dimensions={attachment.width}x{attachment.height}")
+        if attachment.truncated:
+            parts.append("content_truncated=true")
+        lines.append(", ".join(parts))
+        if attachment.text_excerpt:
+            lines.append(f"excerpt:\n{attachment.text_excerpt}")
+        elif attachment.kind == "image" and attachment.image_data_url:
+            lines.append("image_data=attached as an OpenAI-compatible image_url part")
+
+    return "\n".join(lines)
+
+
+def _build_image_content_parts(attachments: list[AgentAttachment]) -> list[dict[str, Any]]:
+    parts = []
+    for attachment in attachments:
+        if attachment.kind != "image" or not attachment.image_data_url:
+            continue
+        parts.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": attachment.image_data_url,
+                    "detail": "auto",
+                },
+            }
+        )
+    return parts
 
 
 async def _build_target_context(

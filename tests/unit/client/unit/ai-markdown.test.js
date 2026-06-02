@@ -1,9 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AIModule } from '@app/modules/AIModule.js';
+import { AIAPI } from '@app/api/ai.js';
 
 
 describe('AIModule markdown rendering', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        document.body.innerHTML = '';
+    });
+
     it('renders common markdown while escaping raw html', () => {
         const ai = new AIModule({});
         const html = ai._renderMarkdown([
@@ -38,5 +44,63 @@ describe('AIModule markdown rendering', () => {
 
         expect(html).not.toContain('javascript:alert');
         expect(html).toContain('https://example.com');
+    });
+
+    it('renders agent attachment previews and pending state', () => {
+        const ai = new AIModule({});
+        const html = ai._renderAgentMessage({
+            role: 'user',
+            content: 'Please inspect this.',
+            attachments: [
+                {
+                    name: 'scene.png',
+                    kind: 'image',
+                    mime_type: 'image/png',
+                    size: 100,
+                    image_data_url: 'data:image/png;base64,AAAA',
+                    width: 10,
+                    height: 10,
+                },
+                {
+                    name: 'notes.md',
+                    kind: 'text',
+                    mime_type: 'text/markdown',
+                    size: 24,
+                },
+            ],
+        });
+        const pending = ai._renderAgentMessage({ role: 'assistant', pending: true });
+
+        expect(html).toContain('scene.png');
+        expect(html).toContain('notes.md');
+        expect(html).toContain('data:image/png;base64,AAAA');
+        expect(pending).toContain('Thinking');
+    });
+
+    it('renders the user message before the agent request resolves', async () => {
+        document.body.innerHTML = `
+            <textarea id="ai-prompt-input">Hello</textarea>
+            <div id="ai-agent-messages"></div>
+            <div id="ai-agent-session-label"></div>
+            <div id="ai-agent-attachment-list"></div>
+        `;
+        const ai = new AIModule({});
+        vi.spyOn(AIAPI, 'agent').mockImplementation(async () => {
+            expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Hello');
+            expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Thinking');
+            return {
+                session_id: 'session-a',
+                answer: 'Done.',
+                steps: [],
+                used_tools: [],
+            };
+        });
+
+        await ai._runAgent({ user_prompt: 'Hello', attachments: [] });
+
+        const html = document.getElementById('ai-agent-messages').innerHTML;
+        expect(html).toContain('Hello');
+        expect(html).toContain('Done.');
+        expect(html).not.toContain('Thinking');
     });
 });

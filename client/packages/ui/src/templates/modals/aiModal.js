@@ -106,6 +106,22 @@ export const aiModal =`
                     class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 
                     placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all resize-none"> 
                 </textarea> 
+                <div id="ai-agent-attachment-controls" class="hidden space-y-2">
+                    <input id="ai-agent-file-input" type="file" multiple
+                        accept="image/*,.txt,.md,.markdown,.json,.geojson,.csv,.xml,.log,.py,.js,.ts,.html,.css,.yml,.yaml"
+                        class="hidden">
+                    <div class="flex items-center justify-between gap-3">
+                        <button id="ai-agent-attachment-picker" type="button"
+                            class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-600 shadow-sm transition-all hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.5 6.5l-8.9 8.9a3 3 0 104.2 4.2l9.2-9.2a5 5 0 00-7.1-7.1L4.8 12.4"/>
+                            </svg>
+                            <span>Attach files</span>
+                        </button>
+                        <div class="text-[10px] font-medium text-slate-400">Images, Markdown, text, JSON, CSV</div>
+                    </div>
+                    <div id="ai-agent-attachment-list" class="flex flex-wrap gap-2"></div>
+                </div>
             </div>
 
             <!-- Backend function launcher -->
