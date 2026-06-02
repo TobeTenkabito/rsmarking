@@ -22,10 +22,33 @@ function buildFormData(fields) {
 async function request(url, options = {}, errorMsg = 'Request failed') {
   const response = await fetch(url, options);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail ?? `${errorMsg}: ${response.status}`);
+    throw new Error(await readErrorDetail(response, errorMsg));
   }
   return response.json();
+}
+
+function stringifyDetail(detail) {
+  if (detail === null || detail === undefined || detail === '') return null;
+  if (typeof detail === 'string') return detail;
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return String(detail);
+  }
+}
+
+
+async function readErrorDetail(response, errorMsg) {
+  const fallback = `${errorMsg}: ${response.status}`;
+  const body = await response.text().catch(() => '');
+  if (!body) return fallback;
+
+  try {
+    const err = JSON.parse(body);
+    return stringifyDetail(err.detail ?? err.error ?? err.message) ?? fallback;
+  } catch {
+    return body;
+  }
 }
 
 function sleep(ms) {
@@ -86,10 +109,7 @@ async function waitForAcceptedJob(result) {
 async function requestBlob(path, options = {}, errorMsg = 'Request failed') {
   const response = await fetch(`${BASE_URL}${path}`, options);
   if (!response.ok) {
-    const err = await response.clone().json().catch(async () => ({
-      detail: await response.text().catch(() => ''),
-    }));
-    throw new Error(err.detail ?? `${errorMsg}: ${response.status}`);
+    throw new Error(await readErrorDetail(response, errorMsg));
   }
   const blob = await response.blob();
   return {

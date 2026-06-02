@@ -182,56 +182,40 @@ export class ScriptModule {
         this.isExecuting = true;
         this.updateExecutionUI(true);
 
-    try {
-        // 显示进度
-        this.app.ui.showGlobalLoading(t('script.validation.running'));
+        try {
+            // 显示进度
+            this.app.ui.showGlobalLoading(t('script.validation.running'));
 
-        // 调用API
-        const response = await RasterAPI.executeScript(
-            this.currentScript,
-            this.selectedRasterIds,
-            this.outputName
-        );
+            // 调用API
+            const result = await RasterAPI.executeScript(
+                this.currentScript,
+                this.selectedRasterIds,
+                this.outputName
+            );
 
-        // 检查HTTP响应状态
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('[ScriptModule] HTTP错误:', response.status, errorText);
+            if (result?.status === 'success') {
+                this.app.ui.showToast(t('script.toast.success'), 'success');
 
-            // 尝试解析错误信息
-            try {
-                const errorJson = JSON.parse(errorText);
-                throw new Error(errorJson.detail || '服务器错误');
-            } catch {
-                throw new Error(`服务器错误 (${response.status}): ${errorText}`);
+                // 显示执行日志（如果有）
+                // 保存到历史
+                this.saveToHistory();
+
+                // 刷新数据
+                await this.app.raster.refreshData();
+
+                // 关闭弹窗
+                this.closeScriptEditor();
+            } else {
+                throw new Error(result?.error || result?.message || '脚本执行失败');
             }
+        } catch (error) {
+            console.error('[ScriptModule] 执行失败:', error);
+            this.app.ui.showToast(t('script.toast.failed', { message: error.message }), 'error');
+        } finally {
+            this.isExecuting = false;
+            this.updateExecutionUI(false);
+            this.app.ui.hideGlobalLoading();
         }
-
-        const result = await response.json();
-
-        if (result.status === 'success') {
-            this.app.ui.showToast(t('script.toast.success'), 'success');
-
-            // 显示执行日志（如果有）
-            // 保存到历史
-            this.saveToHistory();
-
-            // 刷新数据
-            await this.app.raster.refreshData();
-
-            // 关闭弹窗
-            this.closeScriptEditor();
-        } else {
-            throw new Error(result.error || result.message || '脚本执行失败');
-        }
-    } catch (error) {
-        console.error('[ScriptModule] 执行失败:', error);
-        this.app.ui.showToast(t('script.toast.failed', { message: error.message }), 'error');
-    } finally {
-        this.isExecuting = false;
-        this.updateExecutionUI(false);
-        this.app.ui.hideGlobalLoading();
-    }
     }
 
     /**

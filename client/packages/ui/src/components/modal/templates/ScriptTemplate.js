@@ -64,7 +64,7 @@ export const ScriptTemplate = {
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs text-slate-500">环境:</span>
                                 <span class="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
-                                    Python 3.9 + GDAL/Rasterio
+                                    Python 3.10 + Rasterio/Numpy
                                 </span>
                             </div>
                         </div>
@@ -87,7 +87,7 @@ export const ScriptTemplate = {
                             id="script-editor-textarea"
                             class="flex-1 h-full p-4 font-mono text-sm bg-slate-50 resize-none
                                    focus:outline-none focus:bg-white"
-                            placeholder="# Enter Python code here&#10;# Available paths:&#10;#   /input/  - Input images directory&#10;#   /output/ - Output results directory&#10;&#10;import rasterio&#10;import numpy as np&#10;&#10;# Read image&#10;with rasterio.open('/input/image.tif') as src:&#10;    data = src.read()&#10;    profile = src.profile&#10;&#10;# Process data&#10;# ...&#10;&#10;# Save result&#10;with rasterio.open('/output/result.tif', 'w', **profile) as dst:&#10;    dst.write(processed_data)"
+                            placeholder="# Enter Python code here&#10;# Available variables: input_file, input_0, input_1, ... and OUTPUT_FILE&#10;# Container paths: /data/inputs/ and /data/outputs/&#10;&#10;import rasterio&#10;import numpy as np&#10;&#10;# Read the first selected raster&#10;with rasterio.open(input_file) as src:&#10;    data = src.read(1)&#10;    profile = src.profile&#10;&#10;# Process data&#10;processed_data = data&#10;&#10;# Save result&#10;with rasterio.open(OUTPUT_FILE, 'w', **profile) as dst:&#10;    dst.write(processed_data, 1)"
                             spellcheck="false"
                         >${currentScript}</textarea>
                     </div>
@@ -105,7 +105,7 @@ export const ScriptTemplate = {
                                 <div class="text-[10px] text-amber-700 space-y-1">
                                     <div>• 脚本在隔离的Docker容器中执行，最大运行时间10分钟</div>
                                     <div>• 禁止使用 exec, eval, __import__ 等危险函数</div>
-                                    <div>• 可用库: numpy, scipy, rasterio, gdal, scikit-image</div>
+                                    <div>• 可用库: numpy, scipy, rasterio, scikit-image</div>
                                 </div>
                             </div>
                         </div>

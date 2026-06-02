@@ -14,6 +14,28 @@ from services.data_service.processor import RasterProcessor
 logger = logging.getLogger("data_service.executor_bridge")
 
 EXECUTOR_URL = os.getenv("EXECUTOR_SERVICE_URL", "http://localhost:8004/execute")
+MAX_EXECUTOR_LOG_LINES = 40
+MAX_EXECUTOR_LOG_CHARS = 4000
+
+
+def _trim_executor_logs(logs: str) -> str:
+    lines = [line for line in logs.splitlines() if line.strip()]
+    excerpt = "\n".join(lines[-MAX_EXECUTOR_LOG_LINES:])
+    if len(excerpt) <= MAX_EXECUTOR_LOG_CHARS:
+        return excerpt
+    return excerpt[-MAX_EXECUTOR_LOG_CHARS:]
+
+
+def _format_executor_error(res_data: dict) -> str:
+    message = str(
+        res_data.get("error")
+        or res_data.get("message")
+        or "Sandbox execution failed"
+    )
+    logs = _trim_executor_logs(str(res_data.get("logs") or ""))
+    if logs and logs not in message:
+        return f"{message}\n{logs}"
+    return message
 
 
 def _resolve_executor_input_path(raster) -> str:
@@ -83,7 +105,7 @@ async def dispatch_user_script(
     if res_data.get("status") != "success":
         raise HTTPException(
             status_code=500,
-            detail=res_data.get("error") or res_data.get("logs") or "Sandbox execution failed",
+            detail=_format_executor_error(res_data),
         )
 
     tmp_path = res_data.get("output_path") or os.path.join(UPLOAD_DIR, raw_output_filename)
