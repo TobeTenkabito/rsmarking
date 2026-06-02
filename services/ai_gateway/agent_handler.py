@@ -1,31 +1,34 @@
-import json
 import logging
-import time
 import uuid
-from collections import deque
-from threading import Lock
 from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    from litellm import acompletion
-except ImportError:  # pragma: no cover - exercised only outside the project env
-    acompletion = None
-
 from services.ai_gateway.context_builder import build_map_context
-from services.ai_gateway.config import build_litellm_kwargs, get_ai_model
+from services.ai_gateway.config import get_ai_model
+from services.ai_gateway.llm_client import call_chat_completion
+from services.ai_gateway.agent_messages import (
+    assistant_message as _assistant_message,
+    compact_json as _compact_json,
+    json_dumps as _json_dumps,
+    message_content as _message_content,
+    message_tool_calls as _message_tool_calls,
+    normalize_tool_call as _normalize_tool_call,
+    parse_tool_arguments as _parse_tool_arguments,
+)
+from services.ai_gateway.agent_session import (
+    MAX_SESSION_MESSAGES,
+    append_session_turn as _append_session_turn,
+    clear_session as _clear_session,
+    get_session_history as _get_session_history,
+    get_session_messages,
+    restore_session_messages,
+)
 from services.ai_gateway.schema_validator import AILanguage, DataType
 
 logger = logging.getLogger("ai_gateway.agent_handler")
-
-SESSION_TTL_SECONDS = 6 * 60 * 60
-MAX_SESSION_MESSAGES = 20
-_SESSION_LOCK = Lock()
-_AGENT_SESSIONS: dict[str, dict[str, Any]] = {}
-
 
 class AgentRequestPayload(BaseModel):
     """Minimal tool-using agent request for the AI gateway."""
@@ -148,17 +151,15 @@ async def handle_agent(
     messages = await _build_agent_messages(payload, db, vector_db, conversation_history)
     current_model = get_ai_model(model_name)
     steps: list[AgentStep] = []
-    if acompletion is None:
-        raise RuntimeError("LiteLLM is required to run the AI agent.")
 
     for step_number in range(1, payload.max_steps + 1):
-        response = await acompletion(**build_litellm_kwargs(
+        response = await call_chat_completion(
             model_name=current_model,
             messages=messages,
             tools=tools,
             tool_choice="auto",
             temperature=0.2,
-        ))
+        )
         response_message = response.choices[0].message
         tool_calls = _message_tool_calls(response_message)
         messages.append(_assistant_message(response_message, tool_calls))
@@ -243,11 +244,11 @@ async def handle_agent(
             ),
         }
     )
-    response = await acompletion(**build_litellm_kwargs(
+    response = await call_chat_completion(
         model_name=current_model,
         messages=messages,
         temperature=0.2,
-    ))
+    )
     final_message = response.choices[0].message
     return _finalize_agent_response(
         payload=payload,

@@ -1,9 +1,9 @@
 import logging
 import json
 from typing import Union
-from litellm import acompletion
 from sqlalchemy.ext.asyncio import AsyncSession
-from services.ai_gateway.config import build_litellm_kwargs, get_ai_model
+from services.ai_gateway.config import get_ai_model
+from services.ai_gateway.llm_client import call_chat_completion
 from services.ai_gateway.tool_executor import execute_vector_query
 from services.ai_gateway.schema_validator import (
     AILanguage, TaskMode, DataType,
@@ -63,13 +63,13 @@ async def call_llm_with_retry(
         try:
             # 将普通的 completion 升级为支持 tools 的循环 (最大允许3次连续调用防止死循环)
             for step in range(3):
-                response = await acompletion(**build_litellm_kwargs(
+                response = await call_chat_completion(
                     model_name=current_model,
                     messages=messages,
                     tools=tools,
                     tool_choice="auto" if tools else None,
                     temperature=0.1 if mode == TaskMode.MODIFY else 0.7,
-                ))
+                )
 
                 response_message = response.choices[0].message
                 messages.append(response_message)  # 将 AI 的回复（或调用请求）放入历史

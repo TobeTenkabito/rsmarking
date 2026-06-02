@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,8 +21,6 @@ load_dotenv(ENV_PATH, override=False)
 
 _EMPTY_VALUES = {"", "your model", '"your model"', "your key", '"your key"'}
 _TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
-_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5")
-_ANTHROPIC_THINKING_MARKERS = ("claude-3-7", "claude-sonnet-4", "claude-opus-4")
 
 
 @dataclass(frozen=True)
@@ -69,66 +66,6 @@ def get_ai_model(model_name: str | None = None) -> str:
     return get_ai_settings(model_name).model
 
 
-def build_litellm_kwargs(
-    *,
-    model_name: str | None = None,
-    messages: list[dict[str, Any]],
-    **kwargs: Any,
-) -> dict[str, Any]:
-    settings = get_ai_settings(model_name)
-    request_kwargs = {
-        "model": settings.model,
-        "messages": messages,
-        **{key: value for key, value in kwargs.items() if value is not None},
-    }
-    if settings.api_key:
-        request_kwargs["api_key"] = settings.api_key
-    if settings.api_base:
-        request_kwargs["api_base"] = settings.api_base
-
-    reasoning_kwargs = build_reasoning_kwargs(settings)
-    if reasoning_kwargs:
-        request_kwargs.update(reasoning_kwargs)
-    return request_kwargs
-
-
-def build_reasoning_kwargs(settings: AISettings) -> dict[str, Any]:
-    if not settings.reasoning_enabled:
-        return {}
-    if not _reasoning_supported(settings):
-        logger.info(
-            "AI reasoning mode requested but not enabled for model=%s provider=%s",
-            settings.model,
-            settings.provider or "unknown",
-        )
-        return {}
-
-    style = _resolve_reasoning_style(settings)
-    params: dict[str, Any] = {}
-    if style == "openai":
-        if settings.reasoning_effort:
-            params["reasoning_effort"] = settings.reasoning_effort
-    elif style == "anthropic":
-        budget = settings.reasoning_budget_tokens or 1024
-        params["thinking"] = {"type": "enabled", "budget_tokens": budget}
-    elif style in {"dashscope", "qwen"}:
-        extra_body = {"enable_thinking": True}
-        if settings.reasoning_budget_tokens is not None:
-            extra_body["thinking_budget"] = settings.reasoning_budget_tokens
-        params["extra_body"] = extra_body
-
-    params = _deep_merge(params, settings.reasoning_extra)
-    if params:
-        logger.info(
-            "AI reasoning mode enabled for model=%s provider=%s style=%s params=%s",
-            settings.model,
-            settings.provider or "unknown",
-            style,
-            sorted(params.keys()),
-        )
-    return params
-
-
 def log_ai_settings() -> None:
     settings = get_ai_settings()
     logger.info(
@@ -139,46 +76,6 @@ def log_ai_settings() -> None:
         bool(settings.api_key),
         settings.reasoning_enabled,
     )
-
-
-def _reasoning_supported(settings: AISettings) -> bool:
-    model = settings.model.lower()
-    base_model = model.split("/", 1)[-1]
-
-    if settings.reasoning_model_allowlist:
-        return _matches_any(model, settings.reasoning_model_allowlist) or _matches_any(
-            base_model,
-            settings.reasoning_model_allowlist,
-        )
-
-    provider = (settings.provider or "").lower()
-    if provider == "openai":
-        return base_model.startswith(_OPENAI_REASONING_PREFIXES)
-    if provider == "anthropic":
-        return any(marker in base_model for marker in _ANTHROPIC_THINKING_MARKERS)
-    if provider == "deepseek":
-        return "reasoner" in base_model or base_model.endswith("-r1")
-    if provider in {"dashscope", "qwen"}:
-        return "qwen3" in base_model or "qwq" in base_model
-    return False
-
-
-def _resolve_reasoning_style(settings: AISettings) -> str:
-    style = settings.reasoning_style
-    if style != "auto":
-        return style
-    provider = (settings.provider or "").lower()
-    model = settings.model.lower()
-    base_model = model.split("/", 1)[-1]
-    if provider == "anthropic":
-        return "anthropic"
-    if provider in {"dashscope", "qwen"}:
-        return "dashscope"
-    if provider == "deepseek":
-        return "custom" if not settings.reasoning_extra else "custom"
-    if provider == "openai" or base_model.startswith(_OPENAI_REASONING_PREFIXES):
-        return "openai"
-    return "custom"
 
 
 def _provider_from_model(model: str) -> str | None:
@@ -268,21 +165,3 @@ def _json_env(name: str) -> dict[str, Any]:
         logger.warning("Ignoring invalid JSON environment value for %s", name)
         return {}
     return parsed if isinstance(parsed, dict) else {}
-
-
-def _matches_any(value: str, patterns: tuple[str, ...]) -> bool:
-    for pattern in patterns:
-        regex = "^" + re.escape(pattern).replace("\\*", ".*") + "$"
-        if re.match(regex, value):
-            return True
-    return False
-
-
-def _deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
-    result = dict(base)
-    for key, value in updates.items():
-        if isinstance(result.get(key), dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
