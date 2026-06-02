@@ -12,6 +12,7 @@ if BASE_DIR not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from services.ai_gateway.config import log_ai_settings
 from services.ai_gateway.router import router as ai_router
 
 logging.basicConfig(
@@ -24,6 +25,7 @@ logger = logging.getLogger("ai_gateway.service")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== AI GATEWAY SERVICE STARTUP BEGIN ===")
+    log_ai_settings()
     logger.info("=== AI GATEWAY SERVICE STARTUP OK ===")
     yield
     logger.info("=== AI GATEWAY SERVICE SHUTDOWN ===")

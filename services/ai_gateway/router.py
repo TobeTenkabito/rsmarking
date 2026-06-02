@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,6 +21,7 @@ from .conversation_archive import (
     get_conversation_archive,
     list_conversation_archives,
 )
+from .config import get_ai_model
 from .function_registry import (
     AIFunctionInvokeRequest,
     invoke_registered_function,
@@ -29,8 +29,6 @@ from .function_registry import (
 )
 from .schema_validator import AIRequestPayload
 from .translator import process_ai_task
-
-MODEL = os.getenv("AI_MODEL", "deepseek/deepseek-chat")
 
 logger = logging.getLogger("ai_gateway.router")
 
@@ -90,7 +88,7 @@ async def run_ai_agent(
     vector_db: AsyncSession = Depends(get_vector_db),
 ):
     try:
-        return await handle_agent(payload, db, vector_db, MODEL)
+        return await handle_agent(payload, db, vector_db, get_ai_model())
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:

@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import time
 import uuid
 from collections import deque
@@ -17,6 +16,7 @@ except ImportError:  # pragma: no cover - exercised only outside the project env
     acompletion = None
 
 from services.ai_gateway.context_builder import build_map_context
+from services.ai_gateway.config import build_litellm_kwargs, get_ai_model
 from services.ai_gateway.schema_validator import AILanguage, DataType
 
 logger = logging.getLogger("ai_gateway.agent_handler")
@@ -146,19 +146,19 @@ async def handle_agent(
     allowed_tool_names = _get_allowed_tool_names(payload.tool_names)
     conversation_history = _get_session_history(session_id, payload.history_limit)
     messages = await _build_agent_messages(payload, db, vector_db, conversation_history)
-    current_model = os.getenv("AI_NAME", model_name or os.getenv("AI_MODEL", "deepseek/deepseek-chat"))
+    current_model = get_ai_model(model_name)
     steps: list[AgentStep] = []
     if acompletion is None:
         raise RuntimeError("LiteLLM is required to run the AI agent.")
 
     for step_number in range(1, payload.max_steps + 1):
-        response = await acompletion(
-            model=current_model,
+        response = await acompletion(**build_litellm_kwargs(
+            model_name=current_model,
             messages=messages,
             tools=tools,
             tool_choice="auto",
             temperature=0.2,
-        )
+        ))
         response_message = response.choices[0].message
         tool_calls = _message_tool_calls(response_message)
         messages.append(_assistant_message(response_message, tool_calls))
@@ -243,11 +243,11 @@ async def handle_agent(
             ),
         }
     )
-    response = await acompletion(
-        model=current_model,
+    response = await acompletion(**build_litellm_kwargs(
+        model_name=current_model,
         messages=messages,
         temperature=0.2,
-    )
+    ))
     final_message = response.choices[0].message
     return _finalize_agent_response(
         payload=payload,
