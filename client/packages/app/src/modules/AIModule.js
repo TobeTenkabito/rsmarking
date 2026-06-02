@@ -8,6 +8,7 @@ const AGENT_ATTACHMENT_LIMIT = 6;
 const AGENT_TEXT_EXCERPT_CHARS = 12000;
 const AGENT_TEXT_FILE_BYTES = 512 * 1024;
 const AGENT_IMAGE_FILE_BYTES = 3 * 1024 * 1024;
+const AGENT_RESPONSE_REVEAL_DELAY_MS = 90;
 
 export class AIModule {
     constructor(app) {
@@ -150,10 +151,11 @@ export class AIModule {
             id: this._createMessageId(),
             role: 'assistant',
             content: '',
+            visibleContent: '',
             pending: true,
             pendingLabel: this._agentQueueDepth > 0 ? 'Queued' : 'Waiting for AI response',
             steps: [],
-            verbatim: true,
+            streaming: false,
         };
 
         this._agentConversation.push(userMessage, assistantMessage);
@@ -181,9 +183,8 @@ export class AIModule {
 
             if (result.session_id) this._sessionId = result.session_id;
             assistantMessage.pending = false;
-            assistantMessage.content = result.answer ?? '';
             assistantMessage.steps = result.steps ?? [];
-            this._renderAgentConversation();
+            await this._revealAgentResponse(assistantMessage, result.answer ?? '');
             if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
                 await this._refreshSidebar('raster');
             }
@@ -192,6 +193,76 @@ export class AIModule {
         const task = this._agentQueueTail.catch(() => {}).then(runRequest);
         this._agentQueueTail = task.catch(() => {});
         return task;
+    }
+
+    async _revealAgentResponse(message, answer) {
+        const chunks = this._splitResponseIntoRevealChunks(answer);
+        message.content = answer;
+        message.visibleContent = '';
+        message.streaming = true;
+
+        if (!chunks.length) {
+            message.visibleContent = '';
+            message.streaming = false;
+            this._renderAgentConversation();
+            return;
+        }
+
+        for (const chunk of chunks) {
+            message.visibleContent += chunk;
+            this._renderAgentConversation();
+            await this._delayAgentReveal();
+        }
+
+        message.visibleContent = answer;
+        message.streaming = false;
+        this._renderAgentConversation();
+    }
+
+    _splitResponseIntoRevealChunks(text = '') {
+        const value = String(text);
+        if (!value) return [];
+
+        const chunks = [];
+        const sentenceEndings = new Set(['.', '!', '?', '\u3002', '\uff01', '\uff1f']);
+        const closingMarks = new Set([
+            '"', "'", ')', ']', '}', '*', '_', '~', '`',
+            '\u201d', '\u2019', '\uff09', '\u3011', '\u300b', '\u300d', '\u300f',
+        ]);
+        let start = 0;
+
+        const pushChunk = (end) => {
+            if (end > start) chunks.push(value.slice(start, end));
+            start = end;
+        };
+
+        for (let i = 0; i < value.length; i += 1) {
+            if (value[i] === '\n' && value[i + 1] === '\n') {
+                let end = i + 2;
+                while (value[end] === '\n') end += 1;
+                pushChunk(end);
+                i = end - 1;
+                continue;
+            }
+
+            if (!sentenceEndings.has(value[i])) continue;
+
+            let end = i + 1;
+            while (sentenceEndings.has(value[end])) end += 1;
+            while (closingMarks.has(value[end])) end += 1;
+
+            if (end < value.length && !/\s/.test(value[end])) continue;
+            while (end < value.length && /\s/.test(value[end])) end += 1;
+
+            pushChunk(end);
+        }
+
+        pushChunk(value.length);
+        return chunks.length ? chunks : [value];
+    }
+
+    _delayAgentReveal() {
+        return new Promise(resolve => setTimeout(resolve, AGENT_RESPONSE_REVEAL_DELAY_MS));
     }
 
     startNewAgentChat() {
@@ -1202,7 +1273,7 @@ export class AIModule {
             ? this._renderPendingAgentMessage(message)
             : isUser
                 ? `<div class="break-words">${this._renderMarkdown(message.content)}</div>`
-                : this._renderVerbatimAgentOutput(message.content);
+                : this._renderAgentMarkdownOutput(message);
 
         return `
             <div class="flex ${wrapperClass} gap-2">
@@ -1228,8 +1299,14 @@ export class AIModule {
             </div>`;
     }
 
-    _renderVerbatimAgentOutput(content = '') {
-        return `<div class="whitespace-pre-wrap break-words">${this._escapeHTML(content)}</div>`;
+    _renderAgentMarkdownOutput(message = {}) {
+        const content = message.streaming
+            ? message.visibleContent ?? ''
+            : message.visibleContent || message.content || '';
+        const cursor = message.streaming
+            ? '<span class="ml-0.5 inline-block h-3 w-1 animate-pulse rounded-sm bg-violet-500 align-[-1px]"></span>'
+            : '';
+        return `<div class="break-words">${this._renderMarkdown(content)}${cursor}</div>`;
     }
 
     _renderMessageAttachments(attachments = [], isUser = false) {

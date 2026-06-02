@@ -77,17 +77,74 @@ describe('AIModule markdown rendering', () => {
         expect(pending).toContain('Waiting for AI response');
     });
 
-    it('renders assistant output verbatim after completion', () => {
+    it('renders assistant markdown after completion', () => {
         const ai = new AIModule({});
         const html = ai._renderAgentMessage({
             role: 'assistant',
-            content: '**not bold**\nline <unsafe>',
+            content: '**bold**\nline <unsafe>\n[ok](https://example.com)',
         });
 
-        expect(html).toContain('**not bold**');
+        expect(html).toContain('<strong>bold</strong>');
         expect(html).toContain('line &lt;unsafe&gt;');
-        expect(html).not.toContain('<strong>');
-        expect(html).toContain('whitespace-pre-wrap');
+        expect(html).toContain('https://example.com');
+        expect(html).not.toContain('<unsafe>');
+        expect(html).not.toContain('whitespace-pre-wrap');
+    });
+
+    it('renders assistant errors even when visible content is empty', () => {
+        const ai = new AIModule({});
+        const html = ai._renderAgentMessage({
+            role: 'assistant',
+            content: 'Request failed <unsafe>',
+            visibleContent: '',
+            error: true,
+        });
+
+        expect(html).toContain('Request failed &lt;unsafe&gt;');
+    });
+
+    it('splits agent responses into sentence-sized reveal chunks', () => {
+        const ai = new AIModule({});
+
+        expect(ai._splitResponseIntoRevealChunks('First sentence. Second sentence! Third?')).toEqual([
+            'First sentence. ',
+            'Second sentence! ',
+            'Third?',
+        ]);
+        expect(ai._splitResponseIntoRevealChunks('Resolution is 3.14 meters. **Bold.** Done.')).toEqual([
+            'Resolution is 3.14 meters. ',
+            '**Bold.** ',
+            'Done.',
+        ]);
+    });
+
+    it('reveals agent responses progressively before finalizing', async () => {
+        document.body.innerHTML = '<div id="ai-agent-messages"></div>';
+        const ai = new AIModule({});
+        const message = {
+            role: 'assistant',
+            content: '',
+            visibleContent: '',
+            pending: false,
+            streaming: false,
+            steps: [],
+        };
+        const observed = [];
+        ai._agentConversation = [message];
+        vi.spyOn(ai, '_delayAgentReveal').mockImplementation(async () => {
+            observed.push(message.visibleContent);
+        });
+
+        await ai._revealAgentResponse(message, 'First sentence. Second sentence.');
+
+        expect(observed).toEqual([
+            'First sentence. ',
+            'First sentence. Second sentence.',
+        ]);
+        expect(message.streaming).toBe(false);
+        expect(message.content).toBe('First sentence. Second sentence.');
+        expect(message.visibleContent).toBe('First sentence. Second sentence.');
+        expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Second sentence.');
     });
 
     it('renders the user message before the agent request resolves', async () => {
@@ -98,6 +155,7 @@ describe('AIModule markdown rendering', () => {
             <div id="ai-agent-attachment-list"></div>
         `;
         const ai = new AIModule({});
+        vi.spyOn(ai, '_delayAgentReveal').mockResolvedValue();
         vi.spyOn(AIAPI, 'agent').mockImplementation(async () => {
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Hello');
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Waiting for AI response');
@@ -127,6 +185,7 @@ describe('AIModule markdown rendering', () => {
         const ai = new AIModule({});
         let resolveFirst;
         let resolveSecond;
+        vi.spyOn(ai, '_delayAgentReveal').mockResolvedValue();
         vi.spyOn(AIAPI, 'agent')
             .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
             .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
