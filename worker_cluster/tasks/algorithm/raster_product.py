@@ -125,6 +125,21 @@ def _run_operation(
             "resampling_method": params.get("resampling_method", "bilinear"),
         }
 
+    if operation == "atmospheric_correction":
+        source_path = _path_list(inputs, min_count=1)[0]
+        correction_meta = RasterProcessor.atmospheric_correction(
+            input_path=source_path,
+            output_path=raw_path,
+            method=params.get("method", "auto"),
+            sensor=params.get("sensor", "auto"),
+            scale_factor=params.get("scale_factor"),
+            offset=params.get("offset"),
+            dark_percentile=float(params.get("dark_percentile", 1.0)),
+            bright_percentile=float(params.get("bright_percentile", 99.0)),
+            clamp=bool(params.get("clamp", True)),
+        )
+        return {"operation": operation, "correction": correction_meta}
+
     if operation == "clip_raster_by_vector":
         raster_path = inputs.get("raster_path")
         geometries = inputs.get("geometries") or []

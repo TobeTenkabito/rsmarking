@@ -65,6 +65,8 @@ def _task_type(operation: str, prefix: str) -> str:
         return prefix
     if operation == "resample":
         return "resample_raster"
+    if operation == "atmospheric_correction":
+        return "atmospheric_correction"
     return operation
 
 

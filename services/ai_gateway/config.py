@@ -66,6 +66,18 @@ def get_ai_model(model_name: str | None = None) -> str:
     return get_ai_settings(model_name).model
 
 
+def build_litellm_kwargs(
+    *,
+    model_name: str | None = None,
+    messages: list[dict[str, Any]],
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Compatibility wrapper; request construction lives in llm_client."""
+    from services.ai_gateway.llm_client import build_litellm_kwargs as _build_litellm_kwargs
+
+    return _build_litellm_kwargs(model_name=model_name, messages=messages, **kwargs)
+
+
 def log_ai_settings() -> None:
     settings = get_ai_settings()
     logger.info(

@@ -78,6 +78,55 @@ class ResampleRasterArgs(BaseModel):
     new_name: str = Field(..., description="Name for the generated raster.")
 
 
+class AtmosphericCorrectionArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    method: Literal[
+        "auto",
+        "surface_reflectance",
+        "metadata_scale",
+        "dos1",
+        "quac",
+        "lasrc",
+        "ledaps",
+        "sen2cor",
+        "modis_sr",
+        "flaash",
+        "sixs",
+    ] = Field(
+        default="auto",
+        description=(
+            "Correction mode. auto normalizes official SR products and uses DOS1 for raw/TOA-like inputs; "
+            "LaSRC/LEDAPS/Sen2Cor/MODIS/FLAASH/6S aliases apply compatible surface-reflectance scaling."
+        ),
+    )
+    sensor: Literal["auto", "landsat", "sentinel2", "modis", "gaofen", "generic"] = Field(
+        default="auto",
+        description="Optional sensor/product family hint for compatibility detection.",
+    )
+    new_name: str = Field(..., description="Name for the generated corrected raster.")
+    scale_factor: float | None = Field(
+        default=None,
+        description="Optional explicit scale factor applied before correction.",
+    )
+    offset: float | None = Field(
+        default=None,
+        description="Optional explicit reflectance offset applied before correction.",
+    )
+    dark_percentile: float = Field(
+        default=1.0,
+        ge=0,
+        le=100,
+        description="Dark-object percentile used by DOS1/QUAC modes.",
+    )
+    bright_percentile: float = Field(
+        default=99.0,
+        ge=0,
+        le=100,
+        description="Bright percentile used by QUAC mode.",
+    )
+    clamp: bool = Field(default=True, description="Clamp output reflectance to the [0, 1] interval.")
+
+
 class ScriptSandboxArgs(BaseModel):
     raster_ids: list[int] = Field(
         ...,
@@ -595,6 +644,28 @@ async def _run_resample_raster(
         resolution_unit=args.resolution_unit,
         resampling_method=args.resampling_method,
         new_name=args.new_name,
+    )
+
+
+async def _run_atmospheric_correction(
+    args: AtmosphericCorrectionArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    import services.data_service.db_ops as db_ops
+
+    return await db_ops.process_atmospheric_correction_task(
+        db=db,
+        raster_id=args.raster_id,
+        method=args.method,
+        sensor=args.sensor,
+        new_name=args.new_name,
+        scale_factor=args.scale_factor,
+        offset=args.offset,
+        dark_percentile=args.dark_percentile,
+        bright_percentile=args.bright_percentile,
+        clamp=args.clamp,
     )
 
 
@@ -1116,6 +1187,17 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="raster_manipulation",
             arguments_model=ResampleRasterArgs,
             handler=_run_resample_raster,
+        ),
+        RegisteredFunction(
+            name="atmospheric_correction",
+            description=(
+                "Generate a surface-reflectance raster with compatibility for Landsat LaSRC/LEDAPS, "
+                "Sentinel-2 Sen2Cor, MODIS official surface-reflectance products, and Gaofen "
+                "FLAASH/QUAC/6S-style products. Supports metadata scaling, DOS1, and QUAC modes."
+            ),
+            category="atmospheric_correction",
+            arguments_model=AtmosphericCorrectionArgs,
+            handler=_run_atmospheric_correction,
         ),
         RegisteredFunction(
             name="run_script_sandbox",

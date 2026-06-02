@@ -12,10 +12,12 @@ from services.data_service.routers.rasterize_router import router as rasterize_r
 from services.data_service.routers.export_router import router as export_router
 from services.data_service.routers.task_router import router as task_router
 from services.data_service.routers.resample_router import router as resample_router
+from services.data_service.routers.atmospheric_router import router as atmospheric_router
 
 router = APIRouter()
 
 router.include_router(task_router)
+router.include_router(atmospheric_router)
 router.include_router(upload_router)
 router.include_router(indices_router)
 router.include_router(extract_router)

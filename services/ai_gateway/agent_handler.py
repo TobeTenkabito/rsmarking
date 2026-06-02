@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ai_gateway.context_builder import build_map_context
 from services.ai_gateway.config import get_ai_model
-from services.ai_gateway.llm_client import call_chat_completion
+from services.ai_gateway.llm_client import acompletion, call_chat_completion
 from services.ai_gateway.agent_messages import (
     assistant_message as _assistant_message,
     compact_json as _compact_json,
@@ -156,6 +156,7 @@ async def handle_agent(
         response = await call_chat_completion(
             model_name=current_model,
             messages=messages,
+            completion_func=acompletion,
             tools=tools,
             tool_choice="auto",
             temperature=0.2,
@@ -247,6 +248,7 @@ async def handle_agent(
     response = await call_chat_completion(
         model_name=current_model,
         messages=messages,
+        completion_func=acompletion,
         temperature=0.2,
     )
     final_message = response.choices[0].message
@@ -291,6 +293,7 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "Use tools when they materially advance the task; otherwise answer directly.",
             "Tool calls can create new raster/vector outputs or run analysis jobs.",
             "Prefer dedicated geospatial tools when one fits the request.",
+            "For atmospheric correction, use atmospheric_correction before generating sandbox code.",
             "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
             "Sandbox scripts must read input_file or input_0/input_1/... and write a GeoTIFF to OUTPUT_FILE.",
@@ -562,142 +565,3 @@ def _agent_response(
         "steps": [step.model_dump(exclude_none=True) for step in steps],
         "used_tools": used_tools,
     }
-
-
-def _get_session_history(session_id: str, limit: int) -> list[dict[str, str]]:
-    if not session_id or limit <= 0:
-        return []
-
-    _purge_expired_sessions()
-    with _SESSION_LOCK:
-        session = _AGENT_SESSIONS.get(session_id)
-        if not session:
-            return []
-        messages = list(session["messages"])[-limit:]
-        session["updated_at"] = time.time()
-        return [dict(message) for message in messages]
-
-
-def _append_session_turn(session_id: str, user_prompt: str, answer: str) -> None:
-    if not session_id:
-        return
-
-    _purge_expired_sessions()
-    with _SESSION_LOCK:
-        session = _AGENT_SESSIONS.setdefault(
-            session_id,
-            {"messages": deque(maxlen=MAX_SESSION_MESSAGES), "updated_at": time.time()},
-        )
-        session["messages"].append({"role": "user", "content": user_prompt})
-        session["messages"].append({"role": "assistant", "content": answer})
-        session["updated_at"] = time.time()
-
-
-def get_session_messages(session_id: str, limit: int = MAX_SESSION_MESSAGES) -> list[dict[str, str]]:
-    return _get_session_history(session_id, limit)
-
-
-def restore_session_messages(session_id: str, messages: list[dict[str, Any]]) -> int:
-    if not session_id:
-        return 0
-
-    normalized = deque(maxlen=MAX_SESSION_MESSAGES)
-    for message in messages:
-        role = message.get("role")
-        content = str(message.get("content") or "")
-        if role not in {"user", "assistant"} or not content:
-            continue
-        normalized.append({"role": role, "content": content})
-
-    with _SESSION_LOCK:
-        _AGENT_SESSIONS[session_id] = {
-            "messages": normalized,
-            "updated_at": time.time(),
-        }
-    return len(normalized)
-
-
-def _clear_session(session_id: str) -> None:
-    with _SESSION_LOCK:
-        _AGENT_SESSIONS.pop(session_id, None)
-
-
-def _purge_expired_sessions() -> None:
-    now = time.time()
-    with _SESSION_LOCK:
-        expired = [
-            session_id
-            for session_id, session in _AGENT_SESSIONS.items()
-            if now - session.get("updated_at", now) > SESSION_TTL_SECONDS
-        ]
-        for session_id in expired:
-            _AGENT_SESSIONS.pop(session_id, None)
-
-
-def _message_content(message: Any) -> str:
-    if isinstance(message, dict):
-        return message.get("content") or ""
-    return getattr(message, "content", None) or ""
-
-
-def _message_tool_calls(message: Any) -> list[Any]:
-    if isinstance(message, dict):
-        return message.get("tool_calls") or []
-    return getattr(message, "tool_calls", None) or []
-
-
-def _assistant_message(message: Any, tool_calls: list[Any]) -> dict[str, Any]:
-    assistant = {"role": "assistant", "content": _message_content(message)}
-    if tool_calls:
-        assistant["tool_calls"] = [_normalize_tool_call(tool_call) for tool_call in tool_calls]
-    return assistant
-
-
-def _normalize_tool_call(tool_call: Any) -> dict[str, Any]:
-    if isinstance(tool_call, dict):
-        function = tool_call.get("function") or {}
-        return {
-            "id": str(tool_call.get("id") or ""),
-            "type": tool_call.get("type") or "function",
-            "function": {
-                "name": function.get("name") or "",
-                "arguments": function.get("arguments") or "{}",
-            },
-        }
-
-    function = getattr(tool_call, "function", None)
-    return {
-        "id": str(getattr(tool_call, "id", "")),
-        "type": getattr(tool_call, "type", "function"),
-        "function": {
-            "name": getattr(function, "name", "") if function else "",
-            "arguments": getattr(function, "arguments", "{}") if function else "{}",
-        },
-    }
-
-
-def _parse_tool_arguments(raw_arguments: str) -> tuple[dict[str, Any], str | None]:
-    try:
-        parsed = json.loads(raw_arguments or "{}")
-    except json.JSONDecodeError as exc:
-        return {}, f"Tool arguments must be valid JSON: {exc}"
-
-    if not isinstance(parsed, dict):
-        return {}, "Tool arguments must decode to a JSON object."
-
-    return parsed, None
-
-
-def _compact_json(value: Any, max_chars: int = 6000) -> Any:
-    encoded = _json_dumps(value)
-    if len(encoded) <= max_chars:
-        return value
-    return {
-        "truncated": True,
-        "original_chars": len(encoded),
-        "preview": encoded[:max_chars],
-    }
-
-
-def _json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)

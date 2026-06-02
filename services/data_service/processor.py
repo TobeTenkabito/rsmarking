@@ -33,6 +33,7 @@ from functions.implement.manipulation import (
     merge_raster_bands,
 )
 from functions.implement.resampling import resample_raster
+from functions.implement.atmospheric_correction import atmospheric_correction
 from functions.implement.extraction import (
     extract_vegetation,
     extract_water,
@@ -111,6 +112,32 @@ class RasterProcessor:
             target_resolution_y,
             resolution_unit,
             resampling_method,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def atmospheric_correction(
+        input_path: str,
+        output_path: str,
+        method: str = "auto",
+        sensor: str = "auto",
+        scale_factor: float | None = None,
+        offset: float | None = None,
+        dark_percentile: float = 1.0,
+        bright_percentile: float = 99.0,
+        clamp: bool = True,
+    ) -> dict[str, object]:
+        result = atmospheric_correction(
+            input_path=input_path,
+            output_path=output_path,
+            method=method,
+            sensor=sensor,
+            scale_factor=scale_factor,
+            offset=offset,
+            dark_percentile=dark_percentile,
+            bright_percentile=bright_percentile,
+            clamp=clamp,
         )
         build_raster_overviews(output_path)
         return result
