@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import deque
+from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any
 
@@ -11,6 +13,17 @@ MAX_SESSION_MESSAGES = 20
 
 _SESSION_LOCK = Lock()
 _AGENT_SESSIONS: dict[str, dict[str, Any]] = {}
+_AGENT_SESSION_EXECUTION_LOCKS: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Lock]] = {}
+
+
+@asynccontextmanager
+async def session_execution_lock(session_id: str):
+    lock = _get_execution_lock(session_id)
+    await lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def get_session_history(session_id: str, limit: int) -> list[dict[str, str]]:
@@ -81,3 +94,17 @@ def purge_expired_sessions() -> None:
         ]
         for session_id in expired:
             _AGENT_SESSIONS.pop(session_id, None)
+            entry = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
+            if entry is not None and not entry[1].locked():
+                _AGENT_SESSION_EXECUTION_LOCKS.pop(session_id, None)
+
+
+def _get_execution_lock(session_id: str) -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    with _SESSION_LOCK:
+        entry = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
+        if entry is None or entry[0] is not loop:
+            lock = asyncio.Lock()
+            _AGENT_SESSION_EXECUTION_LOCKS[session_id] = (loop, lock)
+            return lock
+        return entry[1]

@@ -169,6 +169,54 @@ def test_agent_reuses_session_history(monkeypatch):
     assert {"role": "assistant", "content": "First answer."} in second_messages
 
 
+def test_agent_serializes_same_session_requests(monkeypatch):
+    calls = []
+    active_calls = 0
+    max_active_calls = 0
+
+    async def fake_acompletion(**kwargs):
+        nonlocal active_calls, max_active_calls
+        active_calls += 1
+        max_active_calls = max(max_active_calls, active_calls)
+        calls.append(kwargs)
+        await asyncio.sleep(0.01)
+        active_calls -= 1
+        return _response(f"Answer {len(calls)}.")
+
+    async def empty_workspace_context(db, vector_db, limit):
+        return ""
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"calculate_ndvi"})
+    monkeypatch.setattr(agent_handler, "_build_workspace_context", empty_workspace_context)
+
+    async def scenario():
+        first_payload = AgentRequestPayload(
+            user_prompt="First locked request.",
+            language="en",
+            session_id="locked-session-test",
+            reset_session=True,
+        )
+        second_payload = AgentRequestPayload(
+            user_prompt="Second locked request.",
+            language="en",
+            session_id="locked-session-test",
+        )
+        return await asyncio.gather(
+            handle_agent(first_payload, db=object(), vector_db=object(), model_name="test-model"),
+            handle_agent(second_payload, db=object(), vector_db=object(), model_name="test-model"),
+        )
+
+    first, second = _run(scenario())
+
+    assert max_active_calls == 1
+    assert first["answer"] == "Answer 1."
+    assert second["answer"] == "Answer 2."
+    assert {"role": "user", "content": "First locked request."} in calls[1]["messages"]
+    assert {"role": "assistant", "content": "Answer 1."} in calls[1]["messages"]
+
+
 def test_agent_includes_archive_memory_context(monkeypatch):
     calls = []
 

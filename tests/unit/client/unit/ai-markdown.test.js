@@ -74,7 +74,20 @@ describe('AIModule markdown rendering', () => {
         expect(html).toContain('scene.png');
         expect(html).toContain('notes.md');
         expect(html).toContain('data:image/png;base64,AAAA');
-        expect(pending).toContain('Thinking');
+        expect(pending).toContain('Waiting for AI response');
+    });
+
+    it('renders assistant output verbatim after completion', () => {
+        const ai = new AIModule({});
+        const html = ai._renderAgentMessage({
+            role: 'assistant',
+            content: '**not bold**\nline <unsafe>',
+        });
+
+        expect(html).toContain('**not bold**');
+        expect(html).toContain('line &lt;unsafe&gt;');
+        expect(html).not.toContain('<strong>');
+        expect(html).toContain('whitespace-pre-wrap');
     });
 
     it('renders the user message before the agent request resolves', async () => {
@@ -87,7 +100,7 @@ describe('AIModule markdown rendering', () => {
         const ai = new AIModule({});
         vi.spyOn(AIAPI, 'agent').mockImplementation(async () => {
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Hello');
-            expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Thinking');
+            expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Waiting for AI response');
             return {
                 session_id: 'session-a',
                 answer: 'Done.',
@@ -101,6 +114,41 @@ describe('AIModule markdown rendering', () => {
         const html = document.getElementById('ai-agent-messages').innerHTML;
         expect(html).toContain('Hello');
         expect(html).toContain('Done.');
-        expect(html).not.toContain('Thinking');
+        expect(html).not.toContain('Waiting for AI response');
+    });
+
+    it('queues agent requests so only one backend call runs at a time', async () => {
+        document.body.innerHTML = `
+            <textarea id="ai-prompt-input"></textarea>
+            <div id="ai-agent-messages"></div>
+            <div id="ai-agent-session-label"></div>
+            <div id="ai-agent-attachment-list"></div>
+        `;
+        const ai = new AIModule({});
+        let resolveFirst;
+        let resolveSecond;
+        vi.spyOn(AIAPI, 'agent')
+            .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
+            .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+
+        const first = ai._runAgent({ user_prompt: 'First', attachments: [] });
+        const second = ai._runAgent({ user_prompt: 'Second', attachments: [] });
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(AIAPI.agent).toHaveBeenCalledTimes(1);
+        expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Queued');
+
+        resolveFirst({ session_id: 'session-a', answer: 'First answer', steps: [], used_tools: [] });
+        await first;
+        await Promise.resolve();
+
+        expect(AIAPI.agent).toHaveBeenCalledTimes(2);
+
+        resolveSecond({ session_id: 'session-a', answer: 'Second answer', steps: [], used_tools: [] });
+        await second;
+
+        const html = document.getElementById('ai-agent-messages').innerHTML;
+        expect(html).toContain('First answer');
+        expect(html).toContain('Second answer');
     });
 });

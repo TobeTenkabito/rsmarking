@@ -27,6 +27,9 @@ export class AIModule {
         this._archivePanelOpen = false;
         this._archivesLoading = false;
         this._agentAttachments = [];
+        this._agentQueueTail = Promise.resolve();
+        this._agentQueueDepth = 0;
+        this._loadingDepth = 0;
     }
 
     openModal() {
@@ -148,7 +151,9 @@ export class AIModule {
             role: 'assistant',
             content: '',
             pending: true,
+            pendingLabel: this._agentQueueDepth > 0 ? 'Queued' : 'Waiting for AI response',
             steps: [],
+            verbatim: true,
         };
 
         this._agentConversation.push(userMessage, assistantMessage);
@@ -156,25 +161,37 @@ export class AIModule {
         if (promptInput) promptInput.value = '';
         this._clearAgentAttachments();
 
-        let result;
-        try {
-            result = await AIAPI.agent(payload);
-        } catch (err) {
-            assistantMessage.pending = false;
-            assistantMessage.error = true;
-            assistantMessage.content = err.message || 'Agent request failed.';
+        this._agentQueueDepth += 1;
+        const runRequest = async () => {
+            assistantMessage.pendingLabel = 'Waiting for AI response';
             this._renderAgentConversation();
-            throw err;
-        }
 
-        if (result.session_id) this._sessionId = result.session_id;
-        assistantMessage.pending = false;
-        assistantMessage.content = result.answer || 'Agent completed without a text answer.';
-        assistantMessage.steps = result.steps ?? [];
-        this._renderAgentConversation();
-        if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
-            await this._refreshSidebar('raster');
-        }
+            let result;
+            try {
+                result = await AIAPI.agent(payload);
+            } catch (err) {
+                assistantMessage.pending = false;
+                assistantMessage.error = true;
+                assistantMessage.content = err.message || 'Agent request failed.';
+                this._renderAgentConversation();
+                throw err;
+            } finally {
+                this._agentQueueDepth = Math.max(0, this._agentQueueDepth - 1);
+            }
+
+            if (result.session_id) this._sessionId = result.session_id;
+            assistantMessage.pending = false;
+            assistantMessage.content = result.answer ?? '';
+            assistantMessage.steps = result.steps ?? [];
+            this._renderAgentConversation();
+            if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
+                await this._refreshSidebar('raster');
+            }
+        };
+
+        const task = this._agentQueueTail.catch(() => {}).then(runRequest);
+        this._agentQueueTail = task.catch(() => {});
+        return task;
     }
 
     startNewAgentChat() {
@@ -1182,8 +1199,10 @@ export class AIModule {
         const trace = this._renderAgentToolTrace(message.steps ?? []);
         const attachments = this._renderMessageAttachments(message.attachments ?? [], isUser);
         const content = message.pending
-            ? this._renderPendingAgentMessage()
-            : `<div class="break-words">${this._renderMarkdown(message.content)}</div>`;
+            ? this._renderPendingAgentMessage(message)
+            : isUser
+                ? `<div class="break-words">${this._renderMarkdown(message.content)}</div>`
+                : this._renderVerbatimAgentOutput(message.content);
 
         return `
             <div class="flex ${wrapperClass} gap-2">
@@ -1196,16 +1215,21 @@ export class AIModule {
             </div>`;
     }
 
-    _renderPendingAgentMessage() {
+    _renderPendingAgentMessage(message = {}) {
+        const label = this._escapeHTML(message.pendingLabel ?? 'Waiting for AI response');
         return `
             <div class="flex items-center gap-2 text-slate-500">
-                <span class="font-bold">Thinking</span>
+                <span class="font-bold">${label}</span>
                 <span class="flex gap-1">
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400"></span>
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:120ms"></span>
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:240ms"></span>
                 </span>
             </div>`;
+    }
+
+    _renderVerbatimAgentOutput(content = '') {
+        return `<div class="whitespace-pre-wrap break-words">${this._escapeHTML(content)}</div>`;
     }
 
     _renderMessageAttachments(attachments = [], isUser = false) {
@@ -1590,10 +1614,14 @@ export class AIModule {
     }
 
     _setLoading(isLoading) {
+        this._loadingDepth = isLoading
+            ? this._loadingDepth + 1
+            : Math.max(0, this._loadingDepth - 1);
+        const active = this._loadingDepth > 0;
         const btn = document.getElementById('ai-execute-btn');
         const spinner = document.getElementById('ai-spinner');
-        if (btn) btn.disabled = isLoading;
-        if (spinner) spinner.classList.toggle('hidden', !isLoading);
+        if (btn) btn.disabled = active;
+        if (spinner) spinner.classList.toggle('hidden', !active);
     }
 
     _setFunctionLoading(isLoading) {

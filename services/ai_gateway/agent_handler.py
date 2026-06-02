@@ -25,6 +25,7 @@ from services.ai_gateway.agent_session import (
     get_session_history as _get_session_history,
     get_session_messages,
     restore_session_messages,
+    session_execution_lock,
 )
 from services.ai_gateway.schema_validator import AILanguage, DataType
 
@@ -158,6 +159,17 @@ async def handle_agent(
     model_name: str | None = None,
 ) -> dict[str, Any]:
     session_id = payload.session_id or f"agent-{uuid.uuid4()}"
+    async with session_execution_lock(session_id):
+        return await _handle_agent_locked(payload, db, vector_db, model_name, session_id)
+
+
+async def _handle_agent_locked(
+    payload: AgentRequestPayload,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+    model_name: str | None,
+    session_id: str,
+) -> dict[str, Any]:
     if payload.reset_session:
         _clear_session(session_id)
 
