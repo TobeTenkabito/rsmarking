@@ -73,7 +73,7 @@ async def get_script_templates():
             "code": (
                 "import rasterio\n"
                 "import numpy as np\n\n"
-                "with rasterio.open(input_file) as src:\n"
+                "with rasterio.open(input_0) as src:\n"
                 "    data = src.read()\n"
                 "    print(f'Image shape: {data.shape}')\n"
                 "    print(f'Band count: {src.count}')\n"
@@ -89,7 +89,7 @@ async def get_script_templates():
             "code": (
                 "import rasterio\n"
                 "from scipy import ndimage\n\n"
-                "with rasterio.open(input_file) as src:\n"
+                "with rasterio.open(input_0) as src:\n"
                 "    data = src.read(1)\n"
                 "    profile = src.profile\n\n"
                 "filtered = ndimage.gaussian_filter(data, sigma=2)\n\n"
@@ -125,7 +125,7 @@ async def get_script_templates():
                 "import rasterio\n"
                 "import numpy as np\n"
                 "from skimage.filters import threshold_otsu\n\n"
-                "with rasterio.open(input_file) as src:\n"
+                "with rasterio.open(input_0) as src:\n"
                 "    data = src.read(1)\n"
                 "    profile = src.profile\n\n"
                 "threshold = threshold_otsu(data)\n"

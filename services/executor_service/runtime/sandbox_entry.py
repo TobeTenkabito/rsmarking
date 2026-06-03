@@ -136,8 +136,8 @@ def main():
                     input_files.append(os.path.join(input_dir, file_name))
 
         print(f"Found {len(input_files)} input file(s)")
-        for file_path in input_files:
-            print(f"  - {os.path.basename(file_path)}")
+        for idx, file_path in enumerate(input_files):
+            print(f"  input_{idx} -> {os.path.basename(file_path)}")
     except Exception as e:
         print(f"ERROR: failed to read input directory: {e}", file=sys.stderr)
         sys.exit(1)

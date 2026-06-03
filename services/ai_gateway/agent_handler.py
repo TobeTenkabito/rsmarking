@@ -334,7 +334,9 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "For atmospheric correction, use atmospheric_correction before generating sandbox code.",
             "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
-            "Sandbox scripts must read input_file or input_0/input_1/... and write a GeoTIFF to OUTPUT_FILE.",
+            "Sandbox scripts must read the actual Python variables input_0, input_1, ... and write a GeoTIFF to OUTPUT_FILE.",
+            "For a single raster input, use input_0. Do not use the example placeholder input_file, and never pass the literal string 'input_file' to rasterio.open().",
+            "If the exact filename is required, read it from INPUT_FILES or inputs; otherwise prefer input_0/input_1 variables.",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Use the workspace context to stay familiar with available projects, layers, and rasters.",
             "Use conversation archive memory only as background from user-saved prior chats.",
@@ -596,7 +598,13 @@ async def _invoke_agent_tool(
         )
     except Exception as exc:
         logger.warning("[agent] tool invocation failed: %s", exc, exc_info=True)
-        return {"status": "error", "name": name, "arguments": arguments, "error": str(exc)}
+        error = str(exc)
+        if name == "run_script_sandbox" and "input_file" in str(arguments.get("script") or ""):
+            error = (
+                f"{error}\nSandbox input hint: use input_0, input_1, ... variables in rasterio.open(); "
+                "use input_0 for a single raster and do not pass the literal string 'input_file'."
+            )
+        return {"status": "error", "name": name, "arguments": arguments, "error": error}
 
 
 def _get_agent_tools(tool_names: list[str] | None) -> list[dict[str, Any]]:

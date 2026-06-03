@@ -1,10 +1,13 @@
 import asyncio
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock as ThreadLock
 from types import SimpleNamespace
 
 import pytest
 
 from services.ai_gateway import agent_handler
+from services.ai_gateway.agent_session import session_execution_lock
 from services.ai_gateway.agent_handler import AgentRequestPayload, handle_agent
 
 
@@ -217,6 +220,35 @@ def test_agent_serializes_same_session_requests(monkeypatch):
     assert {"role": "assistant", "content": "Answer 1."} in calls[1]["messages"]
 
 
+def test_agent_session_lock_serializes_across_event_loops():
+    active_calls = 0
+    max_active_calls = 0
+    guard = ThreadLock()
+    start_barrier = Barrier(2)
+    session_id = "cross-loop-session-lock-test"
+
+    async def locked_work():
+        nonlocal active_calls, max_active_calls
+        start_barrier.wait(timeout=5)
+        async with session_execution_lock(session_id):
+            with guard:
+                active_calls += 1
+                max_active_calls = max(max_active_calls, active_calls)
+            await asyncio.sleep(0.03)
+            with guard:
+                active_calls -= 1
+
+    def run_worker():
+        asyncio.run(locked_work())
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(run_worker) for _ in range(2)]
+        for future in futures:
+            future.result(timeout=5)
+
+    assert max_active_calls == 1
+
+
 def test_agent_includes_archive_memory_context(monkeypatch):
     calls = []
 
@@ -378,11 +410,44 @@ def test_agent_registry_wrappers_can_be_restricted(monkeypatch):
     assert [tool["function"]["name"] for tool in tools] == ["calculate_ndvi"]
 
 
+def test_agent_sandbox_tool_schema_prefers_indexed_input_variables():
+    tools = agent_handler._get_agent_tools(["run_script_sandbox"])
+    properties = tools[0]["function"]["parameters"]["properties"]
+
+    assert "input_0" in properties["raster_ids"]["description"]
+    assert "actual input_0/input_1" in properties["script"]["description"]
+    assert "literal string 'input_file'" in properties["raster_ids"]["description"]
+
+
+def test_agent_sandbox_error_mentions_indexed_input_variable(monkeypatch):
+    from services.ai_gateway import function_registry
+
+    async def failing_invoke(request, db, vector_db):
+        raise RuntimeError("Sandbox exited with status code 1")
+
+    monkeypatch.setattr(function_registry, "invoke_registered_function", failing_invoke)
+
+    result = _run(
+        agent_handler._invoke_agent_tool(
+            "run_script_sandbox",
+            {"script": "import rasterio\nwith rasterio.open('input_file') as src:\n    data = src.read(1)"},
+            db=object(),
+            vector_db=object(),
+        )
+    )
+
+    assert result["status"] == "error"
+    assert "input_0" in result["error"]
+    assert "literal string 'input_file'" in result["error"]
+
+
 def test_agent_system_prompt_mentions_sandbox_fallback():
     prompt = agent_handler._build_agent_system_prompt(agent_handler.AILanguage.EN)
 
     assert "run_script_sandbox" in prompt
     assert "no dedicated tool" in prompt
+    assert "input_0" in prompt
+    assert "Do not use the example placeholder input_file" in prompt
 
 
 def test_agent_session_can_be_restored():

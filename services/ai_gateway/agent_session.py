@@ -13,17 +13,22 @@ MAX_SESSION_MESSAGES = 20
 
 _SESSION_LOCK = Lock()
 _AGENT_SESSIONS: dict[str, dict[str, Any]] = {}
-_AGENT_SESSION_EXECUTION_LOCKS: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Lock]] = {}
+_AGENT_SESSION_EXECUTION_LOCKS: dict[str, Any] = {}
+_SESSION_LOCK_RETRY_SECONDS = 0.025
 
 
 @asynccontextmanager
 async def session_execution_lock(session_id: str):
-    lock = _get_execution_lock(session_id)
-    await lock.acquire()
+    lock = None
     try:
+        while lock is None:
+            lock = _try_acquire_execution_lock(session_id)
+            if lock is None:
+                await asyncio.sleep(_SESSION_LOCK_RETRY_SECONDS)
         yield
     finally:
-        lock.release()
+        if lock is not None:
+            lock.release()
 
 
 def get_session_history(session_id: str, limit: int) -> list[dict[str, str]]:
@@ -95,16 +100,21 @@ def purge_expired_sessions() -> None:
         for session_id in expired:
             _AGENT_SESSIONS.pop(session_id, None)
             entry = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
-            if entry is not None and not entry[1].locked():
+            if entry is not None and not entry.locked():
+                _AGENT_SESSION_EXECUTION_LOCKS.pop(session_id, None)
+
+        active_session_ids = set(_AGENT_SESSIONS)
+        for session_id, lock in list(_AGENT_SESSION_EXECUTION_LOCKS.items()):
+            if session_id not in active_session_ids and not lock.locked():
                 _AGENT_SESSION_EXECUTION_LOCKS.pop(session_id, None)
 
 
-def _get_execution_lock(session_id: str) -> asyncio.Lock:
-    loop = asyncio.get_running_loop()
+def _try_acquire_execution_lock(session_id: str) -> Any | None:
     with _SESSION_LOCK:
-        entry = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
-        if entry is None or entry[0] is not loop:
-            lock = asyncio.Lock()
-            _AGENT_SESSION_EXECUTION_LOCKS[session_id] = (loop, lock)
+        lock = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
+        if lock is None:
+            lock = Lock()
+            _AGENT_SESSION_EXECUTION_LOCKS[session_id] = lock
+        if lock.acquire(blocking=False):
             return lock
-        return entry[1]
+        return None

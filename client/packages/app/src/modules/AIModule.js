@@ -168,25 +168,27 @@ export class AIModule {
             assistantMessage.pendingLabel = 'Waiting for AI response';
             this._renderAgentConversation();
 
-            let result;
             try {
-                result = await AIAPI.agent(payload);
-            } catch (err) {
+                let result;
+                try {
+                    result = await AIAPI.agent(payload);
+                } catch (err) {
+                    assistantMessage.pending = false;
+                    assistantMessage.error = true;
+                    assistantMessage.content = err.message || 'Agent request failed.';
+                    this._renderAgentConversation();
+                    throw err;
+                }
+
+                if (result.session_id) this._sessionId = result.session_id;
                 assistantMessage.pending = false;
-                assistantMessage.error = true;
-                assistantMessage.content = err.message || 'Agent request failed.';
-                this._renderAgentConversation();
-                throw err;
+                assistantMessage.steps = result.steps ?? [];
+                await this._revealAgentResponse(assistantMessage, result.answer ?? '');
+                if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
+                    await this._refreshSidebar('raster');
+                }
             } finally {
                 this._agentQueueDepth = Math.max(0, this._agentQueueDepth - 1);
-            }
-
-            if (result.session_id) this._sessionId = result.session_id;
-            assistantMessage.pending = false;
-            assistantMessage.steps = result.steps ?? [];
-            await this._revealAgentResponse(assistantMessage, result.answer ?? '');
-            if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
-                await this._refreshSidebar('raster');
             }
         };
 
@@ -1142,7 +1144,7 @@ export class AIModule {
             'import rasterio',
             'import numpy as np',
             '',
-            'with rasterio.open(input_file) as src:',
+            'with rasterio.open(input_0) as src:',
             '    data = src.read()',
             '    profile = src.profile',
             '',

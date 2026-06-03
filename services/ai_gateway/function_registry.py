@@ -131,7 +131,11 @@ class ScriptSandboxArgs(BaseModel):
     raster_ids: list[int] = Field(
         ...,
         min_length=1,
-        description="Raster index_id inputs exposed as input_file, input_0, input_1, ... inside the sandbox.",
+        description=(
+            "Raster index_id inputs exposed inside the sandbox as actual Python variables "
+            "input_0, input_1, ... in the same order. For one input, use input_0. "
+            "Do not use the example placeholder input_file or the literal string 'input_file'."
+        ),
     )
     output_name: str = Field(
         ...,
@@ -143,7 +147,7 @@ class ScriptSandboxArgs(BaseModel):
         max_length=20000,
         description=(
             "Safe Python script for the isolated executor sandbox. Use rasterio/numpy/scipy/skimage; "
-            "read input_file or input_0..N and write the final GeoTIFF to OUTPUT_FILE."
+            "read actual input_0/input_1/... variables and write the final GeoTIFF to OUTPUT_FILE."
         ),
     )
 
@@ -1203,7 +1207,8 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             name="run_script_sandbox",
             description=(
                 "Generate and run a safe Python raster-processing script in the isolated sandbox when "
-                "no dedicated gateway function can satisfy the request."
+                "no dedicated gateway function can satisfy the request. Scripts should read raster "
+                "inputs from input_0, input_1, ... and write OUTPUT_FILE."
             ),
             category="script_sandbox",
             arguments_model=ScriptSandboxArgs,

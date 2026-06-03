@@ -71,7 +71,8 @@ describe('ScriptModule execution', () => {
     it('renders script examples with the real sandbox paths and variables', () => {
         const html = ModalComponent.renderScriptEditor([], [], '');
 
-        expect(html).toContain('input_file');
+        expect(html).toContain('input_0');
+        expect(html).not.toContain('input_file');
         expect(html).toContain('OUTPUT_FILE');
         expect(html).toContain('/data/inputs/');
         expect(html).toContain('/data/outputs/');

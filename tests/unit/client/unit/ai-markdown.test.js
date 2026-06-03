@@ -210,4 +210,35 @@ describe('AIModule markdown rendering', () => {
         expect(html).toContain('First answer');
         expect(html).toContain('Second answer');
     });
+
+    it('keeps queued agent requests waiting until response reveal completes', async () => {
+        document.body.innerHTML = `
+            <textarea id="ai-prompt-input"></textarea>
+            <div id="ai-agent-messages"></div>
+            <div id="ai-agent-session-label"></div>
+            <div id="ai-agent-attachment-list"></div>
+        `;
+        const ai = new AIModule({});
+        let releaseReveal;
+        vi.spyOn(ai, '_delayAgentReveal')
+            .mockImplementationOnce(() => new Promise(resolve => { releaseReveal = resolve; }))
+            .mockResolvedValue();
+        vi.spyOn(AIAPI, 'agent')
+            .mockResolvedValueOnce({ session_id: 'session-a', answer: 'First answer.', steps: [], used_tools: [] })
+            .mockResolvedValueOnce({ session_id: 'session-a', answer: 'Second answer.', steps: [], used_tools: [] });
+
+        const first = ai._runAgent({ user_prompt: 'First', attachments: [] });
+        const second = ai._runAgent({ user_prompt: 'Second', attachments: [] });
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(AIAPI.agent).toHaveBeenCalledTimes(1);
+        expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Queued');
+
+        releaseReveal();
+        await first;
+        await Promise.resolve();
+
+        expect(AIAPI.agent).toHaveBeenCalledTimes(2);
+        await second;
+    });
 });
