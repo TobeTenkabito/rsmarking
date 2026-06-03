@@ -1,5 +1,7 @@
 # 采用 slim 版本减小攻击面和拉取体积
 FROM python:3.10-slim
+ARG RS_SANDBOX_SPEC_HASH=unknown
+LABEL rsmarking.sandbox.spec_hash=$RS_SANDBOX_SPEC_HASH
 
 # 设置环境变量，禁止生成 .pyc 文件，强制无缓冲输出
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -13,12 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 安装遥感核心库
 RUN pip install --no-cache-dir \
+    affine \
+    imageio \
+    matplotlib \
     numpy \
+    numexpr \
+    opencv-python-headless \
+    pillow \
+    pyproj \
     scipy \
     rasterio \
     scikit-image \
-    opencv-python-headless \
-    numexpr
+    scikit-learn \
+    shapely \
+    tifffile
 
 # 创建工作目录和非 root 用户（安全要求）
 RUN useradd -m -s /bin/bash sandboxuser

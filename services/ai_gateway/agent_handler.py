@@ -339,6 +339,7 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "The gateway injects stable sandbox aliases such as raster_<index_id> and raster_files[<index_id>] before the generated script runs.",
             "If you use ordered variables, map them from the raster_ids order: raster_ids[0] is input_0, raster_ids[1] is input_1, and so on.",
             "Do not invent filenames. If using the actual filename, call rasterio.open(inputs[\"actual_filename.tif\"]) exactly as shown in open_expr.",
+            "For larger sandbox scripts, prefer helpers like input_path(), read_raster(), read_array(), write_raster(), sandbox_open(), output_path(), and list_inputs().",
             "Never pass the literal string 'input_file' or an unqualified guessed filename to rasterio.open().",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Use the workspace context to stay familiar with available projects, layers, and rasters.",

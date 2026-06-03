@@ -145,12 +145,14 @@ class ScriptSandboxArgs(BaseModel):
     script: str = Field(
         ...,
         min_length=20,
-        max_length=20000,
+        max_length=60000,
         description=(
-            "Safe Python script for the isolated executor sandbox. Use rasterio/numpy/scipy/skimage; "
+            "Safe Python script for the isolated executor sandbox. Use "
+            "rasterio/numpy/scipy/skimage/shapely/pyproj/cv2/sklearn; "
             "read rasters through exact Sandbox Input Map expressions such as raster_<index_id>, "
             "raster_files[<index_id>], inputs[\"actual_filename.tif\"], or ordered input_0/input_1; "
-            "write the final GeoTIFF to OUTPUT_FILE."
+            "helpers include input_path(), read_raster(), read_array(), write_raster(), "
+            "sandbox_open(), output_path(), and list_inputs(); write the final GeoTIFF to OUTPUT_FILE."
         ),
     )
 

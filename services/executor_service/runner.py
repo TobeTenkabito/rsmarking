@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import os
 import json
@@ -18,7 +19,11 @@ from services.executor_service.config import (
     HOST_RAW_DIR,
     HOST_TMP_DIR,
     SANDBOX_CPU_LIMIT,
+    SANDBOX_FORCE_REBUILD,
     SANDBOX_MEM_LIMIT,
+    SANDBOX_PIDS_LIMIT,
+    SANDBOX_SHM_SIZE,
+    SANDBOX_TMPFS_SIZE,
     SANDBOX_TIMEOUT_SEC,
     SANDBOX_DOCKERFILE_NAME,
     SANDBOX_IMAGE_CONTEXT_DIR,
@@ -26,6 +31,7 @@ from services.executor_service.config import (
 from services.executor_service.security import validate_script_content
 
 logger = logging.getLogger("executor_service.runner")
+SANDBOX_SPEC_HASH_LABEL = "rsmarking.sandbox.spec_hash"
 
 try:
     client = docker.from_env()
@@ -46,13 +52,36 @@ def _decode_logs(value: Any) -> str:
     return str(value or "")
 
 
+def _image_context_hash() -> str:
+    digest = hashlib.sha256()
+    for file_name in (SANDBOX_DOCKERFILE_NAME, "sandbox_entry.py"):
+        file_path = os.path.join(SANDBOX_IMAGE_CONTEXT_DIR, file_name)
+        digest.update(file_name.encode("utf-8"))
+        with open(file_path, "rb") as handle:
+            digest.update(handle.read())
+    return digest.hexdigest()
+
+
+def _image_labels(image: Any) -> dict[str, str]:
+    attrs = getattr(image, "attrs", {}) or {}
+    config = attrs.get("Config") or {}
+    return config.get("Labels") or {}
+
+
 def _ensure_image_available() -> None:
     if client is None:
         raise RuntimeError("Docker service is unavailable")
 
+    spec_hash = _image_context_hash()
     try:
-        client.images.get(DOCKER_IMAGE_NAME)
-        return
+        image = client.images.get(DOCKER_IMAGE_NAME)
+        current_hash = _image_labels(image).get(SANDBOX_SPEC_HASH_LABEL)
+        if current_hash == spec_hash and not SANDBOX_FORCE_REBUILD:
+            return
+        logger.info(
+            "Rebuilding sandbox image %s because the runtime spec changed",
+            DOCKER_IMAGE_NAME,
+        )
     except ImageNotFound:
         logger.info("Building sandbox image %s", DOCKER_IMAGE_NAME)
 
@@ -60,6 +89,7 @@ def _ensure_image_available() -> None:
         path=SANDBOX_IMAGE_CONTEXT_DIR,
         dockerfile=SANDBOX_DOCKERFILE_NAME,
         tag=DOCKER_IMAGE_NAME,
+        buildargs={"RS_SANDBOX_SPEC_HASH": spec_hash},
         rm=True,
         forcerm=True,
     )
@@ -140,9 +170,9 @@ def run_in_sandbox(
     safe_output_name = _safe_name(output_filename, f"{task_id}_result.tif")
     script_host_path = os.path.join(HOST_TMP_DIR, f"script_{task_id}.py")
     temp_input_dir = os.path.join(HOST_TMP_DIR, f"input_{task_id}")
+    temp_output_dir = os.path.join(HOST_TMP_DIR, f"output_{task_id}")
     os.makedirs(temp_input_dir, exist_ok=True)
-
-    existing_outputs = set(os.listdir(HOST_RAW_DIR))
+    os.makedirs(temp_output_dir, exist_ok=True)
     container = None
 
     try:
@@ -179,7 +209,7 @@ def run_in_sandbox(
                 "bind": f"{CONTAINER_SCRIPT_DIR}/user_code.py",
                 "mode": "ro",
             },
-            HOST_RAW_DIR: {
+            temp_output_dir: {
                 "bind": CONTAINER_OUTPUT_DIR,
                 "mode": "rw",
             },
@@ -190,6 +220,7 @@ def run_in_sandbox(
         }
 
         cpu_limit = int(float(SANDBOX_CPU_LIMIT) * 1e9)
+        thread_limit = str(max(1, int(float(SANDBOX_CPU_LIMIT))))
 
         logger.info("Starting sandbox container for script %s", task_id)
         container = client.containers.run(
@@ -197,10 +228,24 @@ def run_in_sandbox(
             environment={
                 "OUTPUT_FILENAME": safe_output_name,
                 "SANDBOX_INPUT_MAP": json.dumps(sandbox_input_map, ensure_ascii=False),
+                "HOME": "/tmp",
+                "MPLCONFIGDIR": "/tmp/matplotlib",
+                "OMP_NUM_THREADS": thread_limit,
+                "OPENBLAS_NUM_THREADS": thread_limit,
+                "MKL_NUM_THREADS": thread_limit,
+                "NUMEXPR_MAX_THREADS": thread_limit,
             },
             volumes=volumes,
             mem_limit=SANDBOX_MEM_LIMIT,
             nano_cpus=cpu_limit,
+            pids_limit=SANDBOX_PIDS_LIMIT,
+            shm_size=SANDBOX_SHM_SIZE,
+            read_only=True,
+            tmpfs={
+                "/tmp": f"rw,nosuid,nodev,size={SANDBOX_TMPFS_SIZE}",
+            },
+            cap_drop=["ALL"],
+            security_opt=["no-new-privileges:true"],
             network_disabled=True,
             detach=True,
             auto_remove=False,
@@ -230,16 +275,15 @@ def run_in_sandbox(
                 "logs": logs,
             }
 
-        output_path = os.path.join(HOST_RAW_DIR, safe_output_name)
-        if not os.path.exists(output_path):
+        sandbox_output_path = os.path.join(temp_output_dir, safe_output_name)
+        if not os.path.exists(sandbox_output_path):
             created_files = [
-                name for name in os.listdir(HOST_RAW_DIR)
-                if name.lower().endswith((".tif", ".tiff")) and name not in existing_outputs
+                name for name in os.listdir(temp_output_dir)
+                if name.lower().endswith((".tif", ".tiff"))
             ]
 
             if len(created_files) == 1:
-                original_path = os.path.join(HOST_RAW_DIR, created_files[0])
-                os.replace(original_path, output_path)
+                sandbox_output_path = os.path.join(temp_output_dir, created_files[0])
                 logger.warning(
                     "Renamed sandbox output %s to expected name %s",
                     created_files[0],
@@ -251,6 +295,9 @@ def run_in_sandbox(
                     "message": "Script completed but did not produce the expected output raster",
                     "logs": logs,
                 }
+
+        output_path = os.path.join(HOST_RAW_DIR, safe_output_name)
+        os.replace(sandbox_output_path, output_path)
 
         return {
             "status": "success",
@@ -301,3 +348,6 @@ def run_in_sandbox(
 
         if os.path.exists(temp_input_dir):
             shutil.rmtree(temp_input_dir, ignore_errors=True)
+
+        if os.path.exists(temp_output_dir):
+            shutil.rmtree(temp_output_dir, ignore_errors=True)
