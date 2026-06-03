@@ -9,12 +9,12 @@ def _normalized_difference(
     band2: np.ndarray,
 ) -> np.ndarray:
     """
-    计算标准归一化差值指数：
+    calculate standard normalized difference index:
         (band1 - band2) / (band1 + band2)
-    统一处理：
-    - float32 转换
-    - 除零保护
-    - NaN / Inf 清理
+    standard handling:
+    - float32 conversion
+    - divide-by-zero protection
+    - NaN / Inf cleanup
     """
     band1 = np.asarray(band1, dtype=np.float32)
     band2 = np.asarray(band2, dtype=np.float32)

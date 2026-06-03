@@ -14,7 +14,7 @@ class Project(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
 
-    # server_default 让数据库处理时间戳，确保多实例时间一致性
+    # server_default letdatabasetimestamps,when
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     layers = relationship("Layer", back_populates="project", cascade="all, delete-orphan")
@@ -28,7 +28,7 @@ class Layer(Base):
                         index=True)
     name = Column(String(255), nullable=False)
 
-    # 外部关联 ID，BigInteger 匹配分布式 ID (如 Snowflake)
+    # text ID,BigInteger text ID (text Snowflake)
     source_raster_index_id = Column(BigInteger, nullable=True, index=True)
 
     project = relationship("Project", back_populates="layers")
@@ -37,8 +37,8 @@ class Layer(Base):
 
 class LayerField(Base):
     """
-    新增模型，独立存在，不影响任何现有模型。
-    单向持有 layer_id 外键即可，无需在 Layer 上加反向关联。
+    new model,exists independently,does not affect existing models.
+    holds unidirectional layer_id foreign key only,no need on Layer add reverse relation.
     """
     __tablename__ = "layer_fields"
     __table_args__ = (
@@ -48,11 +48,11 @@ class LayerField(Base):
     id          = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     layer_id    = Column(PG_UUID(as_uuid=True), ForeignKey("layers.id", ondelete="CASCADE"), nullable=False)
     field_name  = Column(String, nullable=False)   # JSONB key
-    field_alias = Column(String)                   # 前端显示名
+    field_alias = Column(String)                   # frontend display name
     field_type  = Column(String, nullable=False)   # string / number / boolean / date
     field_order = Column(Integer, default=0)
     is_required = Column(Boolean, default=False)
-    is_system   = Column(Boolean, default=False)   # True = 文件导入，不可删除
+    is_system   = Column(Boolean, default=False)   # True = text,not deletable
     default_val = Column(String)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -63,7 +63,7 @@ class Feature(Base):
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     layer_id = Column(PG_UUID(as_uuid=True), ForeignKey("layers.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    # 1. 核心修复：spatial_index=False 彻底杜绝 Alembic 升级时的 DuplicateTableError
+    # 1. core fix:spatial_index=False fully avoid Alembic during upgrade DuplicateTableError
     geom = Column(
         Geometry(geometry_type='GEOMETRY', srid=4326, spatial_index=False),
         nullable=False
@@ -71,7 +71,7 @@ class Feature(Base):
 
     category = Column(String(100), index=True)
 
-    # 2. JSONB 性能优化：在 PostgreSQL 中 JSONB 配合 Gin 索引比普通 JSON 快得多
+    # 2. JSONB performance optimization:text PostgreSQL text JSONB text Gin than regular JSON much faster
     properties = Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
     meta = Column(JSONB, server_default=text("'{}'::jsonb"), nullable=False)
 
@@ -79,7 +79,7 @@ class Feature(Base):
 
     layer = relationship("Layer", back_populates="features")
 
-    # 3. 工业级显式索引定义
+    # 3. explicit index definition
     __table_args__ = (
         Index('idx_features_geom', 'geom', postgresql_using='gist'),
         Index('idx_features_properties_gin', 'properties', postgresql_using='gin'),

@@ -5,7 +5,7 @@ export const WelcomeTemplate = `
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#030712_100%)] pointer-events-none"></div>
 
     <div class="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none">
-        <!-- Logo 区域：渐变色加入紫色呼应背景 -->
+        <!-- Logo area: gradient uses purple to match the background -->
         <div class="relative w-48 h-48 mb-6 flex items-center justify-center group pointer-events-auto">
             <div id="aggr-logo" class="relative z-10 text-6xl text-transparent bg-clip-text bg-gradient-to-br from-cyan-400 via-purple-400 to-blue-500 font-black tracking-[0.1em] uppercase drop-shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-transform duration-700 group-hover:scale-110">
                 RS
@@ -16,7 +16,7 @@ export const WelcomeTemplate = `
             <div class="absolute inset-[-20px] bg-cyan-500/5 rounded-full blur-xl group-hover:bg-purple-500/10 transition-colors duration-700"></div>
         </div>
 
-        <!-- 标题区域 -->
+        <!-- Title area -->
         <div class="text-center mb-16 pointer-events-auto">
             <h1 class="text-5xl font-black text-white tracking-[0.15em] mb-4 uppercase drop-shadow-lg">
                 RSMarking <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">Pro</span>
@@ -28,7 +28,7 @@ export const WelcomeTemplate = `
             </div>
         </div>
 
-        <!-- 按钮区域 -->
+        <!-- Button area -->
         <button id="btn-enter-system" class="pointer-events-auto group relative px-10 py-4 overflow-hidden rounded-none border border-cyan-500/30 bg-cyan-950/20 hover:bg-purple-900/30 backdrop-blur-sm transition-all duration-500">
             <div class="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent group-hover:animate-[shimmer_1.5s_infinite]"></div>
             

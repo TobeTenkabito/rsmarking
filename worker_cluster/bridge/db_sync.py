@@ -1,8 +1,8 @@
 """
-Worker 专用同步数据库会话
-data_service 使用 asyncpg（异步），Worker 进程不运行事件循环，
-因此单独维护一个 psycopg2 同步引擎。
-连接字符串从同一环境变量派生，仅替换驱动前缀。
+Worker dedicated synchronous database session
+data_service uses asyncpg(async),Worker process does not run an event loop,
+therefore maintain a separate psycopg2 synchronous engine.
+connection stringderived from the same environment variable,only replacing the driver prefix.
 """
 import os
 import logging
@@ -14,8 +14,8 @@ from sqlalchemy.orm import sessionmaker, Session
 
 logger = logging.getLogger("worker.db_sync")
 
-# ── 连接字符串 ────────────────────────────────────────────────────────────────
-# 优先读专用变量，回退到把 asyncpg URL 的驱动前缀替换掉
+# ── connection string ────────────────────────────────────────────────────────────────
+# read dedicated variable first,fallback to replacing asyncpg URL driver prefix
 def _to_sync_database_url(url: str) -> str:
     if url.startswith("postgresql+asyncpg://"):
         return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
@@ -54,10 +54,10 @@ def _get_session_factory() -> sessionmaker[Session]:
 @contextmanager
 def get_sync_db() -> Session:
     """
-    上下文管理器，用法：
+    context manager,usage:
         with get_sync_db() as db:
             db.query(...)
-    异常时自动回滚，正常时自动提交并关闭。
+    rollback automatically on exceptions,commit and close automatically on success.
     """
     session: Session = _get_session_factory()()
     try:

@@ -5,22 +5,22 @@ import { Store }          from '../store/index.js';
 
 /**
  * mode: 'vector' | 'raster'
- * 矢量模式：横向字段列 × 纵向 feature 行，可编辑 feature 属性值
- * 栅格模式：纵向字段行，分系统字段（只读）+ 用户字段（可编辑 default_val）
+ * VectorEnglish：English × English feature English，Editable feature English
+ * English：English，EnglishSystem Fields（Read-only）+ English（Editable default_val）
  */
 export class AttributeTable {
 
     constructor(app) {
         this.app       = app;
-        this.layerId   = null;   // 矢量 layerId  | 栅格 raster index_id
+        this.layerId   = null;   // Vector layerId | raster index_id
         this.layerName = '';
-        this.mode      = 'vector';   // ← 新增
+        this.mode      = 'vector';   // new
 
-        // 矢量专用
+        // VectorEnglish
         this.fields    = [];
         this.features  = [];
 
-        // 栅格专用
+        // English
         this.rasterFields = [];  // RasterFieldOut[]
 
         this._ctxMenu  = null;
@@ -64,7 +64,7 @@ export class AttributeTable {
         this._bindFloatingControls();
     }
 
-    /** 打开矢量属性表 */
+    /** EnglishVectorAttribute table */
     async open(layerId, layerName = '') {
         this._initDom();
         this.mode      = 'vector';
@@ -77,7 +77,7 @@ export class AttributeTable {
         await this.refresh();
     }
 
-    /** 打开栅格属性表 */
+    /** EnglishAttribute table */
     async openRaster(rasterId, rasterName = '', rasterMeta = null) {
         this._initDom();
         this.mode      = 'raster';
@@ -113,12 +113,12 @@ export class AttributeTable {
                 await this._refreshVector();
             }
         } catch (err) {
-            console.error('[AttributeTable] 加载失败:', err);
+            console.error('[AttributeTable] Load failed:', err);
             if (this._tbody) {
                 this._tbody.innerHTML = `
                     <tr><td colspan="99"
                         class="py-8 text-center text-xs text-red-400">
-                        加载失败：${err.message}
+                        Load failed：${err.message}
                     </td></tr>`;
             }
         } finally {
@@ -149,15 +149,15 @@ export class AttributeTable {
     if (!meta) return [];
 
     const schema = [
-        { field_name: 'file_name',  field_alias: '文件名',      field_type: 'string' },
-        { field_name: 'width',      field_alias: '宽度 (px)',   field_type: 'number' },
-        { field_name: 'height',     field_alias: '高度 (px)',   field_type: 'number' },
-        { field_name: 'bands',      field_alias: '波段数',      field_type: 'number' },
-        { field_name: 'crs',        field_alias: '坐标系',      field_type: 'string' },
-        { field_name: 'data_type',  field_alias: '数据类型',    field_type: 'string' },
-        { field_name: 'nodata',     field_alias: 'NoData 值',   field_type: 'string' },
-        { field_name: 'resolution', field_alias: '分辨率',      field_type: 'string' },
-        { field_name: 'bundle_id',  field_alias: '数据包 ID',   field_type: 'string' },
+        { field_name: 'file_name',  field_alias: 'File Name',      field_type: 'string' },
+        { field_name: 'width',      field_alias: 'Width (px)',   field_type: 'number' },
+        { field_name: 'height',     field_alias: 'Height (px)',   field_type: 'number' },
+        { field_name: 'bands',      field_alias: 'Band Count',      field_type: 'number' },
+        { field_name: 'crs',        field_alias: 'CRS',      field_type: 'string' },
+        { field_name: 'data_type',  field_alias: 'Data Type',    field_type: 'string' },
+        { field_name: 'nodata',     field_alias: 'NoData Value',   field_type: 'string' },
+        { field_name: 'resolution', field_alias: 'Resolution',      field_type: 'string' },
+        { field_name: 'bundle_id',  field_alias: 'Bundle ID',   field_type: 'string' },
     ];
 
     return schema
@@ -196,7 +196,7 @@ export class AttributeTable {
             );
         }
         if (this._count) {
-            this._count.textContent = `${this.features.length} 条要素`;
+            this._count.textContent = `${this.features.length} features`;
         }
     }
 
@@ -215,13 +215,13 @@ export class AttributeTable {
                 if (field.is_system) sysCount++;
                 else userCount++;
             }
-            this._count.textContent = `${sysCount} 系统 · ${userCount} 自定义`;
+            this._count.textContent = `${sysCount} System · ${userCount} custom`;
         }
     }
 
     /**
-     * 切换模式时同步工具栏按钮文案
-     * 栅格模式：「+ 新增列」→「+ 新增字段」
+     * EnglishToolbarEnglish
+     * English：「+ Add Column」→「+ English」
      */
     _syncToolbar() {
     if (!this._addColBtn) this._addColBtn = document.getElementById('attr-add-col-btn');
@@ -229,17 +229,17 @@ export class AttributeTable {
 
     if (this._addColBtn) {
         this._addColBtn.textContent =
-            this.mode === 'raster' ? '+ 新增字段' : '+ 新增列';
+            this.mode === 'raster' ? '+ Add Field' : '+ Add Column';
     }
     if (this._modeBadge) {
         this._modeBadge.classList.remove('hidden', 'bg-indigo-100', 'text-indigo-500',
                                                     'bg-amber-100',  'text-amber-600');
         if (this.mode === 'raster') {
             this._modeBadge.classList.add('bg-amber-100', 'text-amber-600');
-            this._modeBadge.textContent = '栅格';
+            this._modeBadge.textContent = 'Raster';
         } else {
             this._modeBadge.classList.add('bg-indigo-100', 'text-indigo-500');
-            this._modeBadge.textContent = '矢量';
+            this._modeBadge.textContent = 'Vector';
         }
         this._modeBadge.classList.remove('hidden');
     }
@@ -260,18 +260,18 @@ export class AttributeTable {
         this._applyLayout(layout);
         this._persistLayout();
         if (this._expandBtn) {
-            this._expandBtn.textContent = expanded ? '⬇ 收起' : '⬆ 展开';
+            this._expandBtn.textContent = expanded ? 'Collapse' : '⬆ Expand';
         }
     }
 
     async addColumn() {
         if (this.mode === 'raster') return this.addRasterField();
 
-        const name = prompt('字段名（建议英文 + 下划线）：');
+        const name = prompt('Field name (letters and underscores recommended):');
         if (!name?.trim()) return;
 
         const typeMap = { '1': 'string', '2': 'number', '3': 'boolean', '4': 'date' };
-        const choice  = prompt('字段类型：\n1. 文本 (string)\n2. 数字 (number)\n3. 布尔 (boolean)\n4. 日期 (date)', '1');
+        const choice  = prompt('Field type:\n1. Text (string)\n2. Number (number)\n3. Boolean (boolean)\n4. Date (date)', '1');
         const fieldType = typeMap[choice?.trim()] ?? 'string';
 
         try {
@@ -283,28 +283,28 @@ export class AttributeTable {
             });
             await this.refresh();
         } catch (err) {
-            alert(`新增列失败：${err.message}`);
+            alert(`Add ColumnFailed：${err.message}`);
         }
     }
 
     async renameColumn(fieldId, currentAlias) {
-        const alias = prompt('新的列显示名：', currentAlias);
+        const alias = prompt('New column display name:', currentAlias);
         if (!alias?.trim() || alias === currentAlias) return;
         try {
             await VectorAPI.updateField(this.layerId, fieldId, { field_alias: alias.trim() });
             await this.refresh();
         } catch (err) {
-            alert(`重命名失败：${err.message}`);
+            alert(`Rename failed：${err.message}`);
         }
     }
 
     async deleteColumn(fieldId, fieldName) {
-        if (!confirm(`确定删除字段「${fieldName}」？\n历史数据中该字段的值将不再显示。`)) return;
+        if (!confirm(`Delete field「${fieldName}」？\nExisting values for this field will no longer be shown.`)) return;
         try {
             await VectorAPI.deleteField(this.layerId, fieldId);
             await this.refresh();
         } catch (err) {
-            alert(`删除列失败：${err.message}`);
+            alert(`Delete column failed：${err.message}`);
         }
     }
 
@@ -314,7 +314,7 @@ export class AttributeTable {
             : this._buildVectorCsvRows();
 
         if (rows.length <= 1) {
-            alert('暂无属性数据可导出。');
+            alert('No attribute data to export.');
             return;
         }
 
@@ -397,14 +397,14 @@ export class AttributeTable {
         menu.innerHTML  = `
             <button class="ctx-item"
                 onclick="RS.attrRenameColumn('${fieldId}','${fieldName}')">
-                ✏️ 重命名
+                Rename
             </button>
             ${isSystem
-                ? `<div class="ctx-disabled">🔒 系统字段不可删除</div>`
+                ? `<div class="ctx-disabled">🔒 System fields cannot be deleted</div>`
                 : `<hr class="ctx-sep"/>
                    <button class="ctx-item ctx-danger"
                        onclick="RS.attrDeleteColumn('${fieldId}','${fieldName}')">
-                       🗑 删除列
+                       Delete Column
                    </button>`
             }`;
 
@@ -414,13 +414,13 @@ export class AttributeTable {
             document.addEventListener('click', () => this._hideCtxMenu(), { once: true }), 0);
     }
 
-    /** 新增用户自定义字段 */
+    /** EnglishCustom Fields */
     async addRasterField() {
-        const name = prompt('字段名（建议英文 + 下划线）：');
+        const name = prompt('Field name (letters and underscores recommended):');
         if (!name?.trim()) return;
 
         const typeMap = { '1': 'string', '2': 'number', '3': 'boolean', '4': 'date' };
-        const choice  = prompt('字段类型：\n1. 文本 (string)\n2. 数字 (number)\n3. 布尔 (boolean)\n4. 日期 (date)', '1');
+        const choice  = prompt('Field type:\n1. Text (string)\n2. Number (number)\n3. Boolean (boolean)\n4. Date (date)', '1');
         const fieldType = typeMap[choice?.trim()] ?? 'string';
 
         try {
@@ -432,42 +432,42 @@ export class AttributeTable {
             });
             await this.refresh();
         } catch (err) {
-            alert(`新增字段失败：${err.message}`);
+            alert(`Add field failed：${err.message}`);
         }
     }
 
-    /** 重命名字段显示名（双击显示名列触发） */
+    /** EnglishDisplay Name（EnglishDisplay NameEnglish） */
     async renameRasterField(fieldId, currentAlias) {
-        const alias = prompt('新的显示名：', currentAlias);
+        const alias = prompt('New display name:', currentAlias);
         if (!alias?.trim() || alias === currentAlias) return;
         try {
             await RasterAPI.updateField(this.layerId, fieldId, { field_alias: alias.trim() });
-            // 乐观更新本地缓存
+            // English
             const f = this._rasterFieldById.get(String(fieldId));
             if (f) f.field_alias = alias.trim();
             this._render();
         } catch (err) {
-            alert(`重命名失败：${err.message}`);
+            alert(`Rename failed：${err.message}`);
             await this.refresh();
         }
     }
 
-    /** 删除用户字段 */
+    /** English */
     async deleteRasterField(fieldId, fieldName) {
-        if (!confirm(`确定删除字段「${fieldName}」？`)) return;
+        if (!confirm(`Delete field「${fieldName}」？`)) return;
         try {
             await RasterAPI.deleteField(this.layerId, fieldId);
-            // 乐观更新本地缓存
+            // English
             this.rasterFields = this.rasterFields.filter(f => String(f.id) !== String(fieldId));
             this._render();
         } catch (err) {
-            alert(`删除失败：${err.message}`);
+            alert(`Delete failed：${err.message}`);
             await this.refresh();
         }
     }
 
     /**
-     * 编辑栅格字段的默认值（双击默认值列触发）
+     * EnglishDefault Value（EnglishDefault ValueEnglish）
      * @param {HTMLTableCellElement} td
      */
     editRasterDefault(td) {
@@ -496,22 +496,22 @@ export class AttributeTable {
             editor.remove();
             span.classList.remove('hidden');
 
-            // 值未变化则跳过
+            // English
             const newStr = String(newVal ?? '');
             const oldStr = String(rawVal ?? '');
             if (newStr === oldStr) return;
 
-            // 乐观更新 UI
+            // English UI
             span.innerHTML = ModalComponent._attrFmtVal(newVal, fieldType);
 
             try {
                 await RasterAPI.updateField(this.layerId, fieldId, {
                     default_val: newVal === null ? null : String(newVal),
                 });
-                // 同步本地缓存
+                // English
                 if (field) field.default_val = newVal === null ? null : String(newVal);
             } catch (err) {
-                console.error('[AttributeTable] 保存默认值失败:', err);
+                console.error('[AttributeTable] Failed to save default value:', err);
                 span.innerHTML = ModalComponent._attrFmtVal(rawVal, fieldType);
                 await this.refresh();
             }
@@ -571,7 +571,7 @@ export class AttributeTable {
                     };
                 }
             } catch (err) {
-                console.error('[AttributeTable] 保存失败:', err);
+                console.error('[AttributeTable] Save failed:', err);
                 span.innerHTML = ModalComponent._attrFmtVal(rawVal, fieldType);
                 td.dataset.raw = String(rawVal ?? '');
             }
@@ -589,7 +589,7 @@ export class AttributeTable {
     }
 
     async deleteFeature(featureId) {
-        if (!confirm('确定删除该要素？此操作不可撤销。')) return;
+        if (!confirm('Delete this feature? This action cannot be undone.')) return;
         try {
             await VectorAPI.deleteFeature(featureId);
             this.features = this.features.filter(f => String(f.id) !== String(featureId));
@@ -598,7 +598,7 @@ export class AttributeTable {
                 await this.app.mapController.refreshVectorLayer(this.layerId);
             }
         } catch (err) {
-            alert(`删除失败：${err.message}`);
+            alert(`Delete failed：${err.message}`);
         }
     }
 
@@ -826,14 +826,14 @@ export class AttributeTable {
         const height = this._getPanelLayout().height;
         this._expanded = height > 340;
         if (this._expandBtn) {
-            this._expandBtn.textContent = this._expanded ? '⬇ 收起' : '⬆ 展开';
+            this._expandBtn.textContent = this._expanded ? 'Collapse' : '⬆ Expand';
         }
     }
 
     _makeEditor(fieldType, rawValue) {
         if (fieldType === 'boolean') {
             const sel = document.createElement('select');
-            sel.innerHTML = `<option value="true">是</option><option value="false">否</option>`;
+            sel.innerHTML = `<option value="true">Yes</option><option value="false">No</option>`;
             sel.value = String(rawValue) === 'true' ? 'true' : 'false';
             sel.dataset.val = sel.value;
             sel.addEventListener('change', () => { sel.dataset.val = sel.value; });
@@ -852,7 +852,7 @@ export class AttributeTable {
     }
 
     _setTitle(name) {
-        if (this._title) this._title.textContent = `属性表：${name}`;
+        if (this._title) this._title.textContent = `Attribute table: ${name}`;
     }
 
     _loading(show) {

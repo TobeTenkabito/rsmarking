@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator, ValidationError
 
 
 # ==========================================
-# 1. 枚举定义 (严格限制前端传入的参数)
+# 1. Enum definitions (strictly limit frontend request parameters)
 # ==========================================
 
 class AILanguage(str, Enum):
@@ -25,147 +25,147 @@ class DataType(str, Enum):
 
 
 # ==========================================
-# 2. 基础空间结构与深度统计特征 (绝对只读)
+# 2. Basic spatial structures and deep statistics (strictly read-only)
 # ==========================================
 
 class SpatialBounds(BaseModel):
-    """空间边界定义"""
-    xmin: float = Field(..., description="最小 X 坐标 (经度)")
-    ymin: float = Field(..., description="最小 Y 坐标 (纬度)")
-    xmax: float = Field(..., description="最大 X 坐标 (经度)")
-    ymax: float = Field(..., description="最大 Y 坐标 (纬度)")
+    """Spatial boundary definition"""
+    xmin: float = Field(..., description="Minimum X coordinate (longitude)")
+    ymin: float = Field(..., description="Minimum Y coordinate (latitude)")
+    xmax: float = Field(..., description="Maximum X coordinate (longitude)")
+    ymax: float = Field(..., description="Maximum Y coordinate (latitude)")
 
     @field_validator('xmax')
     def check_x_bounds(cls, v, info):
         if 'xmin' in info.data and v <= info.data['xmin']:
-            raise ValueError("xmax 必须大于 xmin")
+            raise ValueError("xmax must be greater than xmin")
         return v
 
     @field_validator('ymax')
     def check_y_bounds(cls, v, info):
         if 'ymin' in info.data and v <= info.data['ymin']:
-            raise ValueError("ymax 必须大于 ymin")
+            raise ValueError("ymax must be greater than ymin")
         return v
 
 
 class NumericStats(BaseModel):
-    """Level 2: 数值型数据的深度统计特征 (用于栅格像素值或矢量属性数值)"""
-    min: float = Field(..., description="最小值")
-    max: float = Field(..., description="最大值")
-    mean: float = Field(..., description="平均值")
-    std_dev: Optional[float] = Field(None, description="标准差")
+    """Level 2: deep statistics for numeric raster pixel values or vector attributes"""
+    min: float = Field(..., description="Minimum value")
+    max: float = Field(..., description="Maximum value")
+    mean: float = Field(..., description="Mean value")
+    std_dev: Optional[float] = Field(None, description="Standard deviation")
     histogram: Optional[Dict[str, int]] = Field(
         default=None,
-        description="数据分布直方图，例如 {'0.00-0.20': 150, '0.20-0.40': 300}"
+        description="Data distribution histogram, for example {'0.00-0.20': 150, '0.20-0.40': 300}"
     )
 
 
 # ==========================================
-# 3. 可修改数据模型 (防篡改核心：AI 在 MODIFY 模式下只能输出这些)
+# 3. Modifiable data models (Tamper-resistant core: in MODIFY mode the AI can output only these fields)
 # ==========================================
 
 class RasterModifiable(BaseModel):
-    """栅格数据中允许 AI 修改的字段"""
-    name: str = Field(..., description="栅格图层的显示名称 (对应数据库的 file_name)")
-    # 预留扩展：如果未来允许 AI 修改描述、默认渲染样式等，加在这里
+    """Fields the AI may modify for raster data"""
+    name: str = Field(..., description="Display name of the raster layer (maps to database file_name)")
+    # Reserved extension point for future AI-edited descriptions, default render styles, and similar fields.
 
 
 class VectorModifiable(BaseModel):
-    """矢量数据中允许 AI 修改的字段"""
-    name: str = Field(..., description="矢量图层的显示名称")
-    # 预留扩展：如果未来允许 AI 修改默认分类字段等，加在这里
+    """Fields the AI may modify for vector data"""
+    name: str = Field(..., description="Display name of the vector layer")
+    # Reserved extension point for future AI-edited default category fields and similar fields.
 
 
 # ==========================================
-# 4. 完整上下文模型 (发给 AI 阅读的全部信息，继承自可修改模型)
+# 4. Complete context models (All information sent to the AI, extending the modifiable model)
 # ==========================================
 
 class RasterContextData(RasterModifiable):
-    """栅格完整上下文"""
-    crs: str = Field(..., description="坐标参考系统，例如 EPSG:4326")
-    bounds: SpatialBounds = Field(..., description="空间边界")
-    center: Dict[str, float] = Field(..., description="中心点坐标，包含 x 和 y")
-    resolution: Dict[str, float] = Field(..., description="分辨率，包含 x 和 y")
-    bands_count: int = Field(..., description="波段数量", ge=1)
-    data_type: str = Field(..., description="数据类型，如 Float32, UInt8")
+    """Complete raster context"""
+    crs: str = Field(..., description="Coordinate reference system, for example EPSG:4326")
+    bounds: SpatialBounds = Field(..., description="Spatial bounds")
+    center: Dict[str, float] = Field(..., description="Center coordinate containing x and y")
+    resolution: Dict[str, float] = Field(..., description="Resolution containing x and y")
+    bands_count: int = Field(..., description="Band count", ge=1)
+    data_type: str = Field(..., description="Data type, such as Float32 or UInt8")
 
-    # [新增] 暴露更多底层元数据供 AI 参考（只读）
-    file_path: Optional[str] = Field(None, description="原始文件路径 (可用于推断数据来源或格式)")
-    cog_path: Optional[str] = Field(None, description="云优化 GeoTIFF 路径状态")
-    bundle_id: Optional[int] = Field(None, description="关联的切片包ID")
+    # Expose additional low-level metadata for AI reference (read-only)
+    file_path: Optional[str] = Field(None, description="Original file path (can be used to infer data source or format)")
+    cog_path: Optional[str] = Field(None, description="Cloud Optimized GeoTIFF path status")
+    bundle_id: Optional[int] = Field(None, description="Related tile package ID")
 
-    stats: Optional[NumericStats] = Field(None, description="栅格像素值的统计特征")
+    stats: Optional[NumericStats] = Field(None, description="Statistics for raster pixel values")
     grid_sampling: Optional[Dict[str, Any]] = Field(
         None,
-        description="空间网格采样数据，包含采样点分布及对应的像素值"
+        description="Spatial grid sample data, including sample point distribution and pixel values"
     )
 
 
 class VectorContextData(VectorModifiable):
-    """矢量完整上下文"""
-    crs: str = Field(..., description="坐标参考系统，例如 EPSG:4326")
-    bounds: SpatialBounds = Field(..., description="空间边界")
-    feature_count: int = Field(..., description="要素总数", ge=0)
+    """Complete vector context"""
+    crs: str = Field(..., description="Coordinate reference system, for example EPSG:4326")
+    bounds: SpatialBounds = Field(..., description="Spatial bounds")
+    feature_count: int = Field(..., description="Total feature count", ge=0)
 
-    # [新增] 暴露几何类型和数据抽样，帮助 AI 了解具体内容
-    primary_geometry_type: str = Field(default="Unknown", description="图层的主要几何类型 (如 ST_Polygon, ST_Point)")
+    # Expose geometry type and data samples to help the AI understand the content
+    primary_geometry_type: str = Field(default="Unknown", description="Primary geometry type of the layer (such as ST_Polygon or ST_Point)")
     sample_features: list[Dict[str, Any]] = Field(default_factory=list,
-                                                  description="随机抽取的最多3个要素属性样本，用于参考数据真实形态")
+                                                  description="Up to 3 randomly sampled feature-property examples showing real data shape")
 
-    category_distribution: Dict[str, int] = Field(default_factory=dict, description="各类别要素的数量统计")
-    properties_schema: Dict[str, str] = Field(default_factory=dict, description="属性表字段及其数据类型")
-    numeric_stats: Dict[str, NumericStats] = Field(default_factory=dict, description="属性表中数值型字段的深度统计特征")
+    category_distribution: Dict[str, int] = Field(default_factory=dict, description="Counts of features in each category")
+    properties_schema: Dict[str, str] = Field(default_factory=dict, description="Attribute table fields and their data types")
+    numeric_stats: Dict[str, NumericStats] = Field(default_factory=dict, description="Deep statistics for numeric fields in the attribute table")
 
 
 # ==========================================
-# 5. 业务请求与响应模型 (API 交互层)
+# 5. Business request and response models (API interaction layer)
 # ==========================================
 
 class AIRequestPayload(BaseModel):
-    """前端发给 AI 网关的完整请求体"""
-    target_id: Union[int, str] = Field(..., description="图层的数据库 ID (Raster index_id 或 Layer UUID)")
-    data_type: DataType = Field(..., description="数据类型：raster 或 vector")
-    mode: TaskMode = Field(..., description="任务模式：analyze (分析) 或 modify (修改)")
-    language: AILanguage = Field(default=AILanguage.ZH, description="AI 响应语言")
-    user_prompt: str = Field(..., min_length=2, max_length=2000, description="用户的自然语言指令")
-    overwrite:   bool = Field(default=False, description="是否覆盖原始记录，默认新建。需前端用户手动确认后置为 True")
+    """Complete request body sent by the frontend to the AI gateway"""
+    target_id: Union[int, str] = Field(..., description="Layer database ID (raster index_id or layer UUID)")
+    data_type: DataType = Field(..., description="Data type: raster or vector")
+    mode: TaskMode = Field(..., description="Task mode: analyze or modify")
+    language: AILanguage = Field(default=AILanguage.EN, description="AI response language")
+    user_prompt: str = Field(..., min_length=2, max_length=2000, description="User natural-language instruction")
+    overwrite:   bool = Field(default=False, description="Whether to overwrite the original record; creates a new one by default. Set True only after explicit frontend user confirmation.")
     session_id: Optional[str] = Field(
         None,
-        description="会话ID，用于多轮对话记忆。前端生成并维护，格式建议 UUID4。"
+        description="Session ID for multi-turn memory. Generated and maintained by the frontend; UUID4 is recommended."
     )
     map_context: Optional[Dict[str, Any]] = Field(
         None,
-        description="前端地图上下文（当前视野、选中要素等），由 context_builder 解析注入 Prompt。"
+        description="Frontend map context (current viewport, selected features, and similar data), parsed by context_builder and injected into the prompt."
     )
 
 
 class AIModifyResponse(BaseModel):
     """
-    修改模式下，解译器期望从 AI 接收的严格结构。
+    Strict structure expected from the AI by the interpreter in modify mode.
     """
-    # 注意：这里严格限制为 Modifiable 类型，彻底阻断 AI 篡改统计数据的可能
+    # Note: this is strictly limited to Modifiable types to prevent AI tampering with statistical data.
     modified_data: Union[RasterModifiable, VectorModifiable] = Field(
         ...,
-        description="AI 修改后的数据结构，只能包含允许修改的字段"
+        description="AI-modified data structure containing only fields allowed for modification"
     )
     explanation: str = Field(
         default="",
-        description="AI 对本次修改的简短说明（不写入数据库，仅供日志或前端提示）"
+        description="Brief AI explanation for this modification, not written to the database and used only for logs or frontend hints."
     )
 
 
 # ==========================================
-# 6. 核心解译器校验函数
+# 6. Core interpreter validation function
 # ==========================================
 
 def validate_ai_json_output(raw_json_str: str, expected_type: DataType) -> Union[RasterModifiable, VectorModifiable]:
     """
-    核心解译器：将 AI 返回的不可信 JSON 字符串转换为受信任的 Pydantic 对象。
-    如果 AI 输出了 Markdown 标记，会进行清洗。
-    如果 AI 试图输出 bounds 或 stats 等只读字段，Pydantic 会自动忽略它们。
+    Core interpreter: convert untrusted JSON returned by the AI into a trusted Pydantic object.
+    If the AI outputs Markdown markers, they are cleaned.
+    If the AI attempts to output read-only fields such as bounds or stats, Pydantic ignores them automatically.
     """
     try:
-        # 1. 清洗 AI 可能带有的 Markdown 代码块标记
+        # 1. Clean possible Markdown code fences from AI output
         cleaned_str = raw_json_str.strip()
         if cleaned_str.startswith("```json"):
             cleaned_str = cleaned_str[7:]
@@ -177,13 +177,13 @@ def validate_ai_json_output(raw_json_str: str, expected_type: DataType) -> Union
 
         cleaned_str = cleaned_str.strip()
 
-        # 2. 解析为 Python 字典
+        # 2. Parse into a Python dictionary
         parsed_dict = json.loads(cleaned_str)
 
-        # 3. 提取 modified_data 层级 (兼容 AI 直接返回数据或包装在 modified_data 中)
+        # 3. Extract the modified_data level, supporting both direct data and modified_data wrappers.
         data_to_validate = parsed_dict.get("modified_data", parsed_dict)
 
-        # 4. 强类型校验 (强制校验为 Modifiable，实现物理防篡改)
+        # 4. Strong type validation (Validate as Modifiable to provide structural tamper resistance)
         if expected_type == DataType.RASTER:
             validated_data = RasterModifiable(**data_to_validate)
         else:
@@ -192,7 +192,7 @@ def validate_ai_json_output(raw_json_str: str, expected_type: DataType) -> Union
         return validated_data
 
     except json.JSONDecodeError as e:
-        raise ValueError(f"AI 返回的不是合法的 JSON 格式: {str(e)}\n原始返回: {raw_json_str}")
+        raise ValueError(f"AI returned invalid JSON: {str(e)}\nRaw response: {raw_json_str}")
     except ValidationError as e:
-        # Pydantic 会精确指出哪个字段的类型或规则错了
-        raise ValueError(f"AI 返回的 JSON 结构不符合数据库要求: {e.json()}")
+        # Pydantic reports exactly which field type or rule is invalid.
+        raise ValueError(f"AI returned a JSON structure that does not meet database requirements: {e.json()}")

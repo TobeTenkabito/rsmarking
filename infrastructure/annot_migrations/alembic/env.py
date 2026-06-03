@@ -23,7 +23,7 @@ target_metadata = Base.metadata
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    """过滤 PostGIS 系统表和空间索引"""
+    """text PostGIS table"""
     IGNORABLE_TABLES = {
         "spatial_ref_sys", "geometry_columns", "geography_columns",
         "raster_columns", "raster_overviews", "topology", "layer"
@@ -47,9 +47,9 @@ def include_object(object, name, type_, reflected, compare_to):
 
 def include_name(name, type_, parent_names):
     """
-    正确签名：(name, type_, parent_names)
-    type_ 可能是 "schema" / "table" / "column" 等。
-    只放行 public schema，过滤掉 tiger / topology 等 PostGIS 附带 schema。
+    text:(name, type_, parent_names)
+    type_ text "schema" / "table" / "column" text.
+    text public schema,text tiger / topology text PostGIS text schema.
     """
     if type_ == "schema":
         return name in ("public", None)
@@ -61,8 +61,8 @@ def do_run_migrations(connection):
         connection=connection,
         target_metadata=target_metadata,
         include_object=include_object,
-        include_schemas=True,       # 扫描带 schema 前缀的表
-        include_name=include_name,  # 只扫描 public schema
+        include_schemas=True,       # text schema table
+        include_name=include_name,  # text public schema
         transactional_ddl=True,
         render_as_batch=True,
         compare_type=True,

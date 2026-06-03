@@ -1,6 +1,6 @@
 /**
  * ScriptTemplate.js
- * Python 脚本编辑器面板
+ * Python script editor panel
  */
 export const ScriptTemplate = {
 
@@ -8,12 +8,12 @@ export const ScriptTemplate = {
         return `
             <div class="flex h-full">
 
-                <!-- 左侧：栅格选择 -->
+                <!-- Left side：Raster selection -->
                 <div class="w-80 border-r border-slate-100 p-4 overflow-y-auto">
                     <div class="mb-4">
-                        <h3 class="text-sm font-bold text-slate-700 mb-2">输入影像选择</h3>
+                        <h3 class="text-sm font-bold text-slate-700 mb-2">Input Imagery Selection</h3>
                         <div id="script-selected-count" class="text-xs text-slate-500">
-                            已选择 ${selectedIds.length} 个影像
+                            Selected ${selectedIds.length} imagery items
                         </div>
                     </div>
 
@@ -30,7 +30,7 @@ export const ScriptTemplate = {
                                 <div class="flex-1 overflow-hidden">
                                     <div class="text-xs font-bold text-slate-700 truncate">${r.file_name}</div>
                                     <div class="text-[10px] text-slate-400">
-                                        ${r.width} × ${r.height} | ${r.bands} 波段
+                                        ${r.width} × ${r.height} | ${r.bands} bands
                                     </div>
                                 </div>
                             </label>`
@@ -38,11 +38,11 @@ export const ScriptTemplate = {
                     </div>
 
                     <div class="mt-6 pt-6 border-t border-slate-100">
-                        <label class="text-sm font-bold text-slate-700 block mb-2">输出文件名</label>
+                        <label class="text-sm font-bold text-slate-700 block mb-2">Output File Name</label>
                         <input
                             type="text"
                             id="script-output-name"
-                            placeholder="例: ndvi_result.tif"
+                            placeholder="e.g. ndvi_result.tif"
                             class="w-full p-2 border border-slate-200 rounded-lg text-xs
                                    focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             value="${currentScript ? '' : 'script_output_' + Date.now() + '.tif'}"
@@ -50,39 +50,39 @@ export const ScriptTemplate = {
                     </div>
                 </div>
 
-                <!-- 右侧：代码编辑器 -->
+                <!-- Right side：Code editor -->
                 <div class="flex-1 flex flex-col p-4">
 
-                    <!-- 工具栏 -->
+                    <!-- Toolbar -->
                     <div class="flex justify-between items-center mb-4">
                         <div class="flex items-center space-x-4">
                             <select id="script-template-selector"
                                     class="text-xs border border-slate-200 rounded-lg px-3 py-2
                                            focus:ring-2 focus:ring-purple-500">
-                                <option value="">-- 选择模板 --</option>
+                                <option value="">-- Select Template --</option>
                             </select>
                             <div class="flex items-center space-x-2">
-                                <span class="text-xs text-slate-500">环境:</span>
+                                <span class="text-xs text-slate-500">Environment:</span>
                                 <span class="text-xs font-mono bg-slate-100 px-2 py-1 rounded">
                                     Python 3.10 + Rasterio/Numpy
                                 </span>
                             </div>
                         </div>
                         <div id="script-validation" class="text-xs">
-                            <!-- 动态验证信息 -->
+                            <!-- Dynamic validation message -->
                         </div>
                     </div>
 
-                    <!-- 编辑区 -->
+                    <!-- Editor area -->
                     <div class="flex-1 border border-slate-200 rounded-lg overflow-hidden flex flex-row">
-                        <!-- 行号列 -->
+                        <!-- Line number column -->
                         <div id="line-numbers"
                              class="w-10 shrink-0 bg-slate-100 border-r border-slate-200
                                     pt-4 pb-4 text-right pr-2 font-mono text-xs text-slate-400
                                     select-none pointer-events-none overflow-hidden">
-                            <!-- 动态生成行号 -->
+                            <!-- Generate line numbers dynamically -->
                         </div>
-                        <!-- 代码编辑区 -->
+                        <!-- Code editor area -->
                         <textarea
                             id="script-editor-textarea"
                             class="flex-1 h-full p-4 font-mono text-sm bg-slate-50 resize-none
@@ -92,7 +92,7 @@ export const ScriptTemplate = {
                         >${currentScript}</textarea>
                     </div>
 
-                    <!-- 安全提示 -->
+                    <!-- Security Note -->
                     <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                         <div class="flex items-start space-x-2">
                             <svg class="w-4 h-4 text-amber-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,20 +101,20 @@ export const ScriptTemplate = {
                                          4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
                             </svg>
                             <div class="flex-1">
-                                <div class="text-xs font-bold text-amber-800 mb-1">安全提示</div>
+                                <div class="text-xs font-bold text-amber-800 mb-1">Security Note</div>
                                 <div class="text-[10px] text-amber-700 space-y-1">
-                                    <div>• 脚本在隔离的Docker容器中执行，最大运行时间10分钟</div>
-                                    <div>• 禁止使用 exec, eval, __import__ 等危险函数</div>
-                                    <div>• 可用库: numpy, scipy, rasterio, scikit-image</div>
+                                    <div>• Scripts run in isolated Docker containers，maximum runtime is 10 minutes</div>
+                                    <div>• Dangerous functions such as exec, eval, and __import__ are blocked</div>
+                                    <div>• Available libraries: numpy, scipy, rasterio, scikit-image</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 历史记录面板（隐藏） -->
+                    <!-- History panel（hidden） -->
                     <div id="script-history"
                          class="hidden mt-4 p-4 bg-slate-50 rounded-lg max-h-48 overflow-y-auto">
-                        <!-- 动态加载历史记录 -->
+                        <!-- Dynamically load history -->
                     </div>
                 </div>
             </div>`;

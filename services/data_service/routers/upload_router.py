@@ -28,7 +28,7 @@ async def save_and_process_file(
         background_tasks: BackgroundTasks,
         bundle_id: str = None
 ) -> dict:
-    """保存上传文件并提取元数据，后台启动 COG 转换"""
+    """Save uploaded files, extract metadata, and start COG conversion in the background."""
     file_id = str(uuid.uuid4())
     ext = os.path.splitext(file.filename)[1]
     raw_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
@@ -51,13 +51,13 @@ async def save_and_process_file(
         return {"id": result["id"], "status": "processing", "metadata": metadata}
 
     except Exception as e:
-        logger.error(f"上传失败: {str(e)}")
+        logger.error(f"Upload failed: {str(e)}")
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 
 async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSession) -> dict:
-    """查询各波段路径 → 合并 → 转 COG → 注册数据库"""
+    """Look up band paths -> merge -> convert to COG -> register in the database."""
     ids = [int(i) for i in raster_ids.split(',')]
     input_paths = []
 
@@ -72,7 +72,7 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
                 input_paths.append(path)
 
     if not input_paths:
-        raise HTTPException(status_code=400, detail="未找到有效波段路径")
+        raise HTTPException(status_code=400, detail="No valid band paths found")
 
     cluster_result = db_ops._submit_cluster_job_or_none(
         operation="merge_bands",
@@ -107,14 +107,14 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
 
 
 async def extract_raster_bands_task(raster_id: int, band_indices: str, new_name: str, db: AsyncSession) -> dict:
-    """查询源文件路径 → 提取指定波段 → 转 COG → 注册数据库"""
-    # 查询源文件
+    """Look up source file path -> extract selected bands -> convert to COG -> register in the database."""
+    # Look up the source file
     result = await db.execute(
         select(models.RasterMetadata).where(models.RasterMetadata.index_id == raster_id)
     )
     r = result.scalars().first()
     if not r:
-        raise HTTPException(status_code=404, detail="未找到对应栅格文件")
+        raise HTTPException(status_code=404, detail="Matching raster file not found")
 
     input_path = db_ops.resolve_raster_record_path(r)
     if not input_path:

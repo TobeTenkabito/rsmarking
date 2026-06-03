@@ -2,10 +2,10 @@ import { getDateLocale, t } from '../../../../app/src/i18n/index.js';
 
 /**
  * modal/utils.js
- * 所有模板共享的纯工具函数，无任何业务依赖
+ * Shared pure utility functions for templates，No business dependencies
  */
 
-/** HTML 属性值转义 */
+/** HTML Escape attribute values */
 export function esc(str) {
     return String(str)
         .replace(/&/g, '&amp;')
@@ -15,18 +15,18 @@ export function esc(str) {
         .replace(/>/g, '&gt;');
 }
 
-/** 根据字段类型返回 badge CSS 类名 */
+/** Return badge CSS class by field type */
 export function attrBadgeCls(type) {
     return { string: 'badge-str', number: 'badge-num',
              boolean: 'badge-bool', date: 'badge-date' }[type] ?? 'badge-str';
 }
 
-/** 根据字段类型返回图标字符 */
+/** Return icon by field type */
 export function attrTypeIcon(type) {
     return { string: 'T', number: '#', boolean: '⊙', date: '▦' }[type] ?? '?';
 }
 
-/** 格式化单元格显示值 */
+/** Format cell display value */
 export function attrFmtVal(val, type) {
     if (val === null || val === undefined || val === '')
         return '<span class="text-slate-300 select-none">—</span>';
@@ -37,7 +37,7 @@ export function attrFmtVal(val, type) {
     return String(val);
 }
 
-/** 渲染通用下拉选择框 <option> 列表 */
+/** Render shared dropdown <option> English */
 export function renderSelectOptions(rasters) {
     if (!rasters || rasters.length === 0)
         return `<option value="">${t('modal.selectRasterFirst')}</option>`;
@@ -46,7 +46,7 @@ export function renderSelectOptions(rasters) {
     ).join('');
 }
 
-/** 渲染通用加载等待状态 */
+/** Render shared loading state */
 export function renderActionLoading(message = t('script.validation.running')) {
     return `
         <div class="flex flex-col items-center justify-center py-12">

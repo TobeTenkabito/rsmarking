@@ -1,5 +1,5 @@
 /**
- * VectorAPI - 负责矢量标注服务 (8001) 与 矢量切片服务 (8003) 的通讯
+ * VectorAPI - EnglishVectorEnglish (8001) English VectorEnglish (8003) English
  */
 
 import { API_CONFIG } from './config.js';
@@ -8,11 +8,11 @@ const ANNO_BASE_URL = API_CONFIG.annotationServiceUrl;
 const VTILE_BASE_URL = API_CONFIG.vectorTileServiceUrl;
 
 /**
- * 通用 Fetch 封装
- * 处理 Content-Type、异常拦截及 API 错误详情解析
+ * English Fetch English
+ * English Content-Type、English API English
  */
 async function apiRequest(url, options = {}) {
-    // FormData 时不设置 Content-Type，让浏览器自动附加 boundary
+    // FormData English Content-Type，English boundary
     const isFormData = options.body instanceof FormData;
     const defaultHeaders = isFormData ? {} : { 'Content-Type': 'application/json' };
 
@@ -24,14 +24,14 @@ async function apiRequest(url, options = {}) {
     try {
         const response = await fetch(url, config);
 
-        // 处理删除操作成功的 204 返回
+        // EnglishActionsSucceededEnglish 204 returns
         if (response.status === 204) return true;
 
         const data = await response.json();
 
         if (!response.ok) {
-            // 解析 FastAPI 抛出的 HTTPException 详情
-            const errorMsg = data.detail || `请求失败: ${response.status}`;
+            // English FastAPI English HTTPException English
+            const errorMsg = data.detail || `Request failed: ${response.status}`;
             throw new Error(errorMsg);
         }
 
@@ -47,14 +47,14 @@ async function apiRequest(url, options = {}) {
 export const VectorAPI = {
 
     /**
-     * 获取所有标注项目
+     * EnglishAnnotation Project
      */
     async fetchProjects() {
         return await apiRequest(`${ANNO_BASE_URL}/projects`);
     },
 
     /**
-     * 创建新项目
+     * EnglishProject
      */
     async createProject(name) {
         return await apiRequest(`${ANNO_BASE_URL}/projects`, {
@@ -64,14 +64,14 @@ export const VectorAPI = {
     },
 
     /**
-     * 获取项目下的所有图层
+     * EnglishProjectEnglish
      */
     async fetchLayers(projectId) {
         return await apiRequest(`${ANNO_BASE_URL}/projects/${projectId}/layers`);
     },
 
     /**
-     * 【危险/调试专用】删除所有项目及其关联的图层和要素
+     * 【English/English】EnglishProjectEnglish
      */
     async deleteAllProjects() {
         return await apiRequest(`${ANNO_BASE_URL}/projects`, {
@@ -80,7 +80,7 @@ export const VectorAPI = {
     },
 
     /**
-     * 创建标注图层 (可关联影像 index_id)
+     * EnglishAnnotation Layers (English index_id)
      */
     async createLayer(projectId, name, sourceRasterIndexId = null) {
         return await apiRequest(`${ANNO_BASE_URL}/projects/${projectId}/layers`, {
@@ -93,7 +93,7 @@ export const VectorAPI = {
     },
 
     /**
-     * 根据视口 BBox 动态加载要素 (地图联动核心)
+     * English BBox English (English)
      * @param {string} layerId
      * @param {Array} bbox - [minx, miny, maxx, maxy]
      */
@@ -104,10 +104,10 @@ export const VectorAPI = {
     },
 
     /**
-     * 创建单个标注要素
+     * English
      * @param {string} layerId
-     * @param {Object} geojsonGeometry - 标准 GeoJSON geometry 对象
-     * @param {Object} properties - 业务属性 (category, confidence等)
+     * @param {Object} geojsonGeometry - Standard GeoJSON geometry object
+     * @param {Object} properties - English (category, confidenceEnglish)
      */
     async createFeature(layerId, geojsonGeometry, properties = {}) {
         return await apiRequest(`${ANNO_BASE_URL}/layers/${layerId}/features`, {
@@ -120,14 +120,14 @@ export const VectorAPI = {
     },
 
     /**
-     * 获取要素详情
+     * English
      */
     async getFeature(featureId) {
         return await apiRequest(`${ANNO_BASE_URL}/features/${featureId}`);
     },
 
     /**
-     * 更新要素 (几何或属性)
+     * English (English)
      */
     async updateFeature(featureId, updateData) {
         return await apiRequest(`${ANNO_BASE_URL}/features/${featureId}`, {
@@ -137,7 +137,7 @@ export const VectorAPI = {
     },
 
     /**
-     * 删除要素
+     * Delete feature
      */
     async deleteFeature(featureId) {
         return await apiRequest(`${ANNO_BASE_URL}/features/${featureId}`, {
@@ -146,7 +146,7 @@ export const VectorAPI = {
     },
 
     /**
-     * 删除图层
+     * Delete layer
      */
     async deleteLayer(layerID){
         return await apiRequest(`${ANNO_BASE_URL}/layers/${layerID}`,{
@@ -155,7 +155,7 @@ export const VectorAPI = {
     },
 
     /**
-     * 批量导入要素 (用于对接 AI 提取模块 ExtractionModule)
+     * English (English AI English ExtractionModule)
      * @param {string} layerId
      * @param {Array} features - [{geometry: {...}, properties: {...}}, ...]
      */
@@ -185,44 +185,44 @@ export const VectorAPI = {
         apiRequest(`${ANNO_BASE_URL}/${layerId}/fields/${fieldId}`, { method: "DELETE" }),
 
     /**
-    * 导入 Shapefile 文件包
-    * @param {string} layerId - 目标图层 ID
-    * @param {FileList | File[]} files - 同时上传 .shp/.shx/.dbf（必须）+ .prj/.cpg（推荐）
+    * Import Shapefile English
+    * @param {string} layerId - English ID
+    * @param {FileList | File[]} files - English .shp/.shx/.dbf（English）+ .prj/.cpg（English）
     * @returns {{ imported: number, fields_registered: number, layer_id: string }}
     */
     async importShapefile(layerId, files) {
         const formData = new FormData();
         for (const file of files) {
-            formData.append("files", file);  // 与后端 files: List[UploadFile] 对应
+            formData.append("files", file);  // Matches backend files: List[UploadFile]
         }
         return await apiRequest(`${ANNO_BASE_URL}/layers/${layerId}/import/shapefile`, {
             method: "POST",
-            headers: {},        // 覆盖掉 apiRequest 默认的 application/json
+            headers: {},        // Override apiRequest's default application/json header
             body: formData,
         });
     },
 
     /**
-     * 获取 MVT 矢量瓦片服务的 URL 模板
-     * 增加时间戳参数防止由于标注更新导致的浏览器缓存不一致
+     * English MVT VectorEnglish URL English
+     * English
      */
     getMvtUrlTemplate(layerId) {
         return `${VTILE_BASE_URL}/tiles/${layerId}/{z}/{x}/{y}.pbf?t=${Date.now()}`;
     },
 
     /**
-     * 用任意几何范围裁剪矢量要素，纯内存操作，直接返回 GeoJSON FeatureCollection
+     * EnglishVectorEnglish，EnglishActions，Englishreturns GeoJSON FeatureCollection
      *
      * @param {GeoJSON.Geometry} clipGeometry
-     *   裁剪范围的 GeoJSON Geometry 对象，坐标系为 EPSG:4326。
-     *   可以是任意形状：
-     *     - 矩形：由调用方用 boundsToGeometry(bounds_wgs84) 构造
-     *     - 用户手绘多边形：直接取绘制结果的 geometry
-     *     - 另一个矢量要素的范围：直接取该 feature.geometry
+     *   English GeoJSON Geometry object，CRSEnglish EPSG:4326。
+     *   English：
+     *     - Rectangle：EnglishCallerEnglish boundsToGeometry(bounds_wgs84) English
+     *     - EnglishPolygon：English geometry
+     *     - EnglishVectorEnglish：English feature.geometry
      *
-     * @param {Array}   features       - GeoJSON Feature 对象数组
-     * @param {string}  [srcVectorCrs] - 矢量数据的 CRS，默认 "EPSG:4326"
-     * @param {string}  [mode]         - 裁剪模式: "intersects" | "within" | "clip"
+     * @param {Array}   features       - GeoJSON Feature objectEnglish
+     * @param {string}  [srcVectorCrs] - VectorEnglish CRS，English "EPSG:4326"
+     * @param {string}  [mode]         - English: "intersects" | "within" | "clip"
      * @returns {Promise<GeoJSON.FeatureCollection>}
      */
     async clipVectorByGeometry(

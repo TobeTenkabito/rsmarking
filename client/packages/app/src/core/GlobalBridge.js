@@ -8,7 +8,7 @@ export class GlobalBridge {
 
     mount() {
         window.RS = {
-            // --- 基础操作 ---
+            // --- EnglishActions ---
             fetchRasters: () => this.app.raster.refreshData(),
             clearDatabase: async () => {
                 if (!confirm(t('data.confirm.clearAll'))) return;
@@ -24,14 +24,14 @@ export class GlobalBridge {
                     ]);
                     window.location.reload();
                 } catch (err) {
-                    console.error('[GlobalBridge] 清空数据失败:', err);
+                    console.error('[GlobalBridge] Failed to clear data:', err);
                     alert(t('data.alert.clearFailed', { message: err.message }));
                 } finally {
                     this.app.ui.showGlobalLoader(false);
                 }
             },
 
-            // --- 指数分析 ---
+            // --- English ---
             openIndexModal: (type) => this.app.analysis?.openModal(type),
             closeIndexModal: () => this.app.analysis?.closeModal(),
             executeIndexCalculation: () => this.app.analysis?.execute(),
@@ -41,12 +41,12 @@ export class GlobalBridge {
             refreshRasterStatistics: () => this.app.rasterStatistics?.refresh(),
             selectRasterStatisticsBand: (bandIndex) => this.app.rasterStatistics?.selectBand(bandIndex),
 
-            // --- 要素提取 ---
+            // --- Feature Extraction ---
             openExtractionModal: (type) => this.app.extraction?.openModal(type),
             closeExtractionModal: () => this.app.extraction?.closeModal(),
             runExtraction: () => this.app.extraction?.run(),
 
-            // --- 栅格计算器 ---
+            // --- Raster Calculator ---
             openCalculatorModal: () => this.app.calculator?.openModal(),
             closeCalculatorModal: () => this.app.calculator?.closeModal(),
             updateCalculatorVariables: () => this.app.calculator?.handleExpressionChange(),
@@ -54,13 +54,13 @@ export class GlobalBridge {
             insertCalcFunction: (fn) => this.app.calculator?.insertFunction(fn),
             toggleCalcHelp: () => this.app.calculator?.toggleHelp(),
 
-            // --- 波段合成 ---
+            // --- Band Stacking ---
             openMergeModal: () => this.app.raster.handleOpenMergeModal(),
             closeMergeModal: () => document.getElementById('merge-modal')?.classList.add('hidden'),
             executeMerge: () => this.app.raster.handleExecuteMerge(),
             toggleMergeItem: (id) => this.app.raster.handleToggleMergeSelection(id),
 
-            // --- 波段提取 ---
+            // --- Band Extraction ---
             openExtractModal: () => this.app.raster.handleOpenExtractModal(),
             closeExtractModal: () => document.getElementById('extract-modal')?.classList.add('hidden'),
             executeExtract: () => this.app.raster.handleExecuteExtract(),
@@ -69,22 +69,22 @@ export class GlobalBridge {
             extractStepBack: () => this.app.raster.handleExtractStepBack(),
             selectExtractSource: (rasterId) => this.app.raster.handleSelectExtractSource(rasterId),
 
-            // --- 重采样 ---
+            // --- Resampling ---
             openResampleModal: (rasterId) => this.app.resample?.openModal(rasterId),
             closeResampleModal: () => this.app.resample?.closeModal(),
             handleResampleInputChange: () => this.app.resample?.handleInputChange(),
             executeResample: () => this.app.resample?.execute(),
 
-            // --- UI 辅助 ---
+            // --- UI English ---
             hideDetail: () => this.app.ui.hideDetail(),
 
-            // --- 矢量项目系统 ---
+            // --- VectorProjectSystem ---
             createProject: () => this.app.project.handleCreateProject(),
             selectProject: (id) => this.app.project.handleSelectProject(id),
             createLayer: () => this.app.project.handleCreateLayer(),
             toggleVectorLayer: (id) => this.app.project.handleToggleVectorLayer(id),
 
-            // --- 标注工具控制 ---
+            // --- EnglishToolsEnglish ---
             toggleEditMode: (enabled) => this.app.annotation?.toggleEditMode?.(enabled),
             toggleVectorVisibility: (layerId) => Store.toggleVectorVisibility(layerId),
             setActiveVectorLayer: (layerId) => Store.setActiveVectorLayer(layerId),
@@ -95,7 +95,7 @@ export class GlobalBridge {
             deleteSelectedFeature: () => this.app.project.handleDeleteSelectedFeature(),
             deleteLayer: (layerId) => this.app.project.handleDeleteSelectedLayer(layerId),
 
-            // 脚本编辑器
+            // English
             openScriptEditor:       () => this.app.script?.openScriptEditor(),
             closeScriptEditor:      () => this.app.script?.closeScriptEditor(),
             executeScript:          () => this.app.script?.executeScript(),
@@ -103,7 +103,7 @@ export class GlobalBridge {
             showScriptHistory:      () => this.app.script?.showHistory(),
             loadScriptFromHistory: (id) => this.app.script?.loadFromHistory(id),
 
-            // --- AI 智能助手 ---
+            // --- AI English ---
             openAIModal:        ()  => this.app.ai?.openModal(),
             closeAIModal:       ()  => this.app.ai?.closeModal(),
             aiExecute:          ()  => this.app.ai?.execute(),
@@ -120,7 +120,7 @@ export class GlobalBridge {
             aiDeleteConversationArchive: (id) => this.app.ai?.deleteConversationArchive(id),
             aiClearConversationArchives: () => this.app.ai?.clearConversationArchives(),
 
-            // --- 属性表 ---
+            // --- Attribute table ---
             openAttriVector     : (layerId, layerName)  => this.app.attributeTable?.open(layerId, layerName),
             attrClose           : ()                    => this.app.attributeTable?.close(),
             attrRefresh         : ()                    => this.app.attributeTable?.refresh(),
@@ -141,13 +141,13 @@ export class GlobalBridge {
                 const raster  = rasters.find(r => String(r.index_id) === String(rasterId));
                 void this.app.attributeTable?.openRaster(rasterId, rasterName, raster ?? null);},
 
-            // --- 导出 ---
+            // --- English ---
             openExportModal:        ()=> this.app.export?.openModal(),
             closeExportModal:       ()=> this.app.export?.closeModal(),
             refreshExportPreview:   ()=> this.app.export?.refreshPreview(),
             executeExport:          ()=> this.app.export?.executeExport(),
 
-            // --- 空间裁剪 ---
+            // --- Spatial Clip ---
             openClipModal:  () => this.app.ui.openClipModal(),
             closeClipModal: () => this.app.ui.closeClipModal(),
             executeClip: () => {
@@ -174,14 +174,14 @@ export class GlobalBridge {
                 }
             },
 
-            // --- 變化檢測 ---
+            // --- English ---
             openChangeModal:        ()  => this.app.change?.open(),
             closeChangeModal:       ()  => this.app.change?.close(),
             runChangeDetection:     ()  => this.app.change?.run(),
             switchChangeMethod:     (m) => this.app.change?.switchMethod(m),
             loadChangeResult:       (w) => this.app.change?.loadResultToMap(w),
 
-            // 矢量转栅格
+            // Vector to Raster
             openConversionModal:  () => this.app.conversion?.openModal(),
             closeConversionModal: () => this.app.conversion?.closeModal(),
             handleConversionNameInput: () => this.app.conversion?.handleNameInput(),
@@ -197,7 +197,7 @@ export class GlobalBridge {
             handleRasterToVectorExecute: () => this.app.conversion?.handleRasterToVectorExecute(),
 
 
-            // 兼容性接口
+            // English
             refreshData: () => this.app.raster.refreshData(),
             toggleGlobeView: () => this.app.mapEngine?.toggleGlobeView(),
         };

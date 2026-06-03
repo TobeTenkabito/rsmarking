@@ -15,36 +15,36 @@ const defaultVectorName = (raster) =>
     `${rasterDisplayName(raster).replace(/\.[^.]+$/, '')}_vectorized_${Date.now()}`;
 
 /**
- * ConversionModule - 矢量转栅格功能模块
+ * ConversionModule - Vector to RasterEnglish
  *
- * 流程：
- *   Step 1 → 选择矢量图层 (来自 Store.state.vectorLayers)
- *   Step 2 → 选择参考栅格 (来自 Store.state.rasters) + 填写新名称
- *   执行   → 调用 ConversionAPI.vectorToRaster() → 刷新栅格列表
+ * English：
+ *   Step 1 → Select Vector Layer (from Store.state.vectorLayers)
+ *   Step 2 → English (from Store.state.rasters) + English
+ *   English   → English ConversionAPI.vectorToRaster() → RefreshEnglish
  *
- * 依赖：
+ * Dependencies：
  *   - app.ui.showGlobalLoader / showToast
- *   - app.raster.refreshData()          (刷新栅格侧边栏)
- *   - app.mapController.toggleLayer()   (可选：自动加载新栅格)
+ *   - app.raster.refreshData()          (RefreshEnglishSidebar)
+ *   - app.mapController.toggleLayer()   (Optional：English)
  */
 export class ConversionModule {
     constructor(app) {
         this.app = app;
 
-        // 内部状态：两步选择的暂存
+        // English：English
         this._selectedLayerId  = null;
-        this._selectedRefId    = null;   // 参考栅格的 index_id
+        this._selectedRefId    = null;   // Reference raster index_id
         this._selectedRasterId = null;
     }
 
-    /** 打开矢量转栅格 Modal，重置到 Step 1 */
+    /** EnglishVector to Raster Modal，English Step 1 */
     openModal() {
         const modal = document.getElementById('conversion-modal');
         if (!modal) return;
 
-        // 直接从 Store 全量读取，不依赖任何激活状态
+        // English Store English，EnglishDependenciesEnglish
 
-        // 重置内部状态
+        // English
         this._selectedLayerId = null;
         this._selectedRefId   = null;
 
@@ -100,11 +100,11 @@ export class ConversionModule {
         document.getElementById('raster-vector-modal')?.classList.add('hidden');
     }
 
-    /** 用户点击某个矢量图层卡片 */
+    /** EnglishVector LayerEnglish */
     handleSelectLayer(layerId) {
         this._selectedLayerId = layerId;
 
-        // 高亮选中项
+        // English
         document.querySelectorAll('[data-conversion-layer]').forEach(el => {
             const isActive = el.dataset.conversionLayer === layerId;
             el.classList.toggle('ring-2',           isActive);
@@ -123,7 +123,7 @@ export class ConversionModule {
         this._goToStep(2);
     }
 
-    /** 用户点击某个参考栅格卡片 */
+    /** English */
     handleSelectRef(indexId) {
         this._selectedRefId = indexId;
 
@@ -137,13 +137,13 @@ export class ConversionModule {
         this._updateConfirmBtn();
     }
 
-    /** Step 2 → Step 1（返回） */
+    /** Step 2 → Step 1（returns） */
     handleStepBack() {
         this._selectedRefId = null;
         this._renderStep1();
         this._goToStep(1);
 
-        // 恢复上一步的选中高亮
+        // EnglishPreviousEnglish
         if (this._selectedLayerId) {
             document.querySelectorAll('[data-conversion-layer]').forEach(el => {
                 const isActive = el.dataset.conversionLayer === this._selectedLayerId;
@@ -154,7 +154,7 @@ export class ConversionModule {
         }
     }
 
-    /** 名称输入框变化时实时校验确认按钮 */
+    /** English */
     handleNameInput() {
         this._updateConfirmBtn();
     }
@@ -189,7 +189,7 @@ export class ConversionModule {
         const newName  = nameInput?.value?.trim();
 
         if (!layerId || !refId || !newName) {
-            this.app.ui.showToast('请完整填写所有参数', 'warning');
+            this.app.ui.showToast('Fill in all parameters.', 'warning');
             return;
         }
 
@@ -199,19 +199,19 @@ export class ConversionModule {
         try {
             const result = await ConversionAPI.vectorToRaster(layerId, refId, newName);
 
-            // 刷新栅格列表
+            // RefreshEnglish
             await this.app.raster?.refreshData();
 
-            // 可选：自动将新栅格加载到地图
+            // Optional：English
             const newRasterId = result?.id ?? result?.index_id;
             if (newRasterId && this.app.mapController) {
                 await this.app.mapController.toggleLayer(newRasterId);
             }
 
-            this.app.ui.showToast(`栅格化完成，新影像「${newName}」已生成`, 'success');
+            this.app.ui.showToast(`Rasterization complete. New imagery "${newName}" has been created.`, 'success');
         } catch (err) {
-            console.error('[ConversionModule] 矢量转栅格失败:', err);
-            this.app.ui.showToast(`转换失败：${err.message}`, 'error');
+            console.error('[ConversionModule] Vector to RasterFailed:', err);
+            this.app.ui.showToast(`Conversion failed：${err.message}`, 'error');
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -279,43 +279,43 @@ export class ConversionModule {
     }
 
     _renderStep2() {
-        // 参考栅格列表
+        // English
         const refContainer = document.getElementById('conversion-step-2-ref-list');
         if (refContainer) {
             refContainer.innerHTML = this._buildRefList(Store.state.rasters);
         }
 
-        // 默认名称：以选中图层名为前缀
+        // English：English
         const layer = Store.state.vectorLayers.find(l => l.id === this._selectedLayerId);
         const nameInput = document.getElementById('conversion-name-input');
         if (nameInput) {
             nameInput.value = `${layer?.name ?? 'vector'}_rasterized_${Date.now()}`;
         }
 
-        // 重置确认按钮
+        // English
         const confirmBtn = document.getElementById('conversion-confirm-btn');
         if (confirmBtn) confirmBtn.disabled = true;
     }
 
     /**
-     * 切换步骤的显隐与步骤指示器样式
+     * English
      * @param {1|2} step
      */
     _goToStep(step) {
-        // 面板显隐
+        // English
         document.getElementById('conversion-step-1')?.classList.toggle('hidden', step !== 1);
         document.getElementById('conversion-step-2')?.classList.toggle('hidden', step !== 2);
 
-        // 底部按钮组
+        // English
         document.getElementById('conversion-next-btn')?.classList.toggle('hidden',    step !== 1);
         document.getElementById('conversion-confirm-btn')?.classList.toggle('hidden', step !== 2);
         document.getElementById('conversion-back-btn')?.classList.toggle('hidden',    step !== 2);
 
-        // 步骤指示器
+        // English
         this._setStepDot('conversion-step-1-dot', step === 1);
         this._setStepDot('conversion-step-2-dot', step === 2);
 
-        // Step 1 的 Next 按钮：若已选则可用
+        // Step 1 English Next English：English
         if (step === 1) {
             const nextBtn = document.getElementById('conversion-next-btn');
             if (nextBtn) nextBtn.disabled = !this._selectedLayerId;
@@ -379,7 +379,7 @@ export class ConversionModule {
 
     _buildLayerList(layers) {
         if (!layers.length) {
-            return `<p class="text-sm text-slate-400 text-center py-6">当前项目暂无矢量图层</p>`;
+            return `<p class="text-sm text-slate-400 text-center py-6">No vector layers in the current project</p>`;
         }
         return layers.map(layer => `
             <div
@@ -391,7 +391,7 @@ export class ConversionModule {
                 <span class="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0"></span>
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-slate-700 truncate">${layer.name ?? layer.id}</p>
-                    <p class="text-xs text-slate-400">${layer.feature_count ?? '?'} 个要素</p>
+                    <p class="text-xs text-slate-400">${layer.feature_count ?? '?'} features</p>
                 </div>
             </div>
         `).join('');
@@ -399,7 +399,7 @@ export class ConversionModule {
 
     _buildRefList(rasters) {
         if (!rasters.length) {
-            return `<p class="text-sm text-slate-400 text-center py-6">暂无可用参考栅格</p>`;
+            return `<p class="text-sm text-slate-400 text-center py-6">No available reference raster</p>`;
         }
         return rasters.map(r => `
             <div
@@ -412,7 +412,7 @@ export class ConversionModule {
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-slate-700 truncate">${r.name ?? r.index_id}</p>
                     <p class="text-xs text-slate-400">${r.width ?? '?'} × ${r.height ?? '?'} px
-                       · ${r.crs ?? 'CRS未知'}</p>
+                       · ${r.crs ?? 'CRSUnknown'}</p>
                 </div>
             </div>
         `).join('');

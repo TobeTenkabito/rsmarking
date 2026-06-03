@@ -1,17 +1,17 @@
 /tests/server
-├── conftest.py             # Pytest 全局配置（Fixtures、Mock 客户端）
-├── test_api_raster.py      # 影像服务接口测试
-├── test_api_vector.py      # 矢量保存接口测试
+├── conftest.py             # Global pytest configuration(Fixtures,Mock text)
+├── test_api_raster.py      # Imagery service API tests
+├── test_api_vector.py      # Vector save API tests
 └── utils/
-└── test_db_helper.py   # 测试数据库/文件隔离辅助工具
+└── test_db_helper.py   # Test database/file isolation helper
 
 /test/client
-├── setup.js                # 测试全局初始化（模拟 Leaflet、Store 环境）
+├── setup.js                # Global test setup(mock Leaflet,Store text)
 ├── unit/
-│   ├── store.test.js       # 核心状态机测试
-│   ├── controller.test.js  # 业务编排逻辑测试
-│   └── annotation.test.js  # 标注交互（右键取消、撤销点）逻辑测试
+│   ├── store.test.js       # Core state-machine tests
+│   ├── controller.test.js  # Business orchestration tests
+│   └── annotation.test.js  # Annotation interactions(right-click cancel,undo point)logic tests
 ├── fixtures/
-│   └── mock_data.js        # 存放用于测试的 GeoJSON 和图层配置
-└── package.json            # 测试专属依赖与脚本
+│   └── mock_data.js        # Stores test GeoJSON textlayer configuration
+└── package.json            # Test-only dependencies and scripts
 

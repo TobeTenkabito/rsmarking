@@ -1,14 +1,14 @@
 /**
- * ChangeDetectionModule - 变化检测模块
+ * ChangeDetectionModule - Change DetectionEnglish
  */
 import { ChangeAPI } from '../api/change.js';
 import { Store }     from '../store/index.js';
 
 const INDEX_BAND_HINTS = {
-  ndvi:  'NDVI锛欱1 = Red锛孊2 = NIR',
-  ndwi:  'NDWI锛欱1 = Green锛孊2 = NIR',
-  ndbi:  'NDBI锛欱1 = SWIR锛孊2 = NIR',
-  mndwi: 'MNDWI锛欱1 = Green锛孊2 = SWIR',
+  ndvi:  'NDVI: B1 = Red, B2 = NIR',
+  ndwi:  'NDWI: B1 = Green, B2 = NIR',
+  ndbi:  'NDBI: B1 = SWIR, B2 = NIR',
+  mndwi: 'MNDWI: B1 = Green, B2 = SWIR',
 };
 
 export class ChangeDetectionModule {
@@ -38,7 +38,7 @@ export class ChangeDetectionModule {
     if (!modal) return;
     this._renderRasterOptions();
     this._resetResult();
-    this._setStatus('选择两期影像后执行分析');
+    this._setStatus('Select two imagery dates, then run analysis.');
     modal.classList.remove('hidden');
   }
 
@@ -63,9 +63,9 @@ export class ChangeDetectionModule {
     document.getElementById('change-params-band') ?.classList.toggle('hidden', isIndex);
     document.getElementById('change-params-index')?.classList.toggle('hidden', !isIndex);
 
-    // 阈值提示 & 默认值
+    // English & Default Value
     const hint = document.getElementById('change-threshold-hint');
-    if (hint) hint.textContent = method === 'band-ratio' ? '（偏离 1.0 的幅度）' : '（差值绝对值）';
+    if (hint) hint.textContent = method === 'band-ratio' ? '(distance from 1.0)' : '(absolute difference)';
 
     const thresholdInput = document.getElementById('change-threshold-input');
     if (thresholdInput) thresholdInput.value = method === 'band-ratio' ? '0.2' : '0.1';
@@ -78,17 +78,17 @@ export class ChangeDetectionModule {
     const t2Id = Number(document.getElementById('change-t2-select')?.value);
 
     if (!t1Id || !t2Id) {
-      this.app.ui.showToast('请先选择 T1 和 T2 两期影像', 'warning');
+      this.app.ui.showToast('Select both T1 and T2 imagery.', 'warning');
       return;
     }
     if (t1Id === t2Id) {
-      this.app.ui.showToast('T1 与 T2 不能是同一幅影像', 'warning');
+      this.app.ui.showToast('T1 and T2 cannot be the same image.', 'warning');
       return;
     }
 
     this._setRunning(true);
     this._resetResult();
-    this.app.ui.showGlobalLoading('变化检测运算中...');
+    this.app.ui.showGlobalLoading('Running change detection...');
 
     try {
       let result;
@@ -110,14 +110,14 @@ export class ChangeDetectionModule {
         });
 
       } else {
-        // index-diff：需要 4 个波段 index_id
+        // index-diff：English 4 Englishbands index_id
         const t1b1 = Number(document.getElementById('change-t1-b1-select')?.value);
         const t1b2 = Number(document.getElementById('change-t1-b2-select')?.value);
         const t2b1 = Number(document.getElementById('change-t2-b1-select')?.value);
         const t2b2 = Number(document.getElementById('change-t2-b2-select')?.value);
 
         if (!t1b1 || !t1b2 || !t2b1 || !t2b2) {
-          this.app.ui.showToast('指数差值法需要为 T1/T2 各选择两个波段', 'warning');
+          this.app.ui.showToast('Index difference requires two bands for both T1 and T2.', 'warning');
           this._setRunning(false);
           this.app.ui.hideGlobalLoading();
           return;
@@ -138,12 +138,12 @@ export class ChangeDetectionModule {
       this._lastResult = result;
       this._showResult(result);
       this._setStatus(this._buildStatText(result));
-      this.app.ui.showToast('变化检测完成', 'success');
+      this.app.ui.showToast('Change detection complete.', 'success');
 
     } catch (err) {
-      console.error('[ChangeDetection] 运行失败:', err);
+      console.error('[ChangeDetection] Run failed:', err);
       this._setStatus(`✗ ${err.message}`);
-      this.app.ui.showToast(`检测失败：${err.message}`, 'error');
+      this.app.ui.showToast(`Detection failed：${err.message}`, 'error');
     } finally {
       this._setRunning(false);
       this.app.ui.hideGlobalLoading();
@@ -152,8 +152,8 @@ export class ChangeDetectionModule {
 
 
   /**
-   * 加载差值图 + 可选掩膜到地图
-   * @param {'diff'|'mask'} which - 加载哪一层，默认 diff
+   * load difference raster + OptionalEnglish
+   * @param {'diff'|'mask'} which - English，English diff
    */
   async loadResultToMap(which = 'diff') {
     if (!this._lastResult) return;
@@ -163,27 +163,27 @@ export class ChangeDetectionModule {
       : this._lastResult.diff_index_id;
 
     if (!indexId) {
-      this.app.ui.showToast('该结果图层不存在', 'warning');
+      this.app.ui.showToast('That result layer does not exist.', 'warning');
       return;}
 
   try {
     await this.app.raster.refreshData();
     const raster = Store.getRasters().find(r => r.index_id === indexId);
     if (!raster) {
-      this.app.ui.showToast('结果图层未找到，请稍后重试', 'warning');
+      this.app.ui.showToast('Result layer not found. Try again later.', 'warning');
       return;
     }
     await this.app.mapController.toggleLayer(raster.id);
 
     this.app.ui.showToast(
-      `已加载${which === 'mask' ? '变化掩膜' : '差值图'}`,
+      `Loaded ${which === 'mask' ? 'change mask' : 'difference raster'}`,
       'success'
     );
     this.close();
 
   } catch (err) {
-    console.error('[ChangeDetection] 加载图层失败:', err);
-    this.app.ui.showToast(`加载失败：${err.message}`, 'error');
+    console.error('[ChangeDetection] Layer load failed:', err);
+    this.app.ui.showToast(`Load failed：${err.message}`, 'error');
   }
 }
 
@@ -194,12 +194,12 @@ export class ChangeDetectionModule {
       ? rasters.map(r =>
           `<option value="${r.index_id ?? r.id}">
              ${r.file_name ?? r.name}
-             ${r.bands ? `（${r.bands} 波段）` : ''}
+             ${r.bands ? `（${r.bands} bands）` : ''}
            </option>`
         ).join('')
-      : '<option value="" disabled>暂无可用影像</option>';
+      : '<option value="" disabled>No available imagery</option>';
 
-    const placeholder = '<option value="">— 请选择 —</option>';
+    const placeholder = '<option value="">-- Select --</option>';
     ['change-t1-select','change-t2-select',
      'change-t1-b1-select','change-t1-b2-select',
      'change-t2-b1-select','change-t2-b2-select'].forEach(id => {
@@ -231,17 +231,17 @@ export class ChangeDetectionModule {
     const btn = document.getElementById('change-run-btn');
     if (!btn) return;
     btn.disabled    = isRunning;
-    btn.textContent = isRunning ? '运算中...' : '执行分析';
+    btn.textContent = isRunning ? 'Running...' : 'Run Analysis';
   }
 
-  /** 根据后端统计字段生成状态文字 */
+  /** English */
   _buildStatText(result) {
-    const parts = ['✓ 检测完成'];
+    const parts = ['✓ Detection Complete'];
     if (result.change_pixel_count != null) {
-      parts.push(`变化像元 ${result.change_pixel_count.toLocaleString()} 个`);
+      parts.push(`Changed pixels ${result.change_pixel_count.toLocaleString()}`);
     }
     if (result.change_area_ratio != null) {
-      parts.push(`占比 ${(result.change_area_ratio * 100).toFixed(1)}%`);
+      parts.push(`Share ${(result.change_area_ratio * 100).toFixed(1)}%`);
     }
     return parts.join('　');
   }

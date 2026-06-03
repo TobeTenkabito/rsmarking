@@ -18,7 +18,7 @@ async def calculate_index_task(
         db: AsyncSession,
         processor_func
 ) -> dict:
-    """通用指数计算入口，委托给 db_ops.process_index_task"""
+    """Generic index calculation entry point delegated to db_ops.process_index_task."""
     return await db_ops.process_index_task(
         db, band_ids, new_name, index_name, processor_func
     )

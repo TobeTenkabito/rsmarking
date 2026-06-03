@@ -1,19 +1,19 @@
-# 采用 slim 版本减小攻击面和拉取体积
+# text slim text
 FROM python:3.10-slim
 ARG RS_SANDBOX_SPEC_HASH=unknown
 LABEL rsmarking.sandbox.spec_hash=$RS_SANDBOX_SPEC_HASH
 
-# 设置环境变量，禁止生成 .pyc 文件，强制无缓冲输出
+# text,text .pyc text,text
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# 安装系统级依赖 (GDAL 依赖)
+# text (GDAL text)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin \
     libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装遥感核心库
+# text
 RUN pip install --no-cache-dir \
     affine \
     imageio \
@@ -30,16 +30,16 @@ RUN pip install --no-cache-dir \
     shapely \
     tifffile
 
-# 创建工作目录和非 root 用户（安全要求）
+# text root text(text)
 RUN useradd -m -s /bin/bash sandboxuser
 WORKDIR /app
 
-# 复制引导脚本并赋予执行权限
+# text
 COPY sandbox_entry.py /app/sandbox_entry.py
 RUN chown sandboxuser:sandboxuser /app/sandbox_entry.py && chmod +x /app/sandbox_entry.py
 
-# 切换到非 root 用户
+# text root text
 USER sandboxuser
 
-# 默认入口
+# text
 ENTRYPOINT ["python", "/app/sandbox_entry.py"]

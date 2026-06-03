@@ -1,11 +1,11 @@
 """
-clip_ops.py — 幾何裁剪核心算法（效能極致版 v3）
+clip_ops.py - clipping core algorithms (optimized v3)
 
-優化重點:
-  - 徹底移除純 Python 的遞迴幾何檢查，改用 Shapely 2.0+ GEOS 向量化操作 (O(1) 迴圈開銷)
-  - 批次投影轉換: PyProj 結合 shapely.transform，一次性轉換所有座標頂點
-  - 批次交集運算: shapely.intersection 替代逐項計算
-  - 陣列化清理: get_parts, get_type_id 結合 NumPy 遮罩，以 C 語言層級完成降維與碎屑過濾
+Optimization notes:
+  - Avoid recursive Python geometry checks and use Shapely 2.0+ GEOS vectorized operations.
+  - Reproject coordinates in batches with PyProj and shapely.transform.
+  - Use shapely.intersection instead of per-feature intersection loops.
+  - Clean geometry arrays with get_parts/get_type_id and NumPy masks.
 """
 
 import logging
@@ -29,7 +29,7 @@ def _geojson_to_shapely(geojson_geom: dict) -> Any:
     geom = shape(geojson_geom)
     if not shapely.is_valid(geom):
         geom = shapely.make_valid(geom)
-        logger.warning("輸入矢量幾何體無效，已自動修復。")
+        logger.warning("Input vector geometry was invalid and has been repaired automatically.")
     return geom
 
 
@@ -53,11 +53,11 @@ def _clean_clipped_geometry(
     original_geom: Any,
     sliver_area_threshold: float = _DEFAULT_SLIVER_AREA_THRESHOLD,
 ) -> Any | None:
-    """向量化的幾何體清理函數，無需遞迴與 isinstance。"""
+    """Clean clipped geometry without recursive isinstance checks."""
     if clipped_geom is None or shapely.is_empty(clipped_geom):
         return None
 
-    # Step 1: 確定目標維度 (Shapely Type IDs: 0=Point, 1=Line, 3=Poly, Multi+3)
+    # Step 1: determine target dimensions (Shapely type IDs: 0=Point, 1=Line, 3=Poly, Multi+3)
     orig_type = shapely.get_type_id(original_geom)
     if orig_type in (3, 6):
         target_dims = (3, 6)
@@ -69,29 +69,29 @@ def _clean_clipped_geometry(
         target_dims = (0, 4)
         is_poly = False
 
-    # Step 2: 拍平所有 GeometryCollection 並取得子幾何體陣列與類型
+    # Step 2: flatten GeometryCollection parts
     parts = shapely.get_parts(clipped_geom)
     types = shapely.get_type_id(parts)
 
-    # 透過 NumPy 遮罩過濾降維物件
+    # Filter dimension changes with a NumPy mask.
     mask = np.isin(types, target_dims)
     parts = parts[mask]
 
     if len(parts) == 0:
         return None
 
-    # Step 3: Sliver 面積過濾（向量化計算所有子塊面積）
+    # Step 3: filter polygon slivers.
     if is_poly:
         areas = shapely.area(parts)
         parts = parts[areas > sliver_area_threshold]
         if len(parts) == 0:
             return None
 
-    # Step 4: 幾何重建
+    # Step 4: rebuild geometry.
     if len(parts) == 1:
         return parts[0]
 
-    # 利用向量化構建函數，直接合併相同維度的陣列
+    # Merge arrays of the same geometry dimension.
     if is_poly:
         return shapely.multipolygons(parts)
     elif orig_type in (1, 5):
@@ -110,7 +110,7 @@ def clip_raster_by_vector(
     all_touched: bool = False,
 ) -> dict:
     if not geojson_geometries:
-        raise ValueError("geojson_geometries 不能為空。")
+        raise ValueError("geojson_geometries cannot be empty.")
 
     with rasterio.open(raster_path) as src:
         raster_crs = src.crs
@@ -123,10 +123,10 @@ def clip_raster_by_vector(
         transformer = _build_transformer(src_vector_crs, raster_crs)
         shapely_geoms = [_geojson_to_shapely(g) for g in geojson_geometries]
 
-        # 向量化批次座標轉換
+        # Reproject vector geometries to the raster CRS when needed.
         if transformer is not None:
             def transform_coords(pts):
-                # 處理 2D/3D 座標陣列
+                # Handle 2D and 3D coordinate arrays.
                 if pts.shape[1] == 3:
                     x, y, z = transformer.transform(pts[:, 0], pts[:, 1], pts[:, 2])
                     return np.column_stack((x, y, z))
@@ -134,7 +134,7 @@ def clip_raster_by_vector(
                     x, y = transformer.transform(pts[:, 0], pts[:, 1])
                     return np.column_stack((x, y))
 
-            # 將所有多邊形座標視為連續陣列，單次通過 PyProj C 擴展
+            # Transform all coordinates in a single vectorized PyProj pass.
             shapely_geoms = shapely.transform(shapely_geoms, transform_coords)
 
         reprojected_geoms = [mapping(g) for g in shapely_geoms]
@@ -160,7 +160,7 @@ def clip_raster_by_vector(
         with rasterio.open(output_path, "w", **out_meta) as dest:
             dest.write(clipped_data)
 
-    logger.info(f"矢量裁剪柵格完成: {output_path}")
+    logger.info(f"Vector-to-raster clipping complete: {output_path}")
 
     return {
         "width": clipped_data.shape[2],
@@ -179,10 +179,10 @@ def clip_vector_by_raster(
     sliver_area_threshold: float = _DEFAULT_SLIVER_AREA_THRESHOLD,
 ) -> dict:
     if not geojson_features:
-        raise ValueError("geojson_features 不能為空。")
+        raise ValueError("geojson_features cannot be empty.")
 
     if mode not in ("intersects", "within", "clip"):
-        raise ValueError(f"不支持的 mode: {mode}")
+        raise ValueError(f"Unsupported mode: {mode}")
 
     raster_box_wgs84 = _geojson_to_shapely(clip_geometry)
 
@@ -197,7 +197,7 @@ def clip_vector_by_raster(
     else:
         raster_box = raster_box_wgs84
 
-    # 預處理：同時建立索引查詢用的映射與 NumPy 幾何陣列
+    # Preprocess features into an index map and geometry array.
     indexed_features = []
     geoms_list = []
     for i, feature in enumerate(geojson_features):
@@ -214,7 +214,7 @@ def clip_vector_by_raster(
     tree = STRtree(geom_array)
 
     predicate = "contains" if mode == "within" else "intersects"
-    # 返回 NumPy 索引陣列
+    # STRtree returns NumPy indices.
     candidate_indices = tree.query(raster_box, predicate=predicate)
 
     if len(candidate_indices) == 0:
@@ -229,7 +229,7 @@ def clip_vector_by_raster(
             result_features.append(geojson_features[orig_idx])
 
     elif mode == "clip":
-        # 向量化交集運算：將 C 語言執行範圍極大化
+        # Vectorized intersection keeps the work inside GEOS.
         candidate_geoms = geom_array[candidate_indices]
         clipped_geoms = shapely.intersection(candidate_geoms, raster_box)
 
@@ -257,11 +257,13 @@ def clip_vector_by_raster(
             })
 
     if skipped_dimension:
-        logger.warning(f"clip 模式：{skipped_dimension} 個要素因降維或 Sliver 被過濾。")
+        logger.warning(
+            f"clip mode: {skipped_dimension} features were dropped due to dimension collapse or slivers."
+        )
 
     logger.info(
-        f"柵格裁剪矢量完成: 輸入 {len(geojson_features)} 個要素，"
-        f"輸出 {len(result_features)} 個要素 (mode={mode})"
+        f"Raster-to-vector clipping complete: input {len(geojson_features)} features, "
+        f"output {len(result_features)} features (mode={mode})"
     )
 
     return {

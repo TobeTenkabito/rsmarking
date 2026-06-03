@@ -1,6 +1,6 @@
 /**
  * BandMergeTemplate.js
- * 波段合成选择列表模板
+ * Band stacking selection list template
  */
 export const BandMergeTemplate = {
 
@@ -8,7 +8,7 @@ export const BandMergeTemplate = {
         if (!rasters || rasters.length === 0) {
             return `
                 <div class="text-center py-10 text-slate-400">
-                    <p class="text-xs">暂无可用波段数据，请先上传影像</p>
+                    <p class="text-xs">No available band data，Please upload imagery first</p>
                 </div>`;
         }
 

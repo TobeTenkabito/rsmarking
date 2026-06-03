@@ -110,15 +110,15 @@ async def delete_layer(layer_id: UUID, db: AsyncSession = Depends(get_db)):
 @router.get(
     "/{layer_id}/fields",
     response_model=List[LayerFieldOut],
-    summary="获取图层字段定义（属性表表头）"
+    summary="Get layer field definitions (attribute table headers)"
 )
 async def list_fields(
     layer_id: UUID,
     db      : AsyncSession = Depends(get_db)
 ):
     """
-    前端打开属性表时第一个调用的接口。
-    返回该图层所有列的定义：名称、类型、顺序。
+    Called first when the frontend opens the attribute table.
+    Returns all column definitions for the layer: name, type, and order.
     """
     return await LayerFieldCRUD(db).get_by_layer(layer_id)
 
@@ -127,7 +127,7 @@ async def list_fields(
     "/{layer_id}/fields",
     response_model=LayerFieldOut,
     status_code=status.HTTP_201_CREATED,
-    summary="新增字段（用户手动加列）"
+    summary="Add a field (user-added column)"
 )
 async def create_field(
     layer_id: UUID,
@@ -143,7 +143,7 @@ async def create_field(
 @router.patch(
     "/{layer_id}/fields/{field_id}",
     response_model=LayerFieldOut,
-    summary="修改字段定义（改别名、顺序等）"
+    summary="Update field definitions (aliases, order, and related settings)"
 )
 async def update_field(
     layer_id: UUID,
@@ -160,7 +160,7 @@ async def update_field(
 @router.delete(
     "/{layer_id}/fields/{field_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="删除字段（仅限用户自定义字段）"
+    summary="Delete a field (user-defined fields only)"
 )
 async def delete_field(
     layer_id: UUID,
@@ -179,12 +179,12 @@ async def delete_field(
     "/layers/{layer_id}/import/shapefile",
     status_code=status.HTTP_201_CREATED,
     tags=["Import"],
-    summary="导入 Shapefile",
-    description="上传 .shp/.shx/.dbf/.prj/.cpg 文件，批量导入矢量要素并自动注册字段定义。"
+    summary="Import Shapefile",
+    description="Upload .shp/.shx/.dbf/.prj/.cpg files, import vector features in bulk, and register field definitions automatically."
 )
 async def import_shapefile(
     layer_id: UUID,
-    files: List[UploadFile] = File(..., description="同时上传 .shp/.shx/.dbf（必须）+ .prj/.cpg（推荐）"),
+    files: List[UploadFile] = File(..., description="Upload .shp/.shx/.dbf (required) plus .prj/.cpg (recommended)"),
     db: AsyncSession = Depends(get_db)
 ):
     file_bytes: dict[str, bytes] = {}
@@ -197,7 +197,7 @@ async def import_shapefile(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     if not feature_list:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shapefile 中没有有效要素")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid features were found in the Shapefile")
     field_crud = LayerFieldCRUD(db)
     existing_fields = await field_crud.get_by_layer(layer_id)
     existing_names = {f.field_name for f in existing_fields}
@@ -226,14 +226,14 @@ async def import_shapefile(
     "/layers/{layer_id}/features/export",
     response_model=FeatureCollectionResponse,
     tags=["Export"],
-    summary="全量导出图层数据用于分析"
+    summary="Export complete layer data for analysis"
 )
 async def export_features(
     layer_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    专门供给其他内部服务（如计算引擎）调用的全量数据接口
+    Complete-data endpoint for internal services such as the calculation engine.
     """
     crud = FeatureCRUD(db)
     features = await crud.export_by_layer(layer_id)

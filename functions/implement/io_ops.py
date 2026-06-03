@@ -8,7 +8,7 @@ logger = logging.getLogger("functions.io_ops")
 
 
 def build_raster_overviews(file_path: str, levels: list = [2, 4, 8, 16], resampling: str = "NEAREST"):
-    # 开启所有 CPU 核心进行概览图计算
+    # enable all CPU cores for overview computation
     gdal.SetConfigOption("GDAL_NUM_THREADS", "ALL_CPUS")
     gdal.SetConfigOption("COMPRESS_OVERVIEW", "LZW")
 
@@ -22,7 +22,7 @@ def build_raster_overviews(file_path: str, levels: list = [2, 4, 8, 16], resampl
         logger.warning(f"GDAL overview build failed: {e}")
         return False
     finally:
-        # 清理环境变量，避免污染同一进程内的其他 GDAL 任务
+        # clean environment variables,avoid polluting other GDAL task
         gdal.SetConfigOption("GDAL_NUM_THREADS", None)
         gdal.SetConfigOption("COMPRESS_OVERVIEW", None)
 

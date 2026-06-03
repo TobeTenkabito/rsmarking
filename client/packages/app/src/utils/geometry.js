@@ -1,5 +1,5 @@
 /**
- * 将 bounds_wgs84 数组转为 GeoJSON Polygon Geometry（矩形裁剪场景）
+ * Convert bounds_wgs84 array into GeoJSON Polygon geometry（rectangle clipping scenario）
  * @param {number[]} bounds - [minx, miny, maxx, maxy]
  * @returns {GeoJSON.Geometry}
  */

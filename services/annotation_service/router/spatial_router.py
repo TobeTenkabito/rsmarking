@@ -13,19 +13,19 @@ router = APIRouter(prefix="/spatial", tags=["Spatial"])
 class ClipVectorByRasterRequest(BaseModel):
     clip_geometry: dict = Field(
         ...,
-        description="GeoJSON Geometry 对象，由前端从栅格 bounds_wgs84 构造，坐标系为 EPSG:4326"
+        description="GeoJSON Geometry object built by the frontend from raster bounds_wgs84 in EPSG:4326."
     )
     features: list[dict] = Field(
         ...,
-        description="GeoJSON Feature 对象列表"
+        description="GeoJSON Feature object list"
     )
     src_vector_crs: str = Field(
         default="EPSG:4326",
-        description="矢量要素的坐标系"
+        description="Vector feature coordinate reference system"
     )
     mode: str = Field(
         default="intersects",
-        description="空间关系模式: intersects | within | clip"
+        description="Spatial relation mode: intersects | within | clip"
     )
 
 
@@ -34,9 +34,9 @@ async def clip_vector_by_raster_endpoint(
     body: ClipVectorByRasterRequest,
 ):
     """
-    用栅格空间范围裁剪矢量要素。
-    纯内存操作，直接返回 GeoJSON FeatureCollection，不写库。
-    前端从已有的 bounds_wgs84 构造 clip_geometry 传入，无需查询栅格服务。
+    Clip vector features with the raster spatial extent.
+    In-memory operation that returns a GeoJSON FeatureCollection without writing to the database.
+    The frontend builds clip_geometry from existing bounds_wgs84, so no raster service lookup is required.
     """
     try:
         return clip_vector_by_raster(
@@ -48,5 +48,5 @@ async def clip_vector_by_raster_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"栅格裁剪矢量失败: {e}")
+        logger.error(f"Raster-to-vector clipping failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

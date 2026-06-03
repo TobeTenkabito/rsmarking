@@ -74,15 +74,15 @@ app.add_middleware(
 
 if os.path.exists(COG_DIR):
     app.mount("/data", StaticFiles(directory=os.path.abspath(COG_DIR)), name="cog_data")
-    logger.info(f"已挂载 COG 数据路径: {COG_DIR}")
+    logger.info(f"Mounted COG data path: {COG_DIR}")
 else:
-    logger.warning(f"COG 目录不存在: {COG_DIR}")
+    logger.warning(f"COG directory does not exist: {COG_DIR}")
 
 if os.path.exists(CLIENT_DIR):
     app.mount("/client", StaticFiles(directory=CLIENT_DIR), name="client")
-    logger.info(f"已成功挂载 /client 路径: {CLIENT_DIR}")
+    logger.info(f"Mounted /client path successfully: {CLIENT_DIR}")
 else:
-    logger.warning(f"Client 目录不存在: {CLIENT_DIR}")
+    logger.warning(f"Client directory does not exist: {CLIENT_DIR}")
 
 
 app.include_router(data_router)

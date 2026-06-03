@@ -18,50 +18,50 @@ if root_dir not in sys.path:
 
 try:
     from services.data_service.models import Base
-    print(f"DEBUG: 检测到的模型表: {list(Base.metadata.tables.keys())}")
+    print(f"DEBUG: table: {list(Base.metadata.tables.keys())}")
 except ImportError as e:
-    print(f"Error: 无法导入模型。当前根目录: {root_dir}")
-    print(f"详细错误: {e}")
+    print(f"Error: text.text: {root_dir}")
+    print(f"text: {e}")
     sys.exit(1)
 
 
-# Alembic Config 对象
+# Alembic Config object
 config = context.config
 
-# 配置日志
+# text
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 2. 设置元数据，用于 --autogenerate 自动检测表结构变化
+# 2. text,used for --autogenerate table
 target_metadata = Base.metadata
 
 
 def include_object(object, name, type_, reflected, compare_to):
     """
-    通过此钩子函数过滤掉非本项目的数据库对象。
-    解决 PostGIS、Tiger Geocoder 等扩展生成的系统表干扰迁移的问题。
+    throughdatabaseobject.
+    text PostGIS,Tiger Geocoder table.
     """
     if type_ == "table":
-        # 1. 核心业务表白名单：只允许这些表出现在迁移脚本中
-        # 如果你的业务表增加了，请在这里补充
+        # 1. table:table
+        # tableadded,text
         allowed_tables = ["raster_metadata"]
         if name in allowed_tables:
             return True
 
-        # 2. 模式过滤：通常扩展表会带有一些固定的前缀
-        # 我们屏蔽掉所有 PostGIS 常见的系统表和 Tiger Geocoder 的前缀
+        # 2. text:table
+        # text PostGIS table Tiger Geocoder text
         ignored_prefixes = (
-            "spatial_", "geometry_", "geography_", "raster_",  # PostGIS 核心
+            "spatial_", "geometry_", "geography_", "raster_",  # PostGIS text
             "tiger", "addr", "edges", "faces", "county",  # Tiger Geocoder
             "state", "place", "zip", "tract", "bg", "tabblock",
-            "pagc_", "census_"  # 辅助工具
+            "pagc_", "census_"  # text
         )
 
         if name.startswith(ignored_prefixes):
             return False
 
-        # 3. 额外保险：如果你确定你的业务表不属于 'public' 以外的 schema
-        # 或者你只想处理特定的 reflected 表
+        # 3. text:table 'public' text schema
+        # text reflected table
         if reflected and name not in allowed_tables:
             return False
 
@@ -69,14 +69,14 @@ def include_object(object, name, type_, reflected, compare_to):
 
 
 def run_migrations_offline() -> None:
-    """脱机模式迁移"""
+    """text"""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        include_object=include_object  # 应用过滤器
+        include_object=include_object  # text
     )
 
     with context.begin_transaction():
@@ -87,15 +87,15 @@ def do_run_migrations(connection):
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        include_object=include_object  # 应用过滤器
+        include_object=include_object  # text
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_migrations_online() -> None:
-    """联机模式迁移（处理异步引擎）"""
-    # 允许从 alembic.ini 或环境变量获取 URL
+    """text(async)"""
+    # from alembic.ini text URL
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -110,7 +110,7 @@ async def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    # 确保在 Windows 环境下正确处理异步事件循环
+    # text Windows async
     try:
         asyncio.run(run_migrations_online())
     except (KeyboardInterrupt, SystemExit):

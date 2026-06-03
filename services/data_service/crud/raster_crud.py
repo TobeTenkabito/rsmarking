@@ -13,7 +13,7 @@ class RasterCRUD:
 
     @staticmethod
     async def create_raster(db: AsyncSession, metadata_dict: dict):
-        """保存影像元数据"""
+        """save imagery metadata"""
         cog_url = metadata_dict.get("cog_path") or metadata_dict.get("cog_url")
         res_x = metadata_dict.get("resolution_x")
         res_y = metadata_dict.get("resolution_y")
@@ -46,28 +46,28 @@ class RasterCRUD:
 
     @staticmethod
     async def get_all_rasters(db: AsyncSession) -> List[RasterMetadata]:
-        """获取所有影像"""
+        """get all imagery"""
         stmt = select(RasterMetadata).order_by(RasterMetadata.created_at.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
     @staticmethod
     async def get_raster_by_index_id(db: AsyncSession, raster_id: int) -> Optional[RasterMetadata]:
-        """根据数据库主键ID获取单个影像记录"""
+        """bydatabaseIDimageryrecord"""
         stmt = select(RasterMetadata).where(RasterMetadata.index_id == raster_id)
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
 
     @staticmethod
     async def get_rasters_by_bundle(db: AsyncSession, bundle_id: str) -> List[RasterMetadata]:
-        """根据bundle_id查询"""
+        """bybundle_idquery"""
         stmt = select(RasterMetadata).where(RasterMetadata.bundle_id == bundle_id)
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
     @staticmethod
     async def delete_raster(db: AsyncSession, raster_id: int) -> bool:
-        """删除单个影像"""
+        """delete a single imagery item"""
         stmt = select(RasterMetadata).where(RasterMetadata.id == raster_id)
         result = await db.execute(stmt)
         raster = result.scalar_one_or_none()
@@ -80,7 +80,7 @@ class RasterCRUD:
 
     @staticmethod
     async def clear_all_rasters(db: AsyncSession) -> bool:
-        """清空数据库并删除所有文件"""
+        """clear the database and delete all files"""
         stmt = select(RasterMetadata.file_path, RasterMetadata.cog_path)
         result = await db.execute(stmt)
         rows = result.all()
@@ -98,7 +98,7 @@ class RasterCRUD:
 
     @staticmethod
     def _delete_file(path: str):
-        """安全删除文件"""
+        """safely delete files"""
         if not path:
             return
         try:
@@ -111,7 +111,7 @@ class RasterCRUD:
 
     @staticmethod
     def _delete_physical_files(raster: RasterMetadata):
-        """删除原始文件和COG"""
+        """delete source file andCOG"""
         RasterCRUD._delete_file(raster.file_path)
         if raster.cog_path:
             cog_filename = os.path.basename(raster.cog_path)
@@ -122,8 +122,8 @@ class RasterCRUD:
     @staticmethod
     async def update_raster(db: AsyncSession, raster_id: int, update_dict: dict) -> Optional[RasterMetadata]:
         """
-        根据 index_id 更新栅格元数据（仅更新传入的字段）
-        用于 AI Modify 模式的"覆盖"分支
+        by index_id update raster metadata(only update provided fields)
+        used for AI Modify text"overwrite"branch
         """
         stmt = select(RasterMetadata).where(RasterMetadata.index_id == raster_id)
         result = await db.execute(stmt)
@@ -132,7 +132,7 @@ class RasterCRUD:
         if not raster:
             return None
 
-        # 只更新 update_dict 中存在的字段，防止意外清空其他字段
+        # only update update_dict fields present in,prevent accidentally clearing other fields
         for key, value in update_dict.items():
             if hasattr(raster, key):
                 setattr(raster, key, value)

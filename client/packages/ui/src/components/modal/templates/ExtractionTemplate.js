@@ -1,14 +1,14 @@
 /**
  * ExtractionTemplate.js
- * 地物提取配置面板（植被 / 水体 / 建筑 / 云层）
+ * Feature Extraction Configuration（Vegetation / Water / Buildings / Clouds）
  */
 import { renderSelectOptions } from '../utils.js';
 
 const EXTRACTION_CONFIGS = {
-    VEGETATION: { title: '植被提取 (NDVI Mask)',  color: 'emerald', threshold: 0.3  },
-    WATER:      { title: '水体提取 (MNDWI Mask)', color: 'blue',    threshold: 0.0  },
-    BUILDING:   { title: '建筑提取 (NDBI Mask)',  color: 'amber',   threshold: 0.1  },
-    CLOUD:      { title: '云层提取',              color: 'slate',   threshold: 0.5  },
+    VEGETATION: { title: 'Vegetation Extraction (NDVI Mask)',  color: 'emerald', threshold: 0.3  },
+    WATER:      { title: 'Water Extraction (MNDWI Mask)', color: 'blue',    threshold: 0.0  },
+    BUILDING:   { title: 'Building Extraction (NDBI Mask)',  color: 'amber',   threshold: 0.1  },
+    CLOUD:      { title: 'Cloud Extraction',              color: 'slate',   threshold: 0.5  },
 };
 
 export const ExtractionTemplate = {
@@ -29,37 +29,37 @@ export const ExtractionTemplate = {
             </div>
 
             <div class="space-y-4">
-                <!-- 动态波段选择容器 -->
+                <!-- Dynamic band selection container -->
                 <div id="dynamic-bands-container" class="space-y-3">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">选择波段 1 (必选)</label>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Select Band 1 (Required)</label>
                         <select class="band-selector w-full p-3 bg-slate-50 border border-slate-200 rounded-xl
                                        text-xs outline-none focus:ring-2 focus:ring-${cfg.color}-500/20">
-                            <option value="">-- 请选择波段 --</option>
+                            <option value="">-- Select a band --</option>
                             ${options}
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">选择波段 2 (必选)</label>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Select Band 2 (Required)</label>
                         <select class="band-selector w-full p-3 bg-slate-50 border border-slate-200 rounded-xl
                                        text-xs outline-none focus:ring-2 focus:ring-${cfg.color}-500/20">
-                            <option value="">-- 请选择波段 --</option>
+                            <option value="">-- Select a band --</option>
                             ${options}
                         </select>
                     </div>
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">计算模式 (Mode - 可选)</label>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Mode (Mode - Optional)</label>
                     <input type="text"
                            id="extract-mode-input"
-                           placeholder="例如: MNDWI, AWEI"
+                           placeholder="e.g.: MNDWI, AWEI"
                            class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs
                                   outline-none focus:ring-2 focus:ring-blue-500/20">
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">提取阈值 (Threshold)</label>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Extraction Threshold (Threshold)</label>
                     <input type="number"
                            step="0.01"
                            id="extract-threshold-input"
@@ -69,7 +69,7 @@ export const ExtractionTemplate = {
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">结果存储名称</label>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Output Name</label>
                     <input type="text"
                            id="extract-name-input"
                            value="Extract_${type}_${Date.now()}.tif"

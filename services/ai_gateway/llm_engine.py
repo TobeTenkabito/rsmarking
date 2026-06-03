@@ -16,27 +16,27 @@ logger = logging.getLogger("ai_gateway.llm_engine")
 
 def _build_system_prompt(mode: TaskMode, data_type: DataType, language: AILanguage, modifiable_schema_json: str) -> str:
     LANGUAGE_MAP = {
-        AILanguage.ZH: "使用简体中文回答，不受用户输入语言影响。",
+        AILanguage.ZH: "Respond in English regardless of the user's input language.",
         AILanguage.EN: "Respond in English,regardless of the user's input language.",
-        AILanguage.JA: "ユーザーの入力言語に関係なく、日本語で回答。",
+        AILanguage.JA: "Respond in Japanese regardless of the user's input language.",
     }
-    base_prompt = f"{LANGUAGE_MAP[language]} 你是GIS空间数据分析助手。\n"
+    base_prompt = f"{LANGUAGE_MAP[language]} You are a GIS spatial data analysis assistant.\n"
     if mode == TaskMode.ANALYZE:
         return base_prompt + (
-            "任务：根据用户问题分析数据，输出文本报告。\n"
-            "要求：\n"
-            "- 专业、客观、结构清晰\n"
-            "- 不编造数据\n"
-            "- 不输出JSON"
+            "Task: analyze the data based on the user's question and output a text report.\n"
+            "Requirements:\n"
+            "- Be professional, objective, and clearly structured.\n"
+            "- Do not invent data.\n"
+            "- Do not output JSON."
         )
     elif mode == TaskMode.MODIFY:
         return base_prompt + (
-            "任务：根据用户指令修改GIS数据并返回JSON。\n"
-            "规则：\n"
-            "1. 不修改只读字段\n"
-            "2. 仅输出合法JSON（无Markdown、无解释）\n"
-            "3. 仅包含允许修改字段（见Schema）\n"
-            "4. 顶层必须包含 \"modified_data\"\n"
+            "Task: modify GIS data according to the user's instruction and return JSON.\n"
+            "Rules:\n"
+            "1. Do not modify read-only fields.\n"
+            "2. Output valid JSON only, with no Markdown or explanations.\n"
+            "3. Include only fields allowed by the schema.\n"
+            "4. The top level must contain \"modified_data\"\n"
             f"Schema:\n{modifiable_schema_json}"
         )
 
@@ -53,7 +53,7 @@ async def call_llm_with_retry(
 ) -> Union[str, RasterModifiable, VectorModifiable]:
     current_model = get_ai_model(model_name)
 
-    # 装载工具
+    # Load tools
     tools = None
     if mode == TaskMode.ANALYZE and expected_type == DataType.VECTOR and context_schema:
         tools = _get_vector_tools(list(context_schema.keys()))
@@ -61,7 +61,7 @@ async def call_llm_with_retry(
     for attempt in range(max_retries + 1):
         ai_content = None
         try:
-            # 将普通的 completion 升级为支持 tools 的循环 (最大允许3次连续调用防止死循环)
+            # Upgrade a normal completion into a tool-capable loop with at most 3 consecutive calls to avoid infinite loops.
             for step in range(3):
                 response = await call_chat_completion(
                     model_name=current_model,
@@ -72,9 +72,9 @@ async def call_llm_with_retry(
                 )
 
                 response_message = response.choices[0].message
-                messages.append(response_message)  # 将 AI 的回复（或调用请求）放入历史
+                messages.append(response_message)  # Append the AI response or tool request to history.
 
-                # 如果没有工具调用，说明 AI 给出了最终文本/JSON 结论
+                # If there are no tool calls, the AI has produced the final text/JSON result
                 if not response_message.tool_calls:
                     ai_content = response_message.content
                     if mode == TaskMode.ANALYZE:
@@ -83,11 +83,11 @@ async def call_llm_with_retry(
                     if mode == TaskMode.MODIFY:
                         return validate_ai_json_output(ai_content, expected_type)
 
-                # 处理工具调用
+                # Handle tool calls
                 for tool_call in response_message.tool_calls:
                     if tool_call.function.name == "query_vector_features":
                         args = json.loads(tool_call.function.arguments)
-                        logger.info(f"AI 调用了查询工具: {args}")
+                        logger.info(f"AI called the query tool: {args}")
 
                         tool_result = await execute_vector_query(db, target_id, args, context_schema)
 
@@ -99,45 +99,45 @@ async def call_llm_with_retry(
                         })
 
         except Exception as e:
-            logger.warning(f"大模型调用或解析失败 (尝试 {attempt + 1}): {str(e)}")
+            logger.warning(f"Model call or parsing failed (attempt {attempt + 1}): {str(e)}")
             if attempt == max_retries:
-                raise RuntimeError(f"AI 处理失败，已达到最大重试次数。最后一次错误: {str(e)}")
+                raise RuntimeError(f"AI processing failed after the maximum retry count. Last error: {str(e)}")
 
             if mode == TaskMode.MODIFY and ai_content is not None:
-                error_feedback = f"你刚才输出的 JSON 格式有误，导致了解析失败。错误信息如下：\n{str(e)}\n请严格按照 Schema 重新输出合法的 JSON，并且只能包含允许修改的字段。"
+                error_feedback = f"The JSON you just output is malformed and could not be parsed. Error details:\n{str(e)}\nRe-output valid JSON strictly following the schema, including only fields allowed for modification."
                 messages.append({"role": "assistant", "content": ai_content})
                 messages.append({"role": "user", "content": error_feedback})
 
 
 def _get_vector_tools(valid_schema_keys: list) -> list:
-    """定义遵循通用查询协议的工具结构"""
+    """Define the tool structure following the generic query protocol"""
     return [{
         "type": "function",
         "function": {
             "name": "query_vector_features",
-            "description": f"当上下文数据不足以回答用户关于具体要素的提问时，使用此工具查询矢量属性。可查询的合法字段：{valid_schema_keys}",
+            "description": f"Use this tool to query vector attributes when the context is insufficient to answer questions about specific features. Valid query fields: {valid_schema_keys}",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "selected_columns": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "需要返回的字段名列表"
+                        "description": "List of field names to return"
                     },
                     "filter_conditions": {
                         "type": "array",
-                        "description": "结构化过滤条件",
+                        "description": "Structured filter conditions",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "column": {"type": "string"},
                                 "operator": {"type": "string", "enum": ["eq", "gt", "lt", "like"]},
-                                "value": {"type": "string", "description": "用于比较的值。若是数字也会解析为字符串传入"}
+                                "value": {"type": "string", "description": "Value to compare. Numeric values are also passed as strings."}
                             },
                             "required": ["column", "operator", "value"]
                         }
                     },
-                    "limit": {"type": "integer", "description": "返回数量限制，最大50", "default": 5}
+                    "limit": {"type": "integer", "description": "Return limit, maximum 50", "default": 5}
                 },
                 "required": ["selected_columns"]
             }

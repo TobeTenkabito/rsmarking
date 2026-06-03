@@ -17,39 +17,39 @@ export class ClipModule {
         this._initDrawListener();
     }
 
-    /** 入口 A：手绘多边形裁栅格 */
+    /** English A：EnglishPolygonEnglish */
     startClipRasterByDraw() {
         if (!this._getActiveRasterId()) {
-            this.app.ui.showToast('请先在地图上加载一张栅格影像', 'warning');
+            this.app.ui.showToast('Load a raster image on the map first.', 'warning');
             return;
         }
         this._enterClipMode(CLIP_MODE.RASTER);
     }
 
-    /** 入口 B-1：用当前激活栅格 bounds 裁矢量 */
+    /** English B-1：English bounds EnglishVector */
     async clipVectorByActiveBounds(targetLayerId) {
         const layerId = targetLayerId ?? Store.state.activeVectorLayerId;
         if (!layerId) {
-            this.app.ui.showToast('请先选择一个矢量图层', 'warning');
+            this.app.ui.showToast('Select a vector layer first.', 'warning');
             return;
         }
         const raster = this._getActiveRasterMeta();
         if (!raster) {
-            this.app.ui.showToast('请先在地图上加载一张栅格影像', 'warning');
+            this.app.ui.showToast('Load a raster image on the map first.', 'warning');
             return;
         }
         if (!raster.bounds_wgs84) {
-            this.app.ui.showToast('当前影像缺少空间范围信息（bounds_wgs84）', 'error');
+            this.app.ui.showToast('Current imagery is missing spatial extent information (bounds_wgs84).', 'error');
             return;
         }
         await this._executeClipVector(layerId, boundsToGeometry(raster.bounds_wgs84));
     }
 
-    /** 入口 B-2：手绘多边形裁矢量 */
+    /** English B-2：EnglishPolygonEnglishVector */
     startClipVectorByDraw(targetLayerId) {
         const layerId = targetLayerId ?? Store.state.activeVectorLayerId;
         if (!layerId) {
-            this.app.ui.showToast('请先选择一个矢量图层', 'warning');
+            this.app.ui.showToast('Select a vector layer first.', 'warning');
             return;
         }
         this._pendingVectorLayerId = layerId;
@@ -57,42 +57,42 @@ export class ClipModule {
     }
 
     /**
-     * 入口 C：用一个矢量图层的几何范围裁剪另一个矢量图层
-     * @param {string} clipLayerId   作为裁剪刀的图层 id
-     * @param {string} targetLayerId 被裁剪的图层 id
+     * English C：EnglishVector LayerEnglishVector Layer
+     * @param {string} clipLayerId   English id
+     * @param {string} targetLayerId English id
      */
     async clipVectorByLayer(clipLayerId, targetLayerId) {
         if (!clipLayerId || !targetLayerId) {
-            this.app.ui.showToast('请选择裁剪图层和目标图层', 'warning');
+            this.app.ui.showToast('Select both a clip layer and a target layer.', 'warning');
             return;
         }
         if (clipLayerId === targetLayerId) {
-            this.app.ui.showToast('裁剪图层和目标图层不能相同', 'warning');
+            this.app.ui.showToast('The clip layer and target layer cannot be the same.', 'warning');
             return;
         }
 
-        this.app.ui.showGlobalLoading('正在获取裁剪图层范围…');
+        this.app.ui.showGlobalLoading('Getting the clip layer extent...');
         try {
             const clipFeatures = await this._fetchAllFeatures(clipLayerId);
             if (!clipFeatures.length) {
-                this.app.ui.showToast('裁剪图层没有要素', 'warning');
+                this.app.ui.showToast('The clip layer has no features.', 'warning');
                 return;
             }
             const clipGeometry = this._mergeFeaturesToGeometry(clipFeatures);
             this.app.ui.hideGlobalLoading();
             await this._executeClipVector(targetLayerId, clipGeometry);
         } catch (err) {
-            console.error('[ClipModule] 图层互裁失败:', err);
-            this.app.ui.showToast(`图层互裁失败：${err.message}`, 'error');
+            console.error('[ClipModule] Layer ClipFailed:', err);
+            this.app.ui.showToast(`Layer ClipFailed：${err.message}`, 'error');
             this.app.ui.hideGlobalLoading();
         }
     }
 
-    /** 取消当前裁剪操作 */
+    /** CancelEnglishActions */
     cancel() {
         if (this._clipMode === CLIP_MODE.NONE) return;
         this._exitClipMode();
-        this.app.ui.showToast('裁剪操作已取消', 'info');
+        this.app.ui.showToast('Clip action canceled.', 'info');
     }
 
     async _executeClipRaster(clipGeometry) {
@@ -100,7 +100,7 @@ export class ClipModule {
         const raster   = this._getActiveRasterMeta();
         if (!rasterId || !raster) return;
         const newName = `${raster.name ?? rasterId}_clip_${Date.now()}`;
-        this.app.ui.showGlobalLoading('正在裁剪栅格影像…');
+        this.app.ui.showGlobalLoading('Clipping raster imagery...');
         try {
             const result = await RasterAPI.clipRasterByVector(
                 rasterId, newName, [clipGeometry], 'EPSG:4326', true, null, false,
@@ -110,34 +110,34 @@ export class ClipModule {
             await this.app.mapController.toggleLayer(result.id);
         }
 
-        this.app.ui.showToast('栅格裁剪完成，新影像已加载', 'success');
+        this.app.ui.showToast('Raster clipping complete. New imagery has been loaded.', 'success');
     } catch (err) {
-        console.error('[ClipModule] 栅格裁剪失败:', err);
-        this.app.ui.showToast(`栅格裁剪失败：${err.message}`, 'error');
+        console.error('[ClipModule] Raster clipping failed:', err);
+        this.app.ui.showToast(`Raster clipping failed：${err.message}`, 'error');
     } finally {
         this.app.ui.hideGlobalLoading();
     }
 }
 
     async _executeClipVector(layerId, clipGeometry) {
-        this.app.ui.showGlobalLoading('正在裁剪矢量要素…');
+        this.app.ui.showGlobalLoading('Clipping vector features...');
         try {
             const allFeatures = await this._fetchAllFeatures(layerId);
             if (!allFeatures.length) {
-                this.app.ui.showToast('当前图层没有可裁剪的要素', 'warning');
+                this.app.ui.showToast('The current layer has no features to clip.', 'warning');
                 return;
             }
             const result = await VectorAPI.clipVectorByGeometry(
                 clipGeometry, allFeatures, 'EPSG:4326', 'clip',
             );
             if (!result?.features?.length) {
-                this.app.ui.showToast('裁剪范围内没有要素', 'warning');
+                this.app.ui.showToast('No features were found inside the clip extent.', 'warning');
                 return;
             }
             await this._saveClipResultToNewLayer(layerId, result.features);
         } catch (err) {
-            console.error('[ClipModule] 矢量裁剪失败:', err);
-            this.app.ui.showToast(`矢量裁剪失败：${err.message}`, 'error');
+            console.error('[ClipModule] Vector clipping failed:', err);
+            this.app.ui.showToast(`Vector clipping failed：${err.message}`, 'error');
         } finally {
             this.app.ui.hideGlobalLoading();
         }
@@ -146,7 +146,7 @@ export class ClipModule {
     async _saveClipResultToNewLayer(sourceLayerId, features) {
         const activeProject = Store.state.activeProject;
         if (!activeProject) {
-            this.app.ui.showToast('请先选择一个矢量项目', 'warning');
+            this.app.ui.showToast('Select a vector project first.', 'warning');
             return;
         }
         const sourceLayer  = Store.state.vectorLayers.find(l => l.id === sourceLayerId);
@@ -167,7 +167,7 @@ export class ClipModule {
         if (this.app.mapController?.toggleVectorLayer) {
             this.app.mapController.toggleVectorLayer(newLayer.id);
         }
-        this.app.ui.showToast(`裁剪完成，已生成新图层「${newLayerName}」`, 'success');
+        this.app.ui.showToast(`Clipping complete. A new layer has been created「${newLayerName}」`, 'success');
     }
 
     _initDrawListener() {
@@ -211,8 +211,8 @@ export class ClipModule {
         }
         handler.enable();
 
-        const label = mode === CLIP_MODE.RASTER ? '栅格裁剪' : '矢量裁剪';
-        this.app.ui.showToast(`${label}模式：请在地图上绘制裁剪范围（ESC 取消）`, 'info');
+        const label = mode === CLIP_MODE.RASTER ? 'Raster Clip' : 'Vector Clip';
+        this.app.ui.showToast(`${label} mode: draw a clip extent on the map (Esc to cancel).`, 'info');
     }
 
     _exitClipMode() {
@@ -226,7 +226,7 @@ export class ClipModule {
         if (!ids.size) return null;
         const activeId = ids.values().next().value;
         const match = Store.state.rasters.find(r => r.id == activeId);
-        return match?.index_id ?? null;  // ← 返回 index_id
+        return match?.index_id ?? null;  // ← returns index_id
     }
 
     _getActiveRasterMeta() {
@@ -242,8 +242,8 @@ export class ClipModule {
     }
 
     /**
-     * 将多个 Feature 的几何合并为单个 MultiPolygon
-     * 非 Polygon/MultiPolygon 类型的要素会被过滤掉
+     * English Feature English MultiPolygon
+     * English Polygon/MultiPolygon TypeEnglish
      */
     _mergeFeaturesToGeometry(features) {
         const polygons = features
@@ -251,7 +251,7 @@ export class ClipModule {
             .filter(g => g?.type === 'Polygon' || g?.type === 'MultiPolygon');
 
         if (!polygons.length) {
-            throw new Error('裁剪图层中没有可用的面要素（Polygon/MultiPolygon）');
+            throw new Error('The clip layer has no usable polygon features (Polygon/MultiPolygon).');
         }
         if (polygons.length === 1) return polygons[0];
 

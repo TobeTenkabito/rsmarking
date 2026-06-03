@@ -1,10 +1,10 @@
 export const exportModal = `
   <div id="export-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
       <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
-          <!-- 顶部色条 -->
+          <!-- Top color bar -->
           <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-teal-500 to-cyan-500 z-10"></div>
 
-          <!-- 标题（固定，不参与滚动） -->
+          <!-- Title（English，English） -->
           <div class="flex items-center space-x-3 px-8 pt-8 pb-4 flex-shrink-0">
               <div class="p-2 bg-teal-50 rounded-xl">
                   <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -13,24 +13,24 @@ export const exportModal = `
                   </svg>
               </div>
               <div>
-                  <h2 class="text-base font-black text-slate-800">导出当前视图</h2>
+                  <h2 class="text-base font-black text-slate-800">Export Current View</h2>
                   <p class="text-[10px] text-slate-400">Export Map View</p>
               </div>
           </div>
 
-          <!-- 可滚动内容区 -->
+          <!-- scrollableEnglish -->
           <div class="export-scroll overflow-y-auto flex-1 px-8 space-y-5 pb-2">
 
-              <!-- 导出格式 -->
+              <!-- Export Format -->
               <div class="space-y-2">
-                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">导出格式</label>
+                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Export Format</label>
                   <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <label class="export-format-option">
                           <input type="radio" name="export-format" value="png" checked class="hidden">
                           <div class="format-card border-2 border-teal-500 bg-teal-50 text-teal-700 rounded-xl p-3 text-center cursor-pointer transition-all">
                               <div class="text-xl mb-1">🖼️</div>
                               <div class="text-[11px] font-bold">PNG</div>
-                              <div class="text-[9px] opacity-60">无损透明</div>
+                              <div class="text-[9px] opacity-60">Lossless transparent</div>
                           </div>
                       </label>
                       <label class="export-format-option">
@@ -38,7 +38,7 @@ export const exportModal = `
                           <div class="format-card border-2 border-slate-200 bg-white text-slate-600 rounded-xl p-3 text-center cursor-pointer transition-all hover:border-teal-300">
                               <div class="text-xl mb-1">📷</div>
                               <div class="text-[11px] font-bold">JPEG</div>
-                              <div class="text-[9px] opacity-60">体积更小</div>
+                              <div class="text-[9px] opacity-60">Smaller file</div>
                           </div>
                       </label>
                       <label class="export-format-option">
@@ -46,7 +46,7 @@ export const exportModal = `
                           <div class="format-card border-2 border-slate-200 bg-white text-slate-600 rounded-xl p-3 text-center cursor-pointer transition-all hover:border-teal-300">
                               <div class="text-xl mb-1">📐</div>
                               <div class="text-[11px] font-bold">SVG</div>
-                              <div class="text-[9px] opacity-60">矢量图形</div>
+                              <div class="text-[9px] opacity-60">Vector graphics</div>
                           </div>
                       </label>
                       <label class="export-format-option">
@@ -54,23 +54,23 @@ export const exportModal = `
                           <div class="format-card border-2 border-slate-200 bg-white text-slate-600 rounded-xl p-3 text-center cursor-pointer transition-all hover:border-teal-300">
                               <div class="text-xl mb-1">GIS</div>
                               <div class="text-[11px] font-bold">FILE</div>
-                              <div class="text-[9px] opacity-60">属性表</div>
+                              <div class="text-[9px] opacity-60">Attribute table</div>
                           </div>
                       </label>
                   </div>
               </div>
 
-              <!-- 导出内容选项 -->
+              <!-- Export ContentEnglish -->
               <div class="space-y-2">
-                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">导出内容</label>
+                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Export Content</label>
                   <div class="bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-100">
 
                       <label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center text-sm">🗺️</div>
                               <div>
-                                  <p class="text-xs font-bold text-slate-700">地图底图</p>
-                                  <p class="text-[9px] text-slate-400">OpenStreetMap 瓦片图层</p>
+                                  <p class="text-xs font-bold text-slate-700">Base Map</p>
+                                  <p class="text-[9px] text-slate-400">OpenStreetMap tile layer</p>
                               </div>
                           </div>
                           <div class="relative">
@@ -87,8 +87,8 @@ export const exportModal = `
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center text-sm">🔷</div>
                               <div>
-                                  <p class="text-xs font-bold text-slate-700">矢量标注图层</p>
-                                  <p class="text-[9px] text-slate-400">多边形 / 矩形 / 标记点</p>
+                                  <p class="text-xs font-bold text-slate-700">Vector annotation layers</p>
+                                  <p class="text-[9px] text-slate-400">Polygons / rectangles / markers</p>
                               </div>
                           </div>
                           <div class="relative">
@@ -105,8 +105,8 @@ export const exportModal = `
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-sm">🛰️</div>
                               <div>
-                                  <p class="text-xs font-bold text-slate-700">栅格影像图层</p>
-                                  <p class="text-[9px] text-slate-400">已加载的 TIFF 影像</p>
+                                  <p class="text-xs font-bold text-slate-700">Raster imagery layers</p>
+                                  <p class="text-[9px] text-slate-400">Loaded TIFF imagery</p>
                               </div>
                           </div>
                           <div class="relative">
@@ -123,8 +123,8 @@ export const exportModal = `
                           <div class="flex items-center space-x-3">
                               <div class="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-sm">🧭</div>
                               <div>
-                                  <p class="text-xs font-bold text-slate-700">地图装饰元素</p>
-                                  <p class="text-[9px] text-slate-400">比例尺 / 指北针 / 图例</p>
+                                  <p class="text-xs font-bold text-slate-700">Map decoration elements</p>
+                                  <p class="text-[9px] text-slate-400">Scale bar / north arrow / legend</p>
                               </div>
                           </div>
                           <div class="relative">
@@ -137,13 +137,13 @@ export const exportModal = `
                           </div>
                       </label>
                       
-<!-- 经纬网格线 -->
+<!-- Graticule -->
 <label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
     <div class="flex items-center space-x-3">
         <div class="w-7 h-7 rounded-lg bg-teal-100 flex items-center justify-center text-sm">🌐</div>
         <div>
-            <p class="text-xs font-bold text-slate-700">经纬网格线</p>
-            <p class="text-[9px] text-slate-400">叠加在地图上的经纬网</p>
+            <p class="text-xs font-bold text-slate-700">Graticule</p>
+            <p class="text-[9px] text-slate-400">Longitude/latitude grid overlay</p>
         </div>
     </div>
     <div class="relative">
@@ -155,27 +155,27 @@ export const exportModal = `
     </div>
 </label>
 
-<!-- 线型选择（跟随经纬网显隐） -->
+<!-- Line style selector; follows graticule visibility -->
 <div id="graticule-style-group" class="hidden pl-10 pb-1" data-export-image-option>
     <div class="flex items-center space-x-4">
         <label class="flex items-center space-x-1.5 cursor-pointer">
             <input type="radio" name="graticule-style" value="solid" checked class="accent-teal-500">
-            <span class="text-[11px] text-slate-600 font-medium">实线</span>
+            <span class="text-[11px] text-slate-600 font-medium">Solid</span>
         </label>
         <label class="flex items-center space-x-1.5 cursor-pointer">
             <input type="radio" name="graticule-style" value="dashed" class="accent-teal-500">
-            <span class="text-[11px] text-slate-600 font-medium">虚线</span>
+            <span class="text-[11px] text-slate-600 font-medium">Dashed</span>
         </label>
     </div>
 </div>
 
-<!-- 外框经纬度标注（独立开关） -->
+<!-- Border coordinate labels; independent toggle -->
 <label class="flex items-center justify-between cursor-pointer group" data-export-image-option>
     <div class="flex items-center space-x-3">
         <div class="w-7 h-7 rounded-lg bg-sky-100 flex items-center justify-center text-sm">📏</div>
         <div>
-            <p class="text-xs font-bold text-slate-700">外框经纬度标注</p>
-            <p class="text-[9px] text-slate-400">在图像边缘标注经纬度刻度</p>
+            <p class="text-xs font-bold text-slate-700">Border coordinate labels</p>
+            <p class="text-[9px] text-slate-400">Label coordinate ticks around image edges</p>
         </div>
     </div>
     <div class="relative">
@@ -191,21 +191,21 @@ export const exportModal = `
                   </div>
               </div>
 
-              <!-- 分辨率 / 质量 -->
+              <!-- English / English -->
               <div id="export-image-settings" class="grid grid-cols-2 gap-3">
                   <div class="space-y-1.5">
-                      <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">输出分辨率</label>
+                      <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Output Resolution</label>
                       <select id="export-dpi"
                           class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400">
-                          <option value="1">标准 (1x)</option>
-                          <option value="2" selected>高清 (2x)</option>
-                          <option value="3">超清 (3x)</option>
-                          <option value="4">极清 (4x)</option>
+                          <option value="1">Standard (1x)</option>
+                          <option value="2" selected>High (2x)</option>
+                          <option value="3">Ultra (3x)</option>
+                          <option value="4">Maximum (4x)</option>
                       </select>
                   </div>
                   <div class="space-y-1.5" id="jpeg-quality-group">
                       <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                          JPEG 质量 <span id="jpeg-quality-val" class="text-teal-500">92%</span>
+                          JPEG Quality <span id="jpeg-quality-val" class="text-teal-500">92%</span>
                       </label>
                       <input type="range" id="export-jpeg-quality" min="50" max="100" value="92"
                           oninput="document.getElementById('jpeg-quality-val').textContent = this.value + '%'"
@@ -213,9 +213,9 @@ export const exportModal = `
                   </div>
               </div>
 
-              <!-- 文件名 -->
+              <!-- File Name -->
               <div class="space-y-1.5">
-                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">文件名</label>
+                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">File Name</label>
                   <div class="flex items-center space-x-2">
                       <input type="text" id="export-filename" value="RSMarking_Export"
                           class="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-400">
@@ -223,18 +223,18 @@ export const exportModal = `
                   </div>
               </div>
 
-              <!-- 预览缩略图 -->
+              <!-- English -->
               <div class="space-y-2">
                   <div class="flex items-center justify-between">
-                      <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">实时预览</label>
+                      <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Live Preview</label>
                       <button id="export-preview-refresh-btn" onclick="RS.refreshExportPreview()"
-                          class="text-[10px] text-teal-600 hover:underline font-bold">刷新预览</button>
+                          class="text-[10px] text-teal-600 hover:underline font-bold">Refresh Preview</button>
                   </div>
                   <div id="export-preview-container"
                       class="w-full h-36 bg-slate-100 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden relative">
                       <div id="export-preview-placeholder" class="text-center">
                           <div class="text-2xl mb-1">🗺️</div>
-                          <p class="text-[10px] text-slate-400">点击"刷新预览"生成缩略图</p>
+                          <p class="text-[10px] text-slate-400">Click "Refresh Preview" to generate a thumbnail</p>
                       </div>
                       <canvas id="export-preview-canvas" class="hidden w-full h-full object-contain rounded-2xl"></canvas>
                       <div id="export-preview-loader" class="hidden absolute inset-0 bg-white/80 flex items-center justify-center">
@@ -244,9 +244,9 @@ export const exportModal = `
               </div>
 
           </div>
-          <!-- 滚动区结束 -->
+          <!-- English -->
 
-          <!-- 底部按钮（固定，不参与滚动） -->
+          <!-- English（English，English） -->
           <div class="px-8 pt-4 pb-6 flex flex-col space-y-3 flex-shrink-0 border-t border-slate-100">
               <button id="export-execute-btn" onclick="RS.executeExport()"
                   class="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700
@@ -260,18 +260,18 @@ export const exportModal = `
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                   </svg>
-                  <span id="export-execute-label">导出图像</span>
+                  <span id="export-execute-label">Export Image</span>
               </button>
               <button onclick="RS.closeExportModal()"
                   class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">
-                  取消
+                  Cancel
               </button>
           </div>
 
       </div>
   </div>
 
-  <!-- 格式选择联动样式 -->
+  <!-- English -->
   <style>
       .export-format-option input:checked + .format-card {
           border-color: #0d9488 !important;
@@ -285,7 +285,7 @@ export const exportModal = `
           transform: translateY(-1px);
           box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       }
-      /* 滚动条美化 */
+      /* English */
       .export-scroll::-webkit-scrollbar { width: 4px; }
       .export-scroll::-webkit-scrollbar-track { background: transparent; }
       .export-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }

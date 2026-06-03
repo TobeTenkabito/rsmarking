@@ -3,10 +3,10 @@ export const aiModal =`
     <div id="ai-window" class="bg-white rounded-3xl shadow-2xl relative overflow-hidden flex flex-col"
         style="width:min(96vw, 1080px); height:min(90vh, 780px); min-width:min(92vw, 560px); min-height:560px; max-width:calc(100vw - 2rem); max-height:calc(100vh - 2rem); resize:both;">
 
-        <!-- 顶部色条 -->
+        <!-- Top color bar -->
         <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-violet-500 to-indigo-500"></div>
 
-        <!-- 头部 -->
+        <!-- Header -->
         <div class="p-8 pb-4">
             <div class="flex items-center space-x-3 mb-1">
                 <div class="p-2 bg-violet-50 rounded-xl">
@@ -15,39 +15,39 @@ export const aiModal =`
                     </svg>
                 </div>
                 <div>
-                    <h2 class="text-base font-bold text-slate-800">AI 空间智能助手</h2>
-                    <p class="text-[10px] text-slate-400 font-medium">分析数据 · 智能修改元数据</p>
+                    <h2 class="text-base font-bold text-slate-800">AI Spatial Assistant</h2>
+                    <p class="text-[10px] text-slate-400 font-medium">Analyze data · Intelligently edit metadata</p>
                 </div>
             </div>
         </div>
 
-        <!-- 表单区（可滚动） -->
+        <!-- Form area（scrollable） -->
         <div class="px-8 pb-4 space-y-4 overflow-y-auto sidebar-scroll flex-1 min-h-0">
 
-            <!-- 目标数据 + 数据类型 -->
+            <!-- Target Data + Data Type -->
             <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1.5">
-                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">目标数据</label>
+                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Target Data</label>
                     <select id="ai-target-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
                     </select>
                 </div>
                 <div class="space-y-1.5">
-                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">数据类型</label>
+                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Data Type</label>
                     <select id="ai-datatype-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
-                        <option value="raster">栅格影像</option>
-                        <option value="vector">矢量图层</option>
+                        <option value="raster">Raster Imagery</option>
+                        <option value="vector">Vector Layer</option>
                     </select>
                 </div>
             </div>
 
-            <!-- 任务模式 + 语言 -->
+            <!-- Task Mode + Language -->
             <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1.5">
                     <div class="flex items-center space-x-1">
-                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">任务模式</label>
-                        <!-- 改进后的提示组件 -->
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Task Mode</label>
+                        <!-- Improved help component -->
                         <div class="group relative flex items-center">
                         <svg class="w-3.5 h-3.5 text-slate-400 cursor-help hover:text-violet-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -58,13 +58,13 @@ export const aiModal =`
                         transform -translate-y-1 group-hover:translate-y-0 
                         border border-slate-200">
                         <div class="p-4 overflow-y-auto sidebar-scroll">
-                            <div class="font-bold border-b border-slate-200 pb-2 mb-2 text-violet-600">使用说明 / Instructions</div>
+                            <div class="font-bold border-b border-slate-200 pb-2 mb-2 text-violet-600">Instructions</div>
                             <div class="space-y-3 leading-relaxed">
                             <p class="text-slate-700">
-                                当使用 <span class="text-violet-600 font-semibold">分析模式</span> 时，请尽可能详细地提供数据源（如 "Landsat 7 B1"）和影像类型（如 "DEM" 或 "遥感影像"），以及具体数值代表的物理含义。
+                                When using <span class="text-violet-600 font-semibold">Analysis Mode</span>, provide the data source as clearly as possible (for example "Landsat 7 B1"), the imagery type (for example "DEM" or "remote-sensing imagery"), and the physical meaning of numeric values.
                             </p>
                             <p class="text-slate-600">
-                                AI 无法得知您从哪里获取的数据，因此提供这些背景信息以便 AI 更好地分析。您对您的数据来源越负责，AI 分析的准确性就越高。
+                                AI cannot infer your data source, so provide context for better analysis. The more precise the source context, the better the analysis.
                             </p>
                             <hr class="border-slate-200">
                             <p class="italic text-slate-500">
@@ -82,27 +82,27 @@ export const aiModal =`
                     </div>
                     <select id="ai-mode-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
-                        <option value="analyze">分析模式</option>
-                        <option value="modify">修改模式</option>
+                        <option value="analyze">Analysis Mode</option>
+                        <option value="modify">Modify Mode</option>
                         <option value="agent">Agent mode</option>
                     </select>
                 </div>
                 <div class="space-y-1.5">
-                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">输出语言</label>
+                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Output Language</label>
                     <select id="ai-language-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
-                        <option value="zh">中文</option>
                         <option value="en">English</option>
-                        <option value="ja">日本語</option>
+                        <option value="en">English</option>
+                        <option value="ja">English</option>
                     </select>
                 </div>
             </div>
 
-            <!-- 指令输入框 -->
-            <div class="space-y-1.5"> 
-                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">指令</label> 
+            <!-- Prompt -->
+            <div class="space-y-1.5">
+                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Prompt</label>
                 <textarea id="ai-prompt-input" rows="3" 
-                    placeholder="例：分析该影像的植被覆盖情况\n或：将图层名称修改为更具描述性的名称\nExample: Analyze vegetation coverage in this image\nOr: Rename the layer to something more descriptive"
+                    placeholder="Example: Analyze vegetation coverage in this image\nOr: Rename the layer to something more descriptive"
                     class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 
                     placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all resize-none"> 
                 </textarea> 
@@ -215,7 +215,7 @@ export const aiModal =`
                 </div>
             </div>
 
-            <!-- 错误 / 成功提示 -->
+            <!-- Error / success hints -->
             <div id="ai-error-msg"
                 class="hidden text-xs text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5">
             </div>
@@ -223,9 +223,9 @@ export const aiModal =`
                 class="hidden text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2.5">
             </div>
 
-            <!-- 结果展示区 -->
+            <!-- Result area -->
             <div id="ai-result-section" class="hidden space-y-2">
-                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">AI 输出</label>
+                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">AI Output</label>
                 <pre id="ai-result-content"
                     class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 whitespace-pre-wrap break-words max-h-48 overflow-y-auto sidebar-scroll">
                 </pre>
@@ -234,25 +234,25 @@ export const aiModal =`
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                     </svg>
-                    <span>下载分析报告</span>
+                    <span>Download Analysis Report</span>
                 </a>
             </div>
 
-            <!-- 修改模式：确认按钮 -->
+            <!-- Modify Mode：English -->
             <div id="ai-confirm-section" class="hidden grid grid-cols-2 gap-3 pt-1">
                 <button onclick="RS.aiConfirmCreate()"
                     class="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.98]">
-                    ✦ 新建副本
+                    ✦ Create Copy
                 </button>
                 <button onclick="RS.aiConfirmOverwrite()"
                     class="w-full bg-amber-500 hover:bg-amber-600 text-white py-3 rounded-2xl font-bold text-xs shadow-lg shadow-amber-500/20 transition-all active:scale-[0.98]">
-                    ⚠ 覆盖原始
+                    ⚠ Overwrite Original
                 </button>
             </div>
 
         </div>
 
-        <!-- 底部操作栏 -->
+        <!-- Footer action bar -->
         <div class="px-8 py-5 border-t border-slate-100 flex flex-col space-y-3">
             <button id="ai-execute-btn" onclick="RS.aiExecute()"
                 class="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-bold text-sm shadow-xl transition-all active:scale-[0.98] flex items-center justify-center space-x-2">
@@ -260,11 +260,11 @@ export const aiModal =`
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
                 </svg>
-                <span>执行 AI 任务</span>
+                <span>Run AI Task</span>
             </button>
             <button onclick="RS.closeAIModal()"
                 class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">
-                返回工作站
+                Back to Workspace
             </button>
         </div>
 

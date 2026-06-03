@@ -1,11 +1,11 @@
 """
-预处理任务集
+preprocesstask
 ─────────────────────────────────────────────────────────────────────────────
-包含：
-  - build_cog_task        : 原始文件 → COG + 金字塔，回写 cog_path
-  - build_overviews_task  : 仅构建金字塔（已有 COG 时使用）
-  - reproject_task        : 重投影到目标 CRS
-  - compute_statistics_task: 计算波段统计（min/max/mean/std），写入 RasterField
+text:
+  - build_cog_task        : text -> COG + text,text cog_path
+  - build_overviews_task  : textBuilding overviews(text COG whenuses)
+  - reproject_task        : reproject to CRS
+  - compute_statistics_task: text(min/max/mean/std),write RasterField
 """
 import logging
 import os
@@ -30,7 +30,7 @@ def _ensure_parent_dir(path: str) -> None:
     if parent:
         os.makedirs(parent, exist_ok=True)
 
-# ─── 1. COG 转换 + 金字塔 ─────────────────────────────────────────────────────
+# ─── 1. COG conversion + text ─────────────────────────────────────────────────────
 
 @celery_app.task(
     bind=True,
@@ -41,26 +41,26 @@ def _ensure_parent_dir(path: str) -> None:
 )
 def build_cog_task(self, index_id: int, raw_path: str, cog_path: str) -> dict:
     """
-    将原始影像转换为 COG 并构建金字塔，完成后回写 cog_path 到数据库。
+    imageryconvert to COG textBuilding overviews,text cog_path database.
 
     Args:
-        index_id : RasterMetadata.index_id（雪花 ID）
-        raw_path : 原始文件绝对路径
-        cog_path : 输出 COG 绝对路径
+        index_id : RasterMetadata.index_id(text ID)
+        raw_path : path
+        cog_path : text COG path
     Returns:
         {"index_id": ..., "cog_path": ...}
     """
     try:
-        self.report(10, "开始 COG 转换")
+        self.report(10, "Starting COG conversion")
         _ensure_parent_dir(cog_path)
 
-        self.report(30, "转换中...")
+        self.report(30, "Converting...")
         RasterProcessor.convert_to_cog(raw_path, cog_path)
 
-        self.report(70, "构建金字塔")
+        self.report(70, "Building overviews")
         build_raster_overviews(cog_path)
 
-        self.report(90, "回写数据库")
+        self.report(90, "Writing back to database")
         update_cog_path(index_id, cog_path)
 
         logger.info(f"[build_cog] done index_id={index_id}")
@@ -71,7 +71,7 @@ def build_cog_task(self, index_id: int, raw_path: str, cog_path: str) -> dict:
         raise self.retry(exc=exc, countdown=15)
 
 
-# ─── 2. 仅构建金字塔 ──────────────────────────────────────────────────────────
+# ─── 2. textBuilding overviews ──────────────────────────────────────────────────────────
 
 @celery_app.task(
     bind=True,
@@ -81,13 +81,13 @@ def build_cog_task(self, index_id: int, raw_path: str, cog_path: str) -> dict:
 )
 def build_overviews_task(self, file_path: str) -> dict:
     """
-    对已存在的 COG / GeoTIFF 补建金字塔。
+    text COG / GeoTIFF text.
 
     Args:
-        file_path: 目标文件绝对路径
+        file_path: path
     """
     try:
-        self.report(20, "构建金字塔中")
+        self.report(20, "Building overviewstext")
         build_raster_overviews(file_path)
         return {"file_path": file_path, "status": "ok"}
     except Exception as exc:
@@ -95,7 +95,7 @@ def build_overviews_task(self, file_path: str) -> dict:
         raise self.retry(exc=exc, countdown=10)
 
 
-# ─── 3. 重投影 ────────────────────────────────────────────────────────────────
+# ─── 3. text ────────────────────────────────────────────────────────────────
 
 @celery_app.task(
     bind=True,
@@ -112,18 +112,18 @@ def reproject_task(
     target_crs: str = "EPSG:4326",
 ) -> dict:
     """
-    将栅格重投影到目标坐标系，完成后更新元数据。
+    reproject tocoordinates,text.
 
     Args:
         index_id   : RasterMetadata.index_id
-        input_path : 输入文件路径
-        output_path: 输出文件路径
-        target_crs : 目标 CRS，默认 EPSG:4326
+        input_path : file path
+        output_path: file path
+        target_crs : text CRS,text EPSG:4326
     """
     from rasterio.warp import calculate_default_transform, reproject, Resampling
 
     try:
-        self.report(10, f"重投影 → {target_crs}")
+        self.report(10, f"text -> {target_crs}")
         _ensure_parent_dir(output_path)
 
         with rasterio.open(input_path) as src:
@@ -138,7 +138,7 @@ def reproject_task(
                 "height": height,
                 "driver": "GTiff",
             })
-            self.report(30, "写出重投影结果")
+            self.report(30, "Writing reprojected result")
             with rasterio.open(output_path, "w", **meta) as dst:
                 for band_idx in range(1, src.count + 1):
                     reproject(
@@ -151,11 +151,11 @@ def reproject_task(
                         resampling=Resampling.nearest,
                     )
 
-        self.report(80, "构建金字塔")
+        self.report(80, "Building overviews")
         build_raster_overviews(output_path)
 
-        # 更新元数据中的 CRS
-        self.report(95, "回写元数据")
+        # text CRS
+        self.report(95, "Writing metadata back")
         with get_sync_db() as db:
             row = db.query(RasterMetadata).filter(
                 RasterMetadata.index_id == index_id
@@ -173,7 +173,7 @@ def reproject_task(
         raise self.retry(exc=exc, countdown=15)
 
 
-# ─── 4. 波段统计计算 ──────────────────────────────────────────────────────────
+# ─── 4. text ──────────────────────────────────────────────────────────
 
 @celery_app.task(
     bind=True,
@@ -183,16 +183,16 @@ def reproject_task(
 )
 def compute_statistics_task(self, index_id: int, file_path: str) -> dict:
     """
-    计算每个波段的 min/max/mean/std，结果以系统字段写入 RasterField 表。
+    text min/max/mean/std,resultwrite RasterField table.
 
     Args:
         index_id  : RasterMetadata.index_id
-        file_path : COG 或原始文件路径
+        file_path : COG file path
     Returns:
         {"index_id": ..., "bands": [{"band": 1, "min": ..., ...}, ...]}
     """
     try:
-        self.report(10, "读取影像统计")
+        self.report(10, "Reading imagery statistics")
         stats_list = []
 
         with rasterio.open(file_path) as src:
@@ -202,7 +202,7 @@ def compute_statistics_task(self, index_id: int, file_path: str) -> dict:
             for i in range(1, band_count + 1):
                 self.report(
                     10 + int(80 * i / band_count),
-                    f"计算波段 {i}/{band_count} 统计"
+                    f"Calculating statistics for band {i}/{band_count}"
                 )
                 data = src.read(i).astype("float32")
                 if nodata is not None:
@@ -219,8 +219,8 @@ def compute_statistics_task(self, index_id: int, file_path: str) -> dict:
                     "std":   float(np.nanstd(data)),
                 })
 
-        # 写入 RasterField（系统字段，前端不可删除）
-        self.report(92, "写入统计字段")
+        # write RasterField(text,cannot be deleted by frontend)
+        self.report(92, "Writing statistics fields")
         with get_sync_db() as db:
             for s in stats_list:
                 band_no = s["band"]

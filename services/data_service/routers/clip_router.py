@@ -26,7 +26,7 @@ async def clip_raster_by_vector(
         body: ClipRasterByVectorRequest,
         db: AsyncSession = Depends(get_db),
 ):
-    """用矢量多边形裁剪栅格，结果注册为新栅格记录走 COG 流程"""
+    """Clip a raster with vector polygons, then register the result as a new raster record through the COG workflow."""
     result = await db.execute(
         select(models.RasterMetadata).where(
             models.RasterMetadata.index_id == body.raster_id
@@ -34,7 +34,7 @@ async def clip_raster_by_vector(
     )
     raster_record = result.scalars().first()
     if not raster_record:
-        raise HTTPException(status_code=404, detail="栅格不存在")
+        raise HTTPException(status_code=404, detail="Raster not found")
 
     raster_path = db_ops.resolve_raster_record_path(raster_record)
     if not raster_path:
@@ -96,6 +96,6 @@ async def clip_raster_by_vector(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"矢量裁剪栅格失败: {e}")
+        logger.error(f"Vector-to-raster clipping failed: {e}")
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

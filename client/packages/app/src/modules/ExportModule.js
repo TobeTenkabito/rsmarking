@@ -58,7 +58,7 @@ export class ExportModule {
                 placeholder.innerHTML = `
                     <div class="text-2xl mb-1">GIS</div>
                     <p class="text-[10px] text-slate-400 px-4">
-                        GIS 文件模式将导出可在 QGIS / ArcGIS 中打开的数据包
+                        GIS file mode exports data packages usable in QGIS / ArcGIS.
                     </p>`;
             }
             return;
@@ -87,7 +87,7 @@ export class ExportModule {
             if (placeholder) {
                 placeholder.classList.remove('hidden');
                 placeholder.innerHTML =
-                    `<p class="text-[10px] text-red-400">预览失败: ${e.message}</p>`;
+                    `<p class="text-[10px] text-red-400">Preview failed: ${e.message}</p>`;
             }
         } finally {
             if (previewSeq === this._previewSeq) loader?.classList.add('hidden');
@@ -114,7 +114,7 @@ export class ExportModule {
             }
         } catch (e) {
             console.error('[ExportModule] Export failed:', e);
-            alert(`导出失败：${e.message}`);
+            alert(`Export failed：${e.message}`);
         } finally {
             btn.disabled = false;
             spinner?.classList.add('hidden');
@@ -129,25 +129,25 @@ export class ExportModule {
 
         const map   = this._getMap();
         const mapEl = map?.getContainer();
-        if (!mapEl) throw new Error('地图实例未初始化');
+        if (!mapEl) throw new Error('Map instance is not initialized');
 
         const W = mapEl.clientWidth  * opts.scale;
         const H = mapEl.clientHeight * opts.scale;
         const showFrameLabels = opts.includeGraticule && opts.includeFrameLabels;
 
-        // 经纬网需要在地图外侧留白（用于标注经纬度）
+        // English（Englishlatitude）
         const MARGIN = showFrameLabels ? Math.round(36 * opts.scale) : 0;
 
         const output = document.createElement('canvas');
-        output.width  = W + MARGIN * 2;   // 左右各留 MARGIN
-        output.height = H + MARGIN * 2;   // 上下各留 MARGIN
+        output.width  = W + MARGIN * 2;   // Leave MARGIN on the left and right
+        output.height = H + MARGIN * 2;   // Leave MARGIN on the top and bottom
         const ctx = output.getContext('2d');
 
-        // 外框背景（留白区域）
+        // English（English）
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, output.width, output.height);
 
-        // ① 底图（绘制在偏移后的地图区域）
+        // ① English（English）
         ctx.save();
         ctx.translate(MARGIN, MARGIN);
 
@@ -164,29 +164,29 @@ export class ExportModule {
             ctx.fillRect(0, 0, W, H);
         }
 
-        // ② 栅格影像图层
+        // ② Raster imagery layers
         if (opts.includeRasters) {
             this._drawRasterLayers(ctx, mapEl, W, H);
         }
 
-        // ③ 矢量标注图层
+        // ③ Vector annotation layers
         if (opts.includeVectors) {
             await this._drawVectorLayers(ctx, mapEl, W, H);
         }
 
-        // ④ 经纬网（绘制在地图区域内，线条部分）
+        // ④ English（English，English）
         if (opts.includeGraticule) {
             this._drawGraticuleLines(ctx, map, W, H, opts.scale, opts.graticuleStyle);
         }
 
-        // ⑤ 装饰元素
+        // ⑤ English
         if (opts.includeDecorations) {
             this._drawDecorations(ctx, W, H, opts.scale);
         }
 
         ctx.restore();
 
-        // ⑥ 经纬度外框标注（在 translate 外绘制，使用绝对坐标）
+        // ⑥ EnglishlatitudeEnglish（English translate English，English）
         if (showFrameLabels) {
             this._drawGraticuleFrame(ctx, map, W, H, MARGIN, opts.scale);
         }
@@ -275,7 +275,7 @@ export class ExportModule {
 
 
     /**
-     * 计算合适的经纬网间隔（度）
+     * English（English）
      */
     _niceLatLngInterval(map) {
         const bounds = map.getBounds();
@@ -293,7 +293,7 @@ export class ExportModule {
         const spanLat = Number.isFinite(north - south) ? Math.abs(north - south) : 180;
         const span = Math.max(spanLng, spanLat, 0.01);
 
-        // 目标：屏幕上出现 4~6 条线
+        // English：English 4~6 English
         const raw = span / 5;
         const candidates = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
                             1, 2, 5, 10, 15, 20, 30, 45, 60];
@@ -306,7 +306,7 @@ export class ExportModule {
     }
 
     /**
-     * 将经纬度转换为地图容器内的像素坐标（已乘 scale）
+     * EnglishlatitudeEnglish（English scale）
      */
     _latlngToPixel(map, lat, lng, mapEl, scale) {
         const point = map.latLngToContainerPoint([lat, lng]);
@@ -549,8 +549,8 @@ export class ExportModule {
     const interval = this._niceLatLngInterval(map);
     const bounds   = map.getBounds();
 
-    // ✅ 往外各扩一个 interval，保证边缘线一定能画到
-    // ✅ 用 floor/ceil 反过来：west 向下取整，east 向上取整
+    // ✅ English interval，English
+    // ✅ English floor/ceil English：west English，east English
     const lngStart = Math.floor(bounds.getWest()  / interval) * interval;
     const lngEnd   = Math.ceil( bounds.getEast()  / interval) * interval;
     const latStart = Math.floor(bounds.getSouth() / interval) * interval;
@@ -561,7 +561,7 @@ export class ExportModule {
     ctx.lineWidth   = Math.max(0.6, 0.8 * scale);
     ctx.setLineDash(style === 'dashed' ? [6 * scale, 5 * scale] : []);
 
-    // ── 经线（垂直）：用中心纬度换算 x，y 从 0 画到 H ──
+    // ── English（English）：EnglishlatitudeEnglish x，y English 0 English H ──
     for (let lng = lngStart; lng <= lngEnd + 1e-9; lng += interval) {
         const pt = map.latLngToContainerPoint([map.getCenter().lat, lng]);
         const x  = pt.x * scale;
@@ -571,7 +571,7 @@ export class ExportModule {
         ctx.stroke();
     }
 
-    // ── 纬线（水平）：用中心经度换算 y，x 从 0 画到 W ──
+    // ── English（English）：English y，x English 0 English W ──
     for (let lat = latStart; lat <= latEnd + 1e-9; lat += interval) {
         const pt = map.latLngToContainerPoint([lat, map.getCenter().lng]);
         const y  = pt.y * scale;
@@ -589,7 +589,7 @@ export class ExportModule {
     const interval = this._niceLatLngInterval(map);
     const bounds   = map.getBounds();
 
-    // ✅ 与 _drawGraticuleLines 保持一致
+    // ✅ English _drawGraticuleLines English
     const lngStart = Math.floor(bounds.getWest()  / interval) * interval;
     const lngEnd   = Math.ceil( bounds.getEast()  / interval) * interval;
     const latStart = Math.floor(bounds.getSouth() / interval) * interval;
@@ -600,7 +600,7 @@ export class ExportModule {
 
     ctx.save();
 
-    // ── 外框矩形 ──
+    // ── EnglishRectangle ──
     ctx.strokeStyle = '#334155';
     ctx.lineWidth   = Math.max(1, 1.2 * scale);
     ctx.setLineDash([]);
@@ -609,18 +609,18 @@ export class ExportModule {
     ctx.font      = `${fontSize}px -apple-system, "PingFang SC", sans-serif`;
     ctx.fillStyle = '#1e293b';
 
-    // ── 经度标注（上下边框）──
+    // ── English（English）──
     ctx.textAlign = 'center';
     for (let lng = lngStart; lng <= lngEnd + 1e-9; lng += interval) {
         const pt = map.latLngToContainerPoint([map.getCenter().lat, lng]);
         const px = pt.x * scale + MARGIN;
 
-        // 只标注在可视范围内的
+        // English
         if (px < MARGIN || px > MARGIN + W) continue;
 
         const label = this._formatDeg(lng, 'lng');
 
-        // 上边
+        // English
         ctx.beginPath();
         ctx.moveTo(px, MARGIN);
         ctx.lineTo(px, MARGIN - tickLen);
@@ -628,7 +628,7 @@ export class ExportModule {
         ctx.textBaseline = 'bottom';
         ctx.fillText(label, px, MARGIN - tickLen - 2 * scale);
 
-        // 下边
+        // English
         ctx.beginPath();
         ctx.moveTo(px, MARGIN + H);
         ctx.lineTo(px, MARGIN + H + tickLen);
@@ -637,7 +637,7 @@ export class ExportModule {
         ctx.fillText(label, px, MARGIN + H + tickLen + 2 * scale);
     }
 
-    // ── 纬度标注（左右边框）──
+    // ── latitudeEnglish（English）──
     for (let lat = latStart; lat <= latEnd + 1e-9; lat += interval) {
         const pt = map.latLngToContainerPoint([lat, map.getCenter().lng]);
         const py = pt.y * scale + MARGIN;
@@ -646,7 +646,7 @@ export class ExportModule {
 
         const label = this._formatDeg(lat, 'lat');
 
-        // 左边
+        // English
         ctx.textAlign    = 'right';
         ctx.textBaseline = 'middle';
         ctx.beginPath();
@@ -655,7 +655,7 @@ export class ExportModule {
         ctx.stroke();
         ctx.fillText(label, MARGIN - tickLen - 3 * scale, py);
 
-        // 右边
+        // English
         ctx.textAlign = 'left';
         ctx.beginPath();
         ctx.moveTo(MARGIN + W, py);
@@ -669,7 +669,7 @@ export class ExportModule {
 
 
     /**
-     * 格式化经纬度为 "120°E" / "30°N" 样式
+     * EnglishlatitudeEnglish "120°E" / "30°N" English
      */
     _formatDeg(val, type) {
         const normalized = Math.abs(Number(val) || 0);
@@ -739,7 +739,7 @@ export class ExportModule {
                     r.top  - mapRect.top,
                     r.width, r.height
                 );
-            } catch { /* 跨域瓦片跳过 */ }
+            } catch { /* Skip cross-origin tiles */ }
         });
 
         return out;
@@ -1012,7 +1012,7 @@ export class ExportModule {
     }
 
     _drawTimestamp(ctx, W, H, pad, scale) {
-        const now = new Date().toLocaleString('zh-CN');
+        const now = new Date().toLocaleString('en');
         ctx.font      = `${11 * scale}px -apple-system, sans-serif`;
         ctx.fillStyle = 'rgba(0,0,0,0.35)';
         ctx.textAlign = 'right';
@@ -1047,7 +1047,7 @@ export class ExportModule {
 
         const map   = this._getMap();
         const mapEl = map?.getContainer();
-        if (!mapEl) throw new Error('地图实例未初始化');
+        if (!mapEl) throw new Error('Map instance is not initialized');
 
         const W   = mapEl.clientWidth;
         const H   = mapEl.clientHeight;
@@ -1121,7 +1121,7 @@ export class ExportModule {
     async _exportGISFile(opts) {
         const payload = this._buildGISExportPayload(opts);
         if (!payload.raster_ids.length && !payload.vector_layers.length) {
-            throw new Error('请选择至少一个已加载的栅格或可见的矢量图层。');
+            throw new Error('Select at least one loaded raster or visible vector layer.');
         }
 
         const { blob, filename } = await RasterAPI.exportWorkspaceFile(payload);
@@ -1172,7 +1172,7 @@ export class ExportModule {
             });
         });
 
-        // 经纬网复选框联动线型选择器
+        // EnglishLine style selectorEnglish
         const graticuleChk        = document.getElementById('export-include-graticule');
         const graticuleStyleGroup = document.getElementById('graticule-style-group');
         if (graticuleChk && graticuleStyleGroup) {
@@ -1211,7 +1211,7 @@ export class ExportModule {
 
         const executeLabel = document.getElementById('export-execute-label');
         if (executeLabel) {
-            executeLabel.textContent = isFile ? '导出 GIS 文件' : '导出图像';
+            executeLabel.textContent = isFile ? 'Export GIS File' : 'Export Image';
         }
 
         const refreshBtn = document.getElementById('export-preview-refresh-btn');

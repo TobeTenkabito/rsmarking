@@ -9,7 +9,7 @@ class BenchmarkReporter:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         self.records = []
-        # 设置全局绘图风格
+        # set global plotting style
         try:
             plt.style.use('seaborn-v0_8-muted')
         except:
@@ -39,23 +39,23 @@ class BenchmarkReporter:
         print(f"\n[System] Benchmark CSV saved: {path}")
 
     def plot_generic(self, test_type, x_key, title, filename):
-        """通用绘图函数，处理过滤和排序逻辑"""
+        """generic plotting function,handle filtering and sorting"""
         data = [r for r in self.records if r["test_type"] == test_type]
         if not data: return
 
-        # 排序确保折线图不会乱跳
+        # sort so line charts do not jump
         data.sort(key=lambda x: x[x_key])
         xs = [r[x_key] for r in data]
         ys = [r["latency_ms"] for r in data]
 
         self._setup_plot(title, x_key.replace('_', ' ').title(), "Latency (ms)")
 
-        # 绘制主线与散点
+        # draw main lines and scatter points
         line, = plt.plot(xs, ys, marker='o', markersize=8, linewidth=2.5, color='#2c3e50', label='Mean Latency')
-        # 添加阴影填充增强视觉效果
+        # add shadow fill for visual clarity
         plt.fill_between(xs, ys, color=line.get_color(), alpha=0.1)
 
-        # 在点上标注数值
+        # annotate point values
         for x, y in zip(xs, ys):
             plt.annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center', fontsize=9)
 
@@ -72,7 +72,7 @@ class BenchmarkReporter:
         self.plot_generic("band_scaling", "bands", "Spectral Band Scaling Performance", "band_scaling.png")
 
     def plot_stress(self):
-        """针对计算压力测试的条形图"""
+        """bar chart for compute stress tests"""
         data = [r for r in self.records if r["test_type"] == "stress"]
         if not data: return
 

@@ -1,14 +1,14 @@
 /**
  * IndexTemplate.js
- * 遥感指数计算配置面板（NDVI / NDWI / NDBI / MNDWI）
+ * Remote sensing index calculation panel（NDVI / NDWI / NDBI / MNDWI）
  */
 import { renderSelectOptions } from '../utils.js';
 
 const INDEX_CONFIGS = {
-    NDVI:  { b1: '红波段 (Red)',        b2: '近红外波段 (NIR)',   color: 'emerald' },
-    NDWI:  { b1: '绿波段 (Green)',      b2: '近红外波段 (NIR)',   color: 'blue'    },
-    NDBI:  { b1: '短波红外 (SWIR)',     b2: '近红外波段 (NIR)',   color: 'amber'   },
-    MNDWI: { b1: '绿波段 (Green)',      b2: '短波红外 (SWIR)',    color: 'cyan'    },
+    NDVI:  { b1: 'Red band (Red)',        b2: 'Near-infrared band (NIR)',   color: 'emerald' },
+    NDWI:  { b1: 'Green band (Green)',      b2: 'Near-infrared band (NIR)',   color: 'blue'    },
+    NDBI:  { b1: 'Shortwave infrared (SWIR)',     b2: 'Near-infrared band (NIR)',   color: 'amber'   },
+    MNDWI: { b1: 'Green band (Green)',      b2: 'Shortwave infrared (SWIR)',    color: 'cyan'    },
 };
 
 export const IndexTemplate = {
@@ -27,7 +27,7 @@ export const IndexTemplate = {
                                  0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
                 </div>
-                <h3 class="font-bold text-sm uppercase tracking-tight">${type} 遥感指数计算</h3>
+                <h3 class="font-bold text-sm uppercase tracking-tight">${type} Remote Sensing Index Calculation</h3>
             </div>
 
             <div class="space-y-4">
@@ -48,7 +48,7 @@ export const IndexTemplate = {
                     </select>
                 </div>
                 <div>
-                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">输出文件名</label>
+                    <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Output File Name</label>
                     <input type="text"
                            id="index-name-input"
                            value="${type}_Result_${Date.now()}.tif"

@@ -33,7 +33,7 @@ export class UIManager {
         detailDiv.innerHTML = ModalTemplates.detailPanel;
         detailContainer.appendChild(detailDiv);
 
-        //  属性表抽屉注入到 body 底部
+        //  Attribute tableEnglish body English
         const attrDiv = document.createElement('div');
         attrDiv.innerHTML = ModalTemplates.attributeTablePanel;
         document.body.appendChild(attrDiv);
@@ -50,7 +50,7 @@ export class UIManager {
     }
 
     /**
-     * 显示全局加载提示
+     * English
      */
     showGlobalLoading(message = t('ui.loading.default')) {
         this.loadingCount++;
@@ -76,7 +76,7 @@ export class UIManager {
     }
 
     /**
-     * 隐藏全局加载提示
+     * hiddenEnglish
      */
     hideGlobalLoading() {
         this.loadingCount = Math.max(0, this.loadingCount - 1);
@@ -90,7 +90,7 @@ export class UIManager {
     }
 
     /**
-     * 显示提示消息
+     * English
      */
     showToast(message, type = 'info') {
         const toast = document.createElement('div');
@@ -112,7 +112,7 @@ export class UIManager {
 
         document.body.appendChild(toast);
 
-        // 自动消失
+        // English
         setTimeout(() => {
             toast.style.transform = 'translateX(120%)';
             setTimeout(() => toast.remove(), 300);
@@ -187,7 +187,7 @@ export class UIManager {
 
     closeClipModal() {
     document.getElementById('clip-modal')?.classList.add('hidden');
-    // 若用户直接关弹窗而不是点取消，也要退出绘制模式
+    // EnglishCancel，EnglishExitEnglish
     this.app.clip?.cancel();
     }
 

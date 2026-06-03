@@ -1,6 +1,6 @@
 /**
  * CalculatorTemplate.js
- * 栅格计算器变量映射列表
+ * Raster calculator variable mapping list
  */
 export const CalculatorTemplate = {
 
@@ -8,7 +8,7 @@ export const CalculatorTemplate = {
         if (!variables || variables.length === 0) {
             return `
                 <div class="py-6 text-center border-2 border-dashed border-slate-100 rounded-2xl">
-                    <p class="text-[10px] text-slate-300 font-bold uppercase tracking-widest">请在上方输入公式</p>
+                    <p class="text-[10px] text-slate-300 font-bold uppercase tracking-widest">Enter an expression above</p>
                 </div>`;
         }
 
@@ -23,10 +23,10 @@ export const CalculatorTemplate = {
                     <select data-var="${v}"
                             class="calc-var-select w-full bg-transparent text-[11px] font-bold
                                    text-slate-600 outline-none cursor-pointer">
-                        <option value="">绑定影像图层...</option>
+                        <option value="">Bind imagery layer...</option>
                         ${rasters.map(r => {
                             const bandCount   = r.bands ?? 1;
-                            const bandLabel   = bandCount > 1 ? ` · ${bandCount} 波段` : ' · 单波段';
+                            const bandLabel   = bandCount > 1 ? ` · ${bandCount} bands` : ' · single-band';
                             const displayName = r.file_name || r.name || r.index_id || r.id;
                             return `<option value="${r.index_id}">${displayName}${bandLabel}</option>`;
                         }).join('')}

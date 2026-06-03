@@ -3,22 +3,22 @@ import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { Store } from '../store/index.js';
 
 /**
- * ExtractionModule - 负责多波段特征提取逻辑（植被、水体、建筑等）
+ * ExtractionModule - EnglishbandsEnglish（English、English、English）
  */
 export class ExtractionModule {
     constructor(app) {
         this.app = app;
         this.currentType = null;
         this._contentEl = null;
-        this.selectedBandIds = []; // 存储用户依次选择的波段 ID
+        this.selectedBandIds = []; // Stores the band IDs selected by the user in order
     }
 
     /**
-     * 打开模态框并初始化第一个选择框
+     * English
      */
     openModal(type) {
         if (Store.state.rasters.length === 0) {
-            alert("请先准备源影像数据");
+            alert("Prepare source imagery first.");
             return;
         }
 
@@ -28,10 +28,10 @@ export class ExtractionModule {
         const bar = document.getElementById('extraction-modal-bar');
         if (!content) return;
 
-        // 初始化基础骨架
+        // English
         content.innerHTML = ModalComponent.renderExtractionConfig(type, Store.state.rasters);
 
-        // 绑定动态监听：当选择框变化时，决定是否开启下一个
+        // English：English，English
         if (this._contentEl !== content) {
             this._contentEl = content;
             content.addEventListener('change', (e) => {
@@ -53,7 +53,7 @@ export class ExtractionModule {
     }
 
     /**
-     * 处理波段选择变化：动态开启下一个栏目
+     * EnglishbandsEnglish：English
      */
     handleBandSelectionChange(target) {
         const container = document.getElementById('dynamic-bands-container');
@@ -61,15 +61,15 @@ export class ExtractionModule {
         const allSelectors = Array.from(container.querySelectorAll('.band-selector'));
         const currentIndex = allSelectors.indexOf(target);
 
-        // 如果当前选中的不是空值，且是最后一个选择框，则尝试开启下一个
+        // such asEnglish，English，English
         if (target.value && currentIndex === allSelectors.length - 1 && allSelectors.length < 5) {
             const nextIndex = allSelectors.length + 1;
             const newField = document.createElement('div');
             newField.className = 'mt-3 animate-fade-in';
             newField.innerHTML = `
-                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">选择波段 ${nextIndex} (可选)</label>
+                <label class="text-[10px] font-bold text-slate-400 uppercase mb-1.5 block">Select band ${nextIndex} (Optional)</label>
                 <select class="band-selector w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500/20">
-                    <option value="">-- 请选择额外波段 --</option>
+                    <option value="">-- Select an additional band --</option>
                     ${ModalComponent.renderSelectOptions(Store.state.rasters)}
                 </select>
             `;
@@ -82,19 +82,19 @@ export class ExtractionModule {
     }
 
     /**
-     * 执行任务：收集所有选中的波段 ID 作为参数传入
+     * English：Englishbands ID English
      */
     async run() {
         const container = document.getElementById('dynamic-bands-container');
         if (!container) return;
         const selectors = Array.from(container.querySelectorAll('.band-selector'));
 
-        // 过滤出用户真正选了值的 ID
+        // English ID
         const bandIds = selectors.map(s => s.value).filter(val => val !== "");
 
-        // 校验：最少需要填满两个
+        // English：English
         if (bandIds.length < 2) {
-            alert("该算法最少需要选择 2 个不同的波段数据");
+            alert("This algorithm requires at least two different bands");
             return;
         }
 
@@ -119,7 +119,7 @@ export class ExtractionModule {
             await this.app.raster.refreshData();
         } catch (e) {
             console.error(e);
-            alert(`要素提取任务失败: ${e.message}`);
+            alert(`Feature extraction task failed: ${e.message}`);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }

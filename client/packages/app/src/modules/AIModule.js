@@ -14,8 +14,8 @@ export class AIModule {
     constructor(app) {
         this.app = app;
 
-        // 当前 AI 任务的暂存状态
-        // 用于"新建 vs 覆盖"二次确认流程
+        // English AI English
+        // English"English vs English"English
         this._pendingPayload = null;
         this._pendingResult  = null;
         this._sessionId = this._createSessionId();
@@ -37,7 +37,7 @@ export class AIModule {
         const modal = document.getElementById('ai-modal');
         if (!modal) return;
 
-        // 用 Store 中的栅格/矢量数据填充目标选择下拉框
+        // English Store English/VectorEnglish
         const rasters = Store.getRasters();
         const Layers = Store.getVectorLayers();
         document.getElementById('ai-target-select').innerHTML =
@@ -107,11 +107,11 @@ export class AIModule {
     async _runAnalyze(payload) {
         const result = await AIAPI.analyze(payload);
 
-        // 渲染报告文本到面板
+        // English
         const reportEl = document.getElementById('ai-result-content');
         if (reportEl) reportEl.textContent = result.report;
 
-        // 显示下载按钮
+        // English
         const downloadBtn = document.getElementById('ai-download-btn');
         if (downloadBtn && result.file_url) {
             downloadBtn.href = result.file_url;
@@ -124,17 +124,17 @@ export class AIModule {
     async _runModify(payload) {
         const result = await AIAPI.modify(payload);
 
-        // 暂存 payload 和结果，供二次确认使用
+        // English payload English，English
         this._pendingPayload = payload;
         this._pendingResult  = result;
 
-        // 渲染预览：展示 AI 返回的修改内容
+        // English：English AI returnsEnglish
         const previewEl = document.getElementById('ai-result-content');
         if (previewEl) {
             previewEl.textContent = JSON.stringify(result.modified_data, null, 2);
         }
 
-        // 显示"新建"和"覆盖"两个确认按钮
+        // English"English"English"English"English
         document.getElementById('ai-confirm-section')?.classList.remove('hidden');
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
@@ -392,14 +392,14 @@ export class AIModule {
 
         this._setLoading(true);
         try {
-            // ✅ 重新拉取数据并刷新侧边栏
+            // ✅ EnglishRefreshSidebar
             await this._refreshSidebar(this._pendingPayload.data_type);
 
             const newId = this._pendingResult?.new_index_id
                 ?? this._pendingResult?.new_layer_id
                 ?? this._pendingResult?.index_id
                 ?? this._pendingResult?.target_id
-                ?? '未知';
+                ?? 'Unknown';
 
             this._showSuccess(t('ai.success.created', { id: newId }));
             this._resetState();
@@ -422,7 +422,7 @@ export class AIModule {
         try {
             await AIAPI.confirmOverwrite(this._pendingPayload);
 
-            // ✅ 重新拉取数据并刷新侧边栏
+            // ✅ EnglishRefreshSidebar
             await this._refreshSidebar(this._pendingPayload.data_type);
 
             this._showSuccess(t('ai.success.overwritten'));
@@ -1744,10 +1744,10 @@ export class AIModule {
     }
 
     /**
-     * 重新拉取数据 → 更新 Store → 局部刷新侧边栏对应区域
+     * English → English Store → EnglishRefreshSidebarEnglish
      *
-     * Raster：只更新 #raster-list 节点
-     * Vector：只更新 #vector-list-container 节点
+     * Raster：English #raster-list English
+     * Vector：English #vector-list-container English
      *
      * @param {'raster'|'vector'} dataType
      */

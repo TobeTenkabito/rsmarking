@@ -4,11 +4,11 @@ export const clipModal = `
                 flex items-center justify-center p-4">
         <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl relative overflow-hidden flex flex-col">
 
-            <!-- 顶部色条 -->
+            <!-- Top color bar -->
             <div class="absolute top-0 left-0 w-full h-1.5
                         bg-gradient-to-r from-amber-400 to-orange-500"></div>
 
-            <!-- 标题 -->
+            <!-- Title -->
             <div class="flex items-center space-x-3 px-8 pt-8 pb-4">
                 <div class="p-2 bg-amber-50 rounded-xl">
                     <svg class="w-5 h-5 text-amber-500" fill="none"
@@ -20,18 +20,18 @@ export const clipModal = `
                     </svg>
                 </div>
                 <div>
-                    <h2 class="text-base font-black text-slate-800">空间裁剪</h2>
+                    <h2 class="text-base font-black text-slate-800">Spatial Clip</h2>
                     <p class="text-[10px] text-slate-400">Spatial Clip</p>
                 </div>
             </div>
 
-            <!-- 内容区 -->
+            <!-- English -->
             <div class="px-8 pb-4 space-y-4">
 
-                <!-- ① 裁剪类型：三选一 -->
+                <!-- ① EnglishType：English -->
                 <div class="space-y-1.5">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        裁剪类型
+                        Clip Type
                     </label>
                     <div class="grid grid-cols-3 gap-2">
 
@@ -41,8 +41,8 @@ export const clipModal = `
                             text-slate-600 rounded-xl p-3 text-center cursor-pointer 
                             hover:border-amber-300">
                                 <div class="text-xl mb-1">🛰️</div>
-                                <div class="text-[11px] font-bold">裁栅格</div>
-                                <div class="text-[9px] opacity-60">手绘裁影像</div>
+                                <div class="text-[11px] font-bold">Clip Raster</div>
+                                <div class="text-[9px] opacity-60">Draw an area to crop imagery</div>
                             </div>
                         </label>
 
@@ -52,8 +52,8 @@ export const clipModal = `
                             text-slate-600 rounded-xl p-3 text-center cursor-pointer
                             hover:border-amber-300">
                                 <div class="text-xl mb-1">🔷</div>
-                                <div class="text-[11px] font-bold">裁矢量</div>
-                                <div class="text-[9px] opacity-60">范围过滤要素</div>
+                                <div class="text-[11px] font-bold">Clip Vector</div>
+                                <div class="text-[9px] opacity-60">Filter features by area</div>
                             </div>
                         </label>
 
@@ -63,18 +63,18 @@ export const clipModal = `
                             text-slate-600 rounded-xl p-3 text-center cursor-pointer
                             hover:border-amber-300">
                                 <div class="text-xl mb-1">✂️</div>
-                                <div class="text-[11px] font-bold">图层互裁</div>
-                                <div class="text-[9px] opacity-60">图层裁图层</div>
+                                <div class="text-[11px] font-bold">Layer Clip</div>
+                                <div class="text-[9px] opacity-60">Clip one layer by another</div>
                             </div>
                         </label>
 
                     </div>
                 </div>
 
-                <!-- ② 当前激活栅格信息（raster / vector 模式显示，layer 模式隐藏） -->
+                <!-- ② English（raster / vector English，layer Englishhidden） -->
                 <div id="clip-raster-info-section" class="space-y-1">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        当前激活影像
+                        Active Imagery
                     </label>
                     <div id="clip-raster-info"
                          class="text-[11px] text-slate-500 bg-slate-50 border border-slate-100
@@ -82,10 +82,10 @@ export const clipModal = `
                     </div>
                 </div>
 
-                <!-- ③ 裁剪范围来源（仅 vector 模式显示） -->
+                <!-- ③ English（English vector English） -->
                 <div id="clip-source-section" class="hidden space-y-1.5">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        裁剪范围来源
+                        Clip Extent Source
                     </label>
                     <div class="grid grid-cols-2 gap-2">
                         <label class="clip-source-option">
@@ -94,8 +94,8 @@ export const clipModal = `
                                         text-slate-600 rounded-xl p-3 text-center cursor-pointer
                                         hover:border-amber-300">
                                 <div class="text-lg mb-1">📐</div>
-                                <div class="text-[11px] font-bold">影像范围</div>
-                                <div class="text-[9px] opacity-60">用栅格 bounds</div>
+                                <div class="text-[11px] font-bold">Imagery Bounds</div>
+                                <div class="text-[9px] opacity-60">Use raster bounds</div>
                             </div>
                         </label>
                         <label class="clip-source-option">
@@ -104,45 +104,45 @@ export const clipModal = `
                                         text-slate-600 rounded-xl p-3 text-center cursor-pointer
                                         hover:border-amber-300">
                                 <div class="text-lg mb-1">✏️</div>
-                                <div class="text-[11px] font-bold">手动绘制</div>
-                                <div class="text-[9px] opacity-60">在地图上绘制</div>
+                                <div class="text-[11px] font-bold">Draw Manually</div>
+                                <div class="text-[9px] opacity-60">Draw on the map</div>
                             </div>
                         </label>
                     </div>
                 </div>
 
-                <!-- ④ 目标图层（vector / layer 模式显示） -->
+                <!-- ④ English（vector / layer English） -->
                 <div id="clip-layer-section" class="hidden space-y-1.5">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        目标矢量图层（被裁剪）
+                        Target Vector Layer (clipped)
                     </label>
                     <select id="clip-vector-layer-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl
                                px-3 py-2.5 text-slate-700 focus:outline-none
                                focus:ring-2 focus:ring-amber-400 transition-all">
-                        <option value="">— 使用当前激活图层 —</option>
+                        <option value="">-- Use current active layer --</option>
                     </select>
                 </div>
 
-                <!-- ⑤ 裁剪刀图层（仅 layer 模式显示） -->
+                <!-- ⑤ English（English layer English） -->
                 <div id="clip-knife-section" class="hidden space-y-1.5">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                        裁剪刀图层（提供范围）
+                        Clip Layer (provides extent)
                     </label>
                     <select id="clip-knife-layer-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl
                                px-3 py-2.5 text-slate-700 focus:outline-none
                                focus:ring-2 focus:ring-amber-400 transition-all">
-                        <option value="">— 请选择裁剪刀图层 —</option>
+                        <option value="">— Please select a clip layer —</option>
                     </select>
                     <p class="text-[10px] text-slate-400 pl-1">
-                        ⚠ 裁剪刀图层与目标图层不能相同
+                        Clip and target layers cannot be the same
                     </p>
                 </div>
 
             </div>
 
-            <!-- 底部按钮 -->
+            <!-- English -->
             <div class="px-8 pb-8 pt-2 flex flex-col space-y-3">
                 <button id="clip-execute-btn" onclick="RS.executeClip()"
                     class="w-full bg-gradient-to-r from-amber-500 to-orange-500
@@ -155,11 +155,11 @@ export const clipModal = `
                             d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879
                                M12 12L9.121 9.121m0 0L4 4m5.121 5.121L4 14"/>
                     </svg>
-                    <span>开始裁剪</span>
+                    <span>Start Clipping</span>
                 </button>
                 <button onclick="RS.closeClipModal()"
                     class="w-full text-slate-400 text-[10px] font-bold uppercase tracking-widest py-2">
-                    取消
+                    Cancel
                 </button>
             </div>
 

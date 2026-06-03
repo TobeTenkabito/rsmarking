@@ -1,6 +1,6 @@
 /**
  * VectorAttrTemplate.js
- * 矢量图层属性表：表头 / 数据行 / 加载状态
+ * Vector layer attribute table：Header, rows, and loading state
  */
 import { esc, attrBadgeCls, attrTypeIcon, attrFmtVal } from '../utils.js';
 
@@ -22,11 +22,11 @@ export const VectorAttrTemplate = {
                             ${f.field_alias || f.field_name}
                         </span>
                         ${f.is_system
-                            ? '<span class="ml-1 text-[9px] text-slate-300" title="文件导入字段，不可删除">系统</span>'
+                            ? '<span class="ml-1 text-[9px] text-slate-300" title="Imported field; cannot be deleted">System</span>'
                             : ''}
                     </div>
                 </th>`),
-            `<th class="attr-th w-8 text-center" title="删除要素">🗑</th>`,
+            `<th class="attr-th w-8 text-center" title="Delete feature">🗑</th>`,
         ];
         return `<tr>${ths.join('')}</tr>`;
     },
@@ -37,7 +37,7 @@ export const VectorAttrTemplate = {
                 <tr>
                     <td colspan="${fields.length + 2}"
                         class="py-10 text-center text-xs text-slate-400">
-                        暂无要素数据
+                        No feature data
                     </td>
                 </tr>`;
         }
@@ -66,7 +66,7 @@ export const VectorAttrTemplate = {
                 `<td class="attr-td text-center">
                     <button onclick="RS.attrDeleteFeature('${feat.id}')"
                             class="text-slate-300 hover:text-red-500 transition-colors leading-none text-xs"
-                            title="删除该要素">✕</button>
+                            title="Delete this feature">✕</button>
                 </td>`,
             ];
 
@@ -81,7 +81,7 @@ export const VectorAttrTemplate = {
         return `
             <tr>
                 <td colspan="99" class="py-10 text-center text-xs text-indigo-400 animate-pulse">
-                    正在加载属性数据…
+                    Loading attribute data…
                 </td>
             </tr>`;
     },

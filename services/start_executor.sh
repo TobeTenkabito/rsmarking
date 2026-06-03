@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# 构建Docker镜像（如果不存在）
+# Build the Docker image if it is missing.
 if ! docker images | grep -q "rs-worker-python"; then
-    echo "Docker镜像不存在，开始构建..."
+    echo "Docker image is missing; starting build..."
     bash build_docker.sh
 fi
 
-# 启动执行服务
-echo "启动执行服务 (端口 8004)..."
+# Start the executor service.
+echo "Starting executor service on port 8004..."
 cd executor_service
 python -m uvicorn main:app --host 0.0.0.0 --port 8004 --reload

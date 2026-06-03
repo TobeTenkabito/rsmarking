@@ -17,7 +17,7 @@ export const WelcomeModule = {
         aggrActive: false
     },
 
-    // 赛博多态配色 (Cyan, Purple, Emerald)
+    // Cyber palette variants (Cyan, Purple, Emerald)
     palette: [
         [34, 211, 238],
         [168, 85, 247],
@@ -33,7 +33,7 @@ export const WelcomeModule = {
         const btn = document.getElementById('btn-enter-system');
 
         this.resize();
-        this.createEarth(); // 初始化高精度点阵地球
+        this.createEarth(); // Initialize high-resolution dotted globe
         this.createParticles();
 
         this.animate = this.animate.bind(this);
@@ -72,10 +72,10 @@ export const WelcomeModule = {
         this.settings.particleCount = Math.floor((this.canvas.width * this.canvas.height) / 7000);
     },
 
-    // 核心升级：基于 ASCII 拓扑的高精度世界地图点阵生成
+    // Generate high-resolution world-map dots from ASCII topology
     createEarth() {
         this.earthNodes = [];
-        // 100x36 的世界地图拓扑矩阵
+        // 100x36 Englishworld-map topology matrix
         const earthMap = [
             "                                                                                                    ",
             "                                      ######                                                        ",
@@ -120,28 +120,28 @@ export const WelcomeModule = {
         for (let i = 0; i < cols; i++) {
             if (earthMap[j][i] !== ' ') {
                 for (let k = 0; k < 3; k++) {
-                    // 优化点 1：引入微小扰动，打破矩阵感
+                    // Optimization 1：add slight jitter to reduce grid regularity
                     const jitterX = Math.random() - 0.5;
                     const jitterY = Math.random() - 0.5;
                     const u = (i + 0.5 + jitterX) / cols;
                     const v = (j + 0.5 + jitterY) / rows;
 
                     const lon = (u - 0.5) * Math.PI * 2;
-                    // 保持原本的线性映射以兼容渲染器，但加上极小值偏移防止重叠
+                    // keep linear mapping for renderer compatibility and add tiny offsets to avoid overlap
                     const lat = (v - 0.5) * Math.PI;
 
-                    // 优化点 2：更高级的配色逻辑
-                    // 基于纬度 lat 给点增加亮度权重，模拟极光感
+                    // Optimization 2：more refined color logic
+                    // weight brightness by latitude for an aurora-like feel
                     const brightness = 0.7 + Math.abs(Math.sin(lat)) * 0.3;
                     const rand = Math.random();
                     let baseColor = rand > 0.9 ? [34, 211, 238] : [16, 185, 129]; // Cyan vs Emerald
-                    if (rand < 0.05) baseColor = [168, 85, 247]; // 极低概率出现紫色点缀
+                    if (rand < 0.05) baseColor = [168, 85, 247]; // rare purple accent dots
 
                     const color = baseColor.map(c => Math.floor(c * brightness));
 
-                    // 优化点 3：增加个性化尺寸和相位
+                    // Optimization 3：add varied sizes and phases
                     const size = 0.6 + Math.random() * 0.8;
-                    const phase = Math.random() * Math.PI * 2; // 用于后续动画
+                    const phase = Math.random() * Math.PI * 2; // for later animation
 
                     this.earthNodes.push({ u, v, lon, lat, color, size, phase });
                 }
@@ -177,32 +177,32 @@ export const WelcomeModule = {
 
         if (!this.settings.aggrActive) {
             const now = Date.now();
-            const cycleTime = 20000; // 20秒完整循环
+            const cycleTime = 20000; // 20second full cycle
             const cycle = (now % cycleTime) / cycleTime;
 
             let foldProgress = 0;
             let panOffset = 0;
 
             if (cycle < 0.25) {
-                // 0-5s: 平面地图移动一周
+                // 0-5s: flat map pans once
                 foldProgress = 0;
                 panOffset = cycle * 4;
             } else if (cycle < 0.4) {
-                // 5-8s: 平面收拢为 3D 球体
+                // 5-8s: flat map folds into 3D globe
                 let t = (cycle - 0.25) / 0.15;
                 foldProgress = 0.5 - Math.cos(t * Math.PI) / 2;
                 panOffset = 0;
             } else if (cycle < 0.75) {
-                // 8-15s: 3D 球体旋转一周
+                // 8-15s: 3D globe rotates once
                 foldProgress = 1;
                 panOffset = (cycle - 0.4) / 0.35;
             } else if (cycle < 0.9) {
-                // 15-18s: 3D 球体展开为平面
+                // 15-18s: 3D globe unfolds into flat map
                 let t = (cycle - 0.75) / 0.15;
                 foldProgress = 1 - (0.5 - Math.cos(t * Math.PI) / 2);
                 panOffset = 0;
             } else {
-                // 18-20s: 平面静止展示
+                // 18-20s: flat map remains still
                 foldProgress = 0;
                 panOffset = 0;
             }

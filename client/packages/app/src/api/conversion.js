@@ -1,6 +1,6 @@
 /**
- * ConversionAPI - 处理矢量与栅格的转换任务
- * 对应后端 rasterize_router.py
+ * ConversionAPI - EnglishVectorEnglish
+ * Backend endpoint rasterize_router.py
  */
 
 import { API_CONFIG } from './config.js';
@@ -9,10 +9,10 @@ const BASE_URL = API_CONFIG.dataServiceUrl;
 
 export const ConversionAPI = {
     /**
-     * 矢量图层栅格化
-     * @param {string} layerId     - 矢量图层 UUID
-     * @param {number} refIndexId  - 参考栅格的 index_id
-     * @param {string} newName     - 生成的新栅格名称
+     * Vector LayerEnglish
+     * @param {string} layerId     - Vector Layer UUID
+     * @param {number} refIndexId  - English index_id
+     * @param {string} newName     - EnglishNew Raster Name
      */
     async vectorToRaster(layerId, refIndexId, newName) {
         try {
@@ -28,7 +28,7 @@ export const ConversionAPI = {
 
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.detail ?? `栅格化任务启动失败: ${response.status}`);
+                throw new Error(err.detail ?? `Rasterization task failed: ${response.status}`);
             }
 
             return await response.json();

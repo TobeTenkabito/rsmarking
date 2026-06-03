@@ -1,11 +1,11 @@
 @echo off
-echo 停止所有服务...
+echo Stopping all services...
 
-REM 终止Python进程
+REM Terminate Python processes
 taskkill /F /IM python.exe /T 2>nul
 
-REM 停止所有相关Docker容器
+REM Stop all related Docker containers
 for /f "tokens=*" %%i in ('docker ps -q --filter "ancestor=rs-worker-python:latest"') do docker stop %%i
 
-echo 服务已停止
+echo Services stopped
 pause

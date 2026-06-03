@@ -165,7 +165,7 @@ class FeatureCRUD:
 
     async def export_by_layer(self, layer_id: UUID) -> List[Dict[str, Any]]:
         """
-        全量导出指定图层的所有要素
+        export all features in the selected layer
         """
         query = select(
             Feature.id,

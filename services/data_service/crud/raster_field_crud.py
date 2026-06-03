@@ -19,7 +19,7 @@ class RasterFieldCRUD:
         self.db = db
 
     async def get_by_raster(self, raster_index_id: int) -> List[RasterField]:
-        """获取某栅格的全部字段定义，按 field_order 排序"""
+        """field definitions,by field_order sort"""
         result = await self.db.execute(
             select(RasterField)
             .where(RasterField.raster_index_id == raster_index_id)
@@ -34,8 +34,8 @@ class RasterFieldCRUD:
         return result.scalar_one_or_none()
 
     async def create(self, raster_index_id: int, schema: RasterFieldCreate) -> RasterField:
-        """用户在前端点击「新增字段」时调用"""
-        # 同一栅格内 field_name 不能重复
+        """called when the user clicks"Add Field"text"""
+        # text field_name cannot be duplicated
         existing = await self.db.execute(
             select(RasterField).where(
                 RasterField.raster_index_id == raster_index_id,
@@ -43,7 +43,7 @@ class RasterFieldCRUD:
             )
         )
         if existing.scalar_one_or_none():
-            raise ValueError(f"字段 '{schema.field_name}' 在该栅格中已存在")
+            raise ValueError(f"Field '{schema.field_name}' already exists in this raster")
 
         field = RasterField(
             raster_index_id = raster_index_id,
@@ -52,7 +52,7 @@ class RasterFieldCRUD:
             field_type  = schema.field_type,
             field_order = schema.field_order,
             is_required = schema.is_required,
-            is_system   = False,          # 用户手动创建，可删除
+            is_system   = False,          # user-created,deletable
             default_val = schema.default_val,
         )
         self.db.add(field)
@@ -66,9 +66,9 @@ class RasterFieldCRUD:
         metadata_dict: dict,
     ) -> List[RasterField]:
         """
-        影像入库时自动调用，从 metadata_dict 推断字段写入 raster_fields。
-        已存在的字段跳过（幂等）。
-        系统字段示例：crs / bounds / resolution_x / resolution_y 等。
+        imagerywrite to databasecalled automatically,from metadata_dict write raster_fields.
+        skip existing fields(idempotent).
+        system field examples:crs / bounds / resolution_x / resolution_y text.
         """
         existing_result = await self.db.execute(
             select(RasterField.field_name)
@@ -88,7 +88,7 @@ class RasterFieldCRUD:
                 field_alias = key,
                 field_type  = field_type,
                 field_order = order,
-                is_system   = True,       # 自动导入，前端标记为系统字段
+                is_system   = True,       # automatically imported,text
             ))
 
         if fields_to_add:
@@ -98,7 +98,7 @@ class RasterFieldCRUD:
         return fields_to_add
 
     async def update(self, field_id: int, schema: RasterFieldUpdate) -> Optional[RasterField]:
-        """修改别名、类型、顺序等，系统字段同样可修改显示属性"""
+        """update alias,text,order,system fields can also update display properties"""
         field = await self.get_by_id(field_id)
         if not field:
             return None
@@ -117,12 +117,12 @@ class RasterFieldCRUD:
         return field
 
     async def delete(self, field_id: int) -> bool:
-        """仅允许删除非系统字段"""
+        """allow deleting only non-system fields"""
         field = await self.get_by_id(field_id)
         if not field:
             return False
         if field.is_system:
-            raise ValueError(f"字段 '{field.field_name}' 为系统字段，不可删除")
+            raise ValueError(f"Field '{field.field_name}' is a system field and cannot be deleted")
         await self.db.delete(field)
         await self.db.commit()
         return True

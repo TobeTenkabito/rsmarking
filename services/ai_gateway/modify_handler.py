@@ -26,7 +26,7 @@ async def handle_modify(
     map_context_str: str = "",
 ) -> Dict[str, Any]:
 
-    # 1. 提取数据上下文
+    # 1. Extract data context
     if payload.data_type == DataType.RASTER:
         context_data = await _extract_raster_data(db, int(payload.target_id))
         modifiable_schema = RasterModifiable.model_json_schema()
@@ -36,7 +36,7 @@ async def handle_modify(
 
     original_json_str = context_data.model_dump_json(indent=2)
 
-    # 2. 构建 system prompt
+    # 2. Build the system prompt
     system_prompt = _build_system_prompt(
         TaskMode.MODIFY,
         payload.data_type,
@@ -44,47 +44,47 @@ async def handle_modify(
         json.dumps(modifiable_schema, ensure_ascii=False),
     )
 
-    # 3. 构建本轮 user_prompt
+    # 3. Build the user prompt for this turn
     map_section = f"{map_context_str}\n\n" if map_context_str else ""
     user_prompt = (
         f"{map_section}"
-        f"【原始数据上下文】\n{original_json_str}\n\n"
-        f"【用户指令】\n{payload.user_prompt}\n\n"
-        f"请使用 {payload.language.value} 语言进行回复。"
+        f"[Original Data Context]\n{original_json_str}\n\n"
+        f"[User Instruction]\n{payload.user_prompt}\n\n"
+        f"Respond in {payload.language.value}."
     )
 
-    # 4. 拼接完整 messages：system + 历史记忆 + 本轮 user
-    #    注意：MODIFY 模式下历史记忆仅供 LLM 理解上下文，
-    #    最终写库依据的是本轮 validated_data，不受历史影响。
+    # 4. Build complete messages: system + conversation memory + current user prompt
+    #    Note: in MODIFY mode, conversation history is only for LLM context,
+    #    Final database writes are based on this turn's validated_data and are not affected by history.
     messages = (
         [{"role": "system", "content": system_prompt}]
         + [{"role": "user", "content": user_prompt}]
     )
 
-    # 5. 调用 LLM 并校验输出
+    # 5. Call the LLM and validate output
     validated_data = await call_llm_with_retry(
         messages, model_name, TaskMode.MODIFY, payload.data_type
     )
     modified_dict = validated_data.model_dump(exclude_none=True)
 
     if not modified_dict:
-        logger.warning("[handle_modify] AI 返回的可修改字段全为空，放弃写入")
+        logger.warning("[handle_modify] AI returned no modifiable fields; skipping write")
         return {
             "status": "no_change",
             "mode": "modify",
-            "message": "AI 未返回任何可修改字段",
+            "message": "AI returned no modifiable fields",
         }
 
-    logger.info(f"[handle_modify] AI 修改内容: {modified_dict}")
+    logger.info(f"[handle_modify] AI modifications: {modified_dict}")
 
-    # 6. 写库（overwrite 覆盖 / 否则新建副本）
+    # 6. Write to the database (overwrite or create a copy)
     if payload.overwrite:
         if payload.data_type == DataType.RASTER:
             updated = await RasterCRUD.update_raster(
                 db, int(payload.target_id), modified_dict
             )
             if not updated:
-                raise ValueError(f"覆盖失败：找不到 index_id={payload.target_id} 的栅格")
+                raise ValueError(f"Overwrite failed: raster index_id not found={payload.target_id}")
             await db.commit()
         else:
             layer_crud = LayerCRUD(vector_db)
@@ -93,7 +93,7 @@ async def handle_modify(
                 {"name": modified_dict.get("name")},
             )
             if not updated:
-                raise ValueError(f"覆盖失败：找不到 id={payload.target_id} 的矢量图层")
+                raise ValueError(f"Overwrite failed: id not found={payload.target_id} ")
             await vector_db.commit()
 
         return {
@@ -109,7 +109,7 @@ async def handle_modify(
                 db, int(payload.target_id)
             )
             if not original:
-                raise ValueError(f"新建失败：找不到 index_id={payload.target_id} 的栅格")
+                raise ValueError(f"Create failed: raster index_id not found={payload.target_id}")
 
             new_name = modified_dict.get("name", original.file_name)
             if not new_name.endswith(".tif"):
@@ -145,7 +145,7 @@ async def handle_modify(
             layer_crud = LayerCRUD(vector_db)
             original = await layer_crud.get_layer(UUID(str(payload.target_id)))
             if not original:
-                raise ValueError(f"新建失败：找不到 id={payload.target_id} 的矢量图层")
+                raise ValueError(f"Create failed: id not found={payload.target_id} ")
 
             new_name = modified_dict.get("name", original.name)
             new_layer = await layer_crud.create_layer(

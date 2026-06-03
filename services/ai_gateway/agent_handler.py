@@ -42,7 +42,7 @@ class AgentRequestPayload(BaseModel):
         description="Natural language task for the agent.",
     )
     language: AILanguage = Field(
-        default=AILanguage.ZH,
+        default=AILanguage.EN,
         description="Preferred response language.",
     )
     target_id: Optional[Union[int, str]] = Field(
@@ -147,7 +147,7 @@ class AgentStep(BaseModel):
 
 
 LANGUAGE_INSTRUCTIONS = {
-    AILanguage.ZH: "Respond in Simplified Chinese.",
+    AILanguage.ZH: "Respond in English.",
     AILanguage.EN: "Respond in English.",
     AILanguage.JA: "Respond in Japanese.",
 }

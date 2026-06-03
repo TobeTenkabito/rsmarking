@@ -1,14 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
-// 使用别名导入，确保路径解析一致
+// Use aliases to keep path resolution consistent
 import { AnnotationModule } from '@app/modules/AnnotationModule.js';
 import { TestLogger, createMockApp } from '@test-utils/test-helper.js';
 
-describe('AnnotationModule 标注交互测试', () => {
-    // 自动记录测试环境信息
+describe('AnnotationModule annotation interaction tests', () => {
+    // Automatically record test environment information
     TestLogger.logEnvironment('annotation.test.js');
 
-    it('undoLastPoint 应该在多边形模式下调用 deleteLastVertex', () => {
-        // 使用工厂函数创建符合业务结构的 app (修复 mapEngine.map 报错)
+    it('undoLastPoint should call in polygon mode deleteLastVertex', () => {
+        // Use a factory to create an app matching the runtime shape (fixes mapEngine.map errors)
         const mockApp = createMockApp();
         const module = new AnnotationModule(mockApp);
 
@@ -22,7 +22,7 @@ describe('AnnotationModule 标注交互测试', () => {
         expect(mockHandler.deleteLastVertex).toHaveBeenCalled();
     });
 
-    it('resetCurrentAction 应该重置动作而不退出模式', () => {
+    it('resetCurrentAction should reset the action without leaving the mode', () => {
         const mockApp = createMockApp();
         const module = new AnnotationModule(mockApp);
 
@@ -31,7 +31,7 @@ describe('AnnotationModule 标注交互测试', () => {
             disable: vi.fn(),
         };
 
-        // 模拟内部方法以验证调用
+        // Mock internal methods to verify calls
         module.startDrawing = vi.fn();
         module.currentHandler = mockHandler;
         module.currentType = 'polygon';

@@ -89,32 +89,32 @@ async def internal_fetch_features(layer_id: UUID) -> List[Dict[str, Any]]:
             response = await client.get(url)
 
             if response.status_code == 404:
-                raise HTTPException(status_code=404, detail=f"图层 {layer_id} 不存在")
+                raise HTTPException(status_code=404, detail=f"Layer {layer_id} does not exist")
 
             response.raise_for_status()
             data = response.json()
 
-            # 强制规范化输出：确保始终返回 List[Dict]
+            # force normalized output:ensure it always returns List[Dict]
             if isinstance(data, dict):
                 if data.get("type") == "FeatureCollection":
                     return data.get("features", [])
-                # 如果后端只返回了单个要素
+                # if the backend returned a single feature
                 if data.get("type") == "Feature":
                     return [data]
 
             if isinstance(data, list):
                 return data
 
-            return []  # 兜底返回空列表
+            return []  # fallback to an empty list
 
         except httpx.ReadTimeout:
-            logger.error(f"获取矢量数据超时: {url}")
-            raise HTTPException(status_code=504, detail="矢量服务响应超时，数据量可能过大")
+            logger.error(f"Fetching vector data timed out: {url}")
+            raise HTTPException(status_code=504, detail="Vector service response timed out; the dataset may be too large")
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"内部通讯故障: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"无法获取矢量数据: {str(e)}")
+            logger.error(f"Internal communication failure: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Unable to fetch vector data: {str(e)}")
 
 
 async def internal_fetch_fields(layer_id: UUID | str) -> List[Dict[str, Any]]:
@@ -124,20 +124,20 @@ async def internal_fetch_fields(layer_id: UUID | str) -> List[Dict[str, Any]]:
             response = await client.get(url)
 
             if response.status_code == 404:
-                raise HTTPException(status_code=404, detail=f"图层 {layer_id} 不存在")
+                raise HTTPException(status_code=404, detail=f"Layer {layer_id} does not exist")
 
             response.raise_for_status()
             data = response.json()
             return data if isinstance(data, list) else []
 
         except httpx.ReadTimeout:
-            logger.error(f"获取矢量字段超时: {url}")
-            raise HTTPException(status_code=504, detail="矢量字段服务响应超时")
+            logger.error(f"Fetching vector fields timed out: {url}")
+            raise HTTPException(status_code=504, detail="Vector field service response timed out")
         except HTTPException:
             raise
         except httpx.HTTPStatusError as e:
             detail = e.response.json().get("detail", e.response.text)
             raise HTTPException(status_code=e.response.status_code, detail=detail)
         except Exception as e:
-            logger.error(f"字段内部通讯故障: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"无法获取矢量字段: {str(e)}")
+            logger.error(f"textInternal communication failure: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Unable to fetch vector fields: {str(e)}")

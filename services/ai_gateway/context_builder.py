@@ -1,6 +1,6 @@
 """
 context_builder.py
-构建地图上下文 —— 将前端传入的当前视野、选中要素等信息格式化后注入 LLM Prompt。
+Build map context by formatting the current viewport, selected features, and related frontend state for the LLM prompt.
 """
 import logging
 from typing import Optional, List, Dict, Any
@@ -10,75 +10,75 @@ logger = logging.getLogger("ai_gateway.context_builder")
 
 
 class MapViewport(BaseModel):
-    """当前地图视野"""
-    zoom: Optional[float]   = Field(None, description="当前缩放级别")
-    center_lng: Optional[float] = Field(None, description="视野中心经度")
-    center_lat: Optional[float] = Field(None, description="视野中心纬度")
+    """Current map viewport"""
+    zoom: Optional[float]   = Field(None, description="Current zoom level")
+    center_lng: Optional[float] = Field(None, description="Viewport center longitude")
+    center_lat: Optional[float] = Field(None, description="Viewport center latitude")
     bbox: Optional[List[float]] = Field(
         None,
-        description="当前视野边界框 [xmin, ymin, xmax, ymax]"
+        description="Current viewport bounding box [xmin, ymin, xmax, ymax]"
     )
 
 
 class SelectedFeature(BaseModel):
-    """用户在地图上选中的要素"""
-    feature_id: Optional[str]  = Field(None, description="要素ID")
-    layer_id:   Optional[str]  = Field(None, description="所属图层ID")
-    geometry_type: Optional[str] = Field(None, description="几何类型")
-    properties: Optional[Dict[str, Any]] = Field(None, description="要素属性")
+    """Features selected by the user on the map"""
+    feature_id: Optional[str]  = Field(None, description="Feature ID")
+    layer_id:   Optional[str]  = Field(None, description="Owning layer ID")
+    geometry_type: Optional[str] = Field(None, description="Geometry type")
+    properties: Optional[Dict[str, Any]] = Field(None, description="Feature properties")
 
 
 class MapContext(BaseModel):
-    """完整地图上下文（由前端在请求时附带）"""
+    """Complete map context supplied by the frontend request"""
     viewport:          Optional[MapViewport]       = None
     selected_features: Optional[List[SelectedFeature]] = None
     active_layers:     Optional[List[str]]         = Field(
-        None, description="当前可见图层ID列表"
+        None, description="List of currently visible layer IDs"
     )
     extra: Optional[Dict[str, Any]] = Field(
-        None, description="其他前端自定义上下文"
+        None, description="Other custom frontend context"
     )
 
 def build_map_context_prompt(ctx: Optional[MapContext]) -> str:
     """
-    将地图上下文转换为自然语言描述，注入 LLM Prompt 头部。
-    若前端未传入上下文，返回空字符串（不影响主流程）。
+    Convert map context into a natural-language description and inject it at the start of the LLM prompt.
+    Return an empty string when no frontend context is supplied.
     """
     if ctx is None:
         return ""
 
-    lines = ["【当前地图操作上下文】"]
+    lines = ["[Current Map Context]"]
 
-    # 视野信息
+    # Viewport information
     if ctx.viewport:
         vp = ctx.viewport
         if vp.zoom is not None:
-            lines.append(f"- 当前缩放级别: {vp.zoom}")
+            lines.append(f"- Current zoom level: {vp.zoom}")
         if vp.center_lng is not None and vp.center_lat is not None:
-            lines.append(f"- 视野中心: 经度 {vp.center_lng:.4f}, 纬度 {vp.center_lat:.4f}")
+            lines.append(f"- Viewport center: longitude {vp.center_lng:.4f}, latitude {vp.center_lat:.4f}")
         if vp.bbox:
             lines.append(
-                f"- 视野范围: [{', '.join(f'{v:.4f}' for v in vp.bbox)}]"
+                f"- Viewport bounds: [{', '.join(f'{v:.4f}' for v in vp.bbox)}]"
             )
 
-    # 选中要素
+    # Selected features
     if ctx.selected_features:
-        lines.append(f"- 用户已选中 {len(ctx.selected_features)} 个要素:")
-        for feat in ctx.selected_features[:3]:   # 最多展示3个，防止 prompt 过长
-            desc = f"  · 要素ID={feat.feature_id or '未知'}"
+        lines.append(f"- The user selected {len(ctx.selected_features)} features:")
+        for feat in ctx.selected_features[:3]:   # Show at most 3 items to keep the prompt short
+            desc = f"  · Feature ID={feat.feature_id or 'Unknown'}"
             if feat.geometry_type:
-                desc += f", 几何类型={feat.geometry_type}"
+                desc += f", Geometry type={feat.geometry_type}"
             if feat.properties:
-                # 只取前5个属性
+                # Only include the first 5 properties
                 props_preview = dict(list(feat.properties.items())[:5])
-                desc += f", 属性={props_preview}"
+                desc += f", properties={props_preview}"
             lines.append(desc)
 
-    # 活跃图层
+    # Active layers
     if ctx.active_layers:
-        lines.append(f"- 当前可见图层: {', '.join(ctx.active_layers[:10])}")
+        lines.append(f"- Currently visible layers: {', '.join(ctx.active_layers[:10])}")
 
-    # 额外上下文
+    # Extra context
     if ctx.extra:
         for k, v in ctx.extra.items():
             lines.append(f"- {k}: {v}")
@@ -88,10 +88,10 @@ def build_map_context_prompt(ctx: Optional[MapContext]) -> str:
 
 def build_map_context(payload_extra: Optional[Dict[str, Any]]) -> str:
     """
-    从请求 payload 的 extra 字段中解析 MapContext 并生成 prompt 片段。
-    在 analyze_handler / streaming_handler 中调用。
+    Parse MapContext from payload.extra and generate a prompt fragment.
+    Called from analyze_handler / streaming_handler.
 
-    用法：
+    Usage:
         map_ctx_str = build_map_context(payload.map_context)
     """
     if not payload_extra:
@@ -100,5 +100,5 @@ def build_map_context(payload_extra: Optional[Dict[str, Any]]) -> str:
         ctx = MapContext(**payload_extra)
         return build_map_context_prompt(ctx)
     except Exception as e:
-        logger.warning(f"[ContextBuilder] 解析地图上下文失败，已跳过: {e}")
+        logger.warning(f"[ContextBuilder] Failed to parse map context; skipped: {e}")
         return ""

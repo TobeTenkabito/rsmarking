@@ -74,7 +74,7 @@ def test_band_scaling():
 
 def test_real_remote_sensing():
     """
-    模拟真实遥感数据类型
+    mockrealistic remote-sensing data type
     """
     tests = {
         "RGB": (3, 256),
@@ -92,7 +92,7 @@ def test_real_remote_sensing():
 
 def test_render_stress():
     """
-    模拟服务器连续渲染大量 tile
+    mockserver continuously renders many tile
     """
     data = np.random.rand(3, 256, 256).astype(np.float32) * 1000
     runs = 500
@@ -110,7 +110,7 @@ def test_generate_report():
 
 
 def test_render_extreme_resolutions():
-    """测试从 1k 到 4k 的单瓦片渲染"""
+    """test from 1k text 4k textsingle-tile rendering"""
     sizes = [1024, 2048, 4096]
     for s in sizes:
         try:
@@ -125,7 +125,7 @@ def test_render_extreme_resolutions():
 
 
 def test_hyperspectral_scaling():
-    """模拟高光谱遥感数据"""
+    """mockhyperspectral remote-sensing data"""
     band_counts = [30, 64, 128, 242]
     for b in band_counts:
         data = np.random.rand(b, 256, 256).astype(np.float32)
@@ -136,7 +136,7 @@ def test_hyperspectral_scaling():
 
 
 def test_processing_chain_complexity():
-    """模拟计算指数、NDVI、色彩映射等场景"""
+    """mockindex calculation,NDVI,color mappingtextscenarios"""
     scenarios = {
         "Simple_Read": lambda d: d[:3],
         "NDVI_Logic": lambda d: ((d[3] - d[0]) / (d[3] + d[0] + 1e-5))[np.newaxis, :],
@@ -159,7 +159,7 @@ def test_processing_chain_complexity():
 
 
 def test_concurrent_load_saturation():
-    """模拟高并发请求，观察 CPU 调度损耗"""
+    """mockhigh-concurrency requests,observe CPU scheduling overhead"""
     worker_counts = [2, 4, 8, 16]
     data = np.random.rand(3, 256, 256).astype(np.float32)
 
@@ -180,7 +180,7 @@ def test_concurrent_load_saturation():
 
 def test_generate_advanced_report():
     """
-    保存并可视化性能边界
+    save and visualize performance boundaries
     """
     if not hasattr(reporter, 'records') or not reporter.records:
         print("No records to report.")

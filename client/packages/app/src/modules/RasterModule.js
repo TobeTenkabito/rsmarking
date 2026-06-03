@@ -25,7 +25,7 @@ export class RasterModule {
             Store.setRasters(data);
             this.app.mapController?.updateUI();
         } catch (err) {
-            console.error("[RasterModule] 栅格数据更新失败:", err);
+            console.error("[RasterModule] Raster data update failed:", err);
         }
     }
 
@@ -90,13 +90,13 @@ export class RasterModule {
         Store.setExtractSource(null);
         Store.clearExtractSelection();
 
-        // 渲染 Step 1 源文件列表
+        // Render the Step 1 source file list
         const sourceList = document.getElementById('extract-source-list');
         if (sourceList) {
             sourceList.innerHTML = ModalComponent.renderExtractSourceList(Store.state.rasters, null);
         }
 
-        // 重置到 Step 1 狀態
+        // Reset to Step 1 state
         document.getElementById('extract-step-1')?.classList.remove('hidden');
         document.getElementById('extract-step-2')?.classList.add('hidden');
         document.getElementById('extract-next-btn')?.classList.remove('hidden');
@@ -107,7 +107,7 @@ export class RasterModule {
         const nextBtn = document.getElementById('extract-next-btn');
         if (nextBtn) nextBtn.disabled = true;
 
-        // 重置步驟指示器
+        // Reset step indicators
         document.getElementById('extract-step-1-dot')?.classList.replace('bg-slate-200', 'bg-emerald-500');
         document.getElementById('extract-step-1-dot')?.classList.replace('text-slate-400', 'text-white');
         document.getElementById('extract-step-2-dot')?.classList.replace('bg-emerald-500', 'bg-slate-200');

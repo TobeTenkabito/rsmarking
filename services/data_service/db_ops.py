@@ -43,7 +43,7 @@ def run_conversion(input_path: str, output_path: str):
     try:
         RasterProcessor.convert_to_cog(input_path, output_path)
     except Exception as e:
-        logger.error(f"COG 转换失败: {str(e)}")
+        logger.error(f"COG conversion failed: {str(e)}")
 
 
 async def save_to_db(
@@ -77,7 +77,7 @@ async def save_to_db(
                 west, south, east, north = raw_bounds
             bounds_wgs84 = [west, south, east, north]
     except Exception as e:
-        logger.warning(f"bounds_wgs84 转换失败: {e}")
+        logger.warning(f"bounds_wgs84 conversion failed: {e}")
 
     db_data = {
         "file_name": new_name if new_name.endswith(".tif") else f"{new_name}.tif",
@@ -105,7 +105,7 @@ async def save_to_db(
 
 async def _get_band_paths(db: AsyncSession, band_ids: List[int]) -> List[str]:
     """
-    批量获取 band path
+    batch fetch band path
     """
     unique_ids = list(dict.fromkeys(band_ids))
     stmt = select(models.RasterMetadata).where(
@@ -114,7 +114,7 @@ async def _get_band_paths(db: AsyncSession, band_ids: List[int]) -> List[str]:
     res = await db.execute(stmt)
     records = res.scalars().all()
     if len(records) != len(unique_ids):
-        raise HTTPException(status_code=404, detail="部分波段ID不存在")
+        raise HTTPException(status_code=404, detail="Some band IDs do not exist")
     record_map = {r.index_id: r for r in records}
     paths = []
     for band_id in band_ids:
@@ -185,7 +185,7 @@ async def process_index_task(db: AsyncSession, band_ids: list, new_name: str, pr
         return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
 
     except Exception as e:
-        logger.error(f"{prefix} 计算失败: {str(e)}")
+        logger.error(f"{prefix} calculation failed: {str(e)}")
         await db.rollback()
         if isinstance(e, HTTPException):
             raise e
@@ -221,7 +221,7 @@ async def process_extraction_task(db: AsyncSession, band_ids: List[int], new_nam
         return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
 
     except Exception as e:
-        logger.error(f"{prefix} 提取任务失败: {str(e)}")
+        logger.error(f"{prefix} extraction task failed: {str(e)}")
         await db.rollback()
         if isinstance(e, HTTPException):
             raise e
@@ -273,7 +273,7 @@ async def process_calculator_task(
         )
 
     except Exception as e:
-        logger.error(f"栅格计算器任务失败: {str(e)}")
+        logger.error(f"Raster calculator task failed: {str(e)}")
         await db.rollback()
         if isinstance(e, HTTPException):
             raise e
@@ -558,40 +558,40 @@ async def process_rasterize_task(
         fetch_func: Callable
 ):
     """
-    矢量转栅格通用任务
-    :param fetch_func: 跨服务获取矢量的函数 (internal_fetch_features)
+    generic vector-to-raster task
+    :param fetch_func: function for cross-service vector fetching (internal_fetch_features)
     :param processor_func: RasterProcessor.run_rasterization
     """
     try:
-        # 1. 获取参考影像路径
+        # 1. get reference imagery path
         stmt = select(models.RasterMetadata).where(models.RasterMetadata.index_id == ref_index_id)
         res = await db.execute(stmt)
         ref_record = res.scalar_one_or_none()
         if not ref_record:
-            raise HTTPException(status_code=404, detail="参考影像不存在")
+            raise HTTPException(status_code=404, detail="Reference imagery does not exist")
 
-        # 2. 跨服务获取矢量数据 (GeoJSON Features)
+        # 2. fetch vector data across services (GeoJSON Features)
         features = await fetch_func(layer_id)
         if not features:
-            raise HTTPException(status_code=400, detail="该图层无有效矢量要素")
+            raise HTTPException(status_code=400, detail="This layer has no valid vector features")
 
-        # 3. 准备路径
+        # 3. prepare paths
         task_id = str(uuid.uuid4())
         tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
         cog_filename = f"{task_id}_{prefix}.tif"
         cog_path = os.path.join(COG_DIR, cog_filename)
 
-        # 4. 执行转换 (注意：processor_func 需要处理坐标对齐)
+        # 4. execute conversion (note:processor_func must handle coordinate alignment)
         processor_func(features, ref_record.file_path, tmp_path)
 
-        # 5. 转换为 COG
+        # 5. convert to COG
         RasterProcessor.convert_to_cog(tmp_path, cog_path)
 
-        # 6. 入库
+        # 6. write to database
         return await save_to_db(db, task_id, new_name, tmp_path, cog_filename, cog_path, prefix)
 
     except Exception as e:
-        logger.error(f"{prefix} 转换失败: {str(e)}")
+        logger.error(f"{prefix} conversion failed: {str(e)}")
         await db.rollback()
         if isinstance(e, HTTPException):
             raise e

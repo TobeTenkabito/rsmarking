@@ -1,7 +1,7 @@
 /**
  * Modal.js
- * ModalComponent 对外唯一接口
- *     具体实现见 ./modal/templates/ 各子模块。
+ * ModalComponent English
+ *     English ./modal/templates/ EnglishSubmodule。
  */
 import { BandMergeTemplate }    from './modal/templates/BandMergeTemplate.js';
 import { BandExtractTemplate }  from './modal/templates/BandExtractTemplate.js';

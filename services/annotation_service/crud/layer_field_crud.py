@@ -24,7 +24,7 @@ class LayerFieldCRUD:
 
 
     async def get_by_layer(self, layer_id: UUID) -> List[LayerField]:
-        """获取某图层的全部字段定义，按 field_order 排序"""
+        """get all field definitions for a layer,by field_order sort"""
         result = await self.db.execute(
             select(LayerField)
             .where(LayerField.layer_id == layer_id)
@@ -40,8 +40,8 @@ class LayerFieldCRUD:
 
 
     async def create(self, layer_id: UUID, schema: LayerFieldCreate) -> LayerField:
-        """用户在前端点击「新增字段」时调用"""
-        # 同一图层内 field_name 不能重复
+        """called when the user clicks"Add Field"text"""
+        # within the same layer field_name cannot be duplicated
         existing = await self.db.execute(
             select(LayerField).where(
                 LayerField.layer_id == layer_id,
@@ -49,7 +49,7 @@ class LayerFieldCRUD:
             )
         )
         if existing.scalar_one_or_none():
-            raise ValueError(f"字段 '{schema.field_name}' 在该图层中已存在")
+            raise ValueError(f"Field '{schema.field_name}' already exists in this layer")
 
         field = LayerField(
             id          = uuid.uuid4(),
@@ -59,7 +59,7 @@ class LayerFieldCRUD:
             field_type  = schema.field_type,
             field_order = schema.field_order,
             is_required = schema.is_required,
-            is_system   = False,               # 用户手动创建，可删除
+            is_system   = False,               # user-created,deletable
             default_val = schema.default_val,
         )
         self.db.add(field)
@@ -71,12 +71,12 @@ class LayerFieldCRUD:
     async def ingest_from_file(
         self,
         layer_id  : UUID,
-        properties: dict,           # 文件第一个要素的 properties 原始字典
+        properties: dict,           # first feature in the file properties source dictionary
     ) -> List[LayerField]:
         """
-        上传 shapefile / geojson 时自动调用。
-        从文件属性推断字段名和类型，写入 layer_fields。
-        已存在的字段跳过（幂等）。
+        upload shapefile / geojson called automatically.
+        infer field names and types from file properties,write layer_fields.
+        skip existing fields(idempotent).
         """
         existing_result = await self.db.execute(
             select(LayerField.field_name).where(LayerField.layer_id == layer_id)
@@ -87,7 +87,7 @@ class LayerFieldCRUD:
         for order, (key, value) in enumerate(properties.items()):
             if key in existing_names:
                 continue
-            # 推断类型
+            # infer type
             py_type  = type(value) if value is not None else str
             field_type = PYTHON_TYPE_MAP.get(py_type, "string")
 
@@ -95,10 +95,10 @@ class LayerFieldCRUD:
                 id          = uuid.uuid4(),
                 layer_id    = layer_id,
                 field_name  = key,
-                field_alias = key,             # 初始 alias = 原始字段名
+                field_alias = key,             # initial alias = text
                 field_type  = field_type,
                 field_order = order,
-                is_system   = True,            # 文件来源，不可删除
+                is_system   = True,            # file source,not deletable
                 is_required = False,
             ))
 
@@ -110,7 +110,7 @@ class LayerFieldCRUD:
 
 
     async def update(self, field_id: UUID, schema: LayerFieldUpdate) -> Optional[LayerField]:
-        """修改别名、类型、顺序等，field_name 不可改"""
+        """update alias,text,order,field_name text"""
         field = await self.get_by_id(field_id)
         if not field:
             return None
@@ -126,15 +126,15 @@ class LayerFieldCRUD:
 
     async def delete(self, field_id: UUID) -> bool:
         """
-        只允许删除 is_system=False 的字段。
-        注意：删除字段定义不会清除 Feature.properties 里的历史数据，
-        前端不再渲染该列即可，数据保留以防误删。
+        only allow deleting is_system=False text.
+        note:deleting a field definition does not clear Feature.properties historical data in,
+        only stop rendering the column,data is retained to avoid accidental deletion.
         """
         field = await self.get_by_id(field_id)
         if not field:
             return False
         if field.is_system:
-            raise PermissionError("系统字段（文件导入）不可删除")
+            raise PermissionError("System fields imported from files cannot be deleted")
 
         await self.db.execute(
             delete(LayerField).where(LayerField.id == field_id)

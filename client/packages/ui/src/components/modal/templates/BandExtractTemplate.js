@@ -1,6 +1,6 @@
 /**
  * BandExtractTemplate.js
- * 波段提取：来源影像选择 + 波段勾选列表
+ * Band Extraction：source imagery selection and band checkbox list
  */
 export const BandExtractTemplate = {
 
@@ -8,13 +8,13 @@ export const BandExtractTemplate = {
         if (!raster) {
             return `
                 <div class="text-center py-10 text-slate-400">
-                    <p class="text-xs">未找到影像数据</p>
+                    <p class="text-xs">No imagery data found</p>
                 </div>`;
         }
         if (!raster.bands || raster.bands < 1) {
             return `
                 <div class="text-center py-10 text-slate-400">
-                    <p class="text-xs">该影像无可提取波段</p>
+                    <p class="text-xs">This image has no extractable bands</p>
                 </div>`;
         }
 
@@ -62,7 +62,7 @@ export const BandExtractTemplate = {
         if (!rasters || rasters.length === 0) {
             return `
                 <div class="text-center py-10 text-slate-400">
-                    <p class="text-xs">暂无可用影像，请先上传</p>
+                    <p class="text-xs">No available imagery，Please upload first</p>
                 </div>`;
         }
 

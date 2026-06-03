@@ -22,11 +22,11 @@ export class CalculatorModule {
 
     openModal() {
         if (Store.state.rasters.length === 0) {
-            alert("工作站暂无影像，请先上传数据");
+            alert("No imagery in the workspace. Upload data first.");
             return;
         }
         document.getElementById('calculator-modal').classList.remove('hidden');
-        this.renderVariableMappers(); // 初始化空映射
+        this.renderVariableMappers(); // Initialize empty mappings
     }
 
     closeModal() {
@@ -65,7 +65,7 @@ export class CalculatorModule {
         const container = document.getElementById('calc-variables-container');
         if (!container) return;
 
-        // 使用组件进行渲染，传入当前变量和 Store 里的数据
+        // English，English Store English
         container.innerHTML = ModalComponent.renderCalculatorVariables(
             this.currentVariables,
             Store.state.rasters);}
@@ -74,17 +74,17 @@ export class CalculatorModule {
         const expression = document.getElementById('calc-expression-input').value.trim();
         const newName = document.getElementById('calc-name-input').value.trim();
 
-        if (!expression || !newName) return alert("请完整填写表达式和结果名称");
-        if (this.currentVariables.length === 0) return alert("表达式中未检测到有效变量");
+        if (!expression || !newName) return alert("Enter both the expression and result name.");
+        if (this.currentVariables.length === 0) return alert("No valid variables were detected in the expression.");
 
-        // 组装动态映射参数
+        // English
         const varMapping = {};
         for (const varName of this.currentVariables) {
-            // 修改点：使用 querySelector 结合属性选择器来获取 DOM 节点
+            // English：Use querySelector English DOM English
             const selectEl = document.querySelector(`select[data-var="${varName}"]`);
 
             if (!selectEl || !selectEl.value) {
-                return alert(`请为变量 ${varName} 选择对应的栅格图层`);
+                return alert(`Select a raster layer for variable ${varName}.`);
             }
             varMapping[`var_${varName}`] = selectEl.value;
         }
@@ -95,14 +95,14 @@ export class CalculatorModule {
             this.closeModal();
             await window.RS.fetchRasters();
         } catch (e) {
-            alert("计算失败: " + e.message);
+            alert("Calculation failed: " + e.message);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
     }
 
     /**
-    * 在输入框光标处插入函数名，并自动聚焦
+    * English，English
     */
     insertFunction(funcName) {
         const input = document.getElementById('calc-expression-input');
@@ -118,7 +118,7 @@ export class CalculatorModule {
         this.handleExpressionChange();}
 
     /**
-    * 切换帮助面板的显示状态
+    * English
     */
     toggleHelp() {
         const panel = document.getElementById('calc-help-panel');

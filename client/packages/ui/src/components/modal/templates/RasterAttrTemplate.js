@@ -1,6 +1,6 @@
 /**
  * RasterAttrTemplate.js
- * 栅格图层字段管理表：表头 / 数据行（系统字段区 + 用户字段区）
+ * Raster layer field management table：English / English（System FieldsEnglish + user field section）
  */
 import { esc, attrBadgeCls, attrTypeIcon } from '../utils.js';
 
@@ -10,11 +10,11 @@ export const RasterAttrTemplate = {
         return `
             <tr>
                 <th class="attr-th w-8 text-center">#</th>
-                <th class="attr-th">字段名</th>
-                <th class="attr-th">显示名</th>
-                <th class="attr-th w-24">类型</th>
-                <th class="attr-th">默认值</th>
-                <th class="attr-th w-16 text-center">操作</th>
+                <th class="attr-th">Field Name</th>
+                <th class="attr-th">Display Name</th>
+                <th class="attr-th w-24">Type</th>
+                <th class="attr-th">Default Value</th>
+                <th class="attr-th w-16 text-center">Actions</th>
             </tr>`;
     },
 
@@ -23,7 +23,7 @@ export const RasterAttrTemplate = {
             return `
                 <tr>
                     <td colspan="6" class="py-10 text-center text-xs text-slate-400">
-                        暂无字段数据
+                        No field data
                     </td>
                 </tr>`;
         }
@@ -59,7 +59,7 @@ export const RasterAttrTemplate = {
                         <span class="truncate max-w-[120px]" title="${esc(f.field_alias || f.field_name)}">
                             ${esc(f.field_alias || f.field_name)}
                         </span>
-                        ${isSystem ? '<span class="ml-1 text-[9px] text-slate-300">系统</span>' : ''}
+                        ${isSystem ? '<span class="ml-1 text-[9px] text-slate-300">System</span>' : ''}
                     </div>
                 </td>
 
@@ -84,10 +84,10 @@ export const RasterAttrTemplate = {
 
                 <td class="attr-td text-center">
                     ${isSystem
-                        ? '<span class="text-[10px] text-slate-200" title="系统字段不可删除">🔒</span>'
+                        ? '<span class="text-[10px] text-slate-200" title="System fields cannot be deleted">🔒</span>'
                         : `<button onclick="RS.attrdeleteRasterField('${f.id}','${esc(f.field_name)}')"
                                    class="text-slate-300 hover:text-red-500 transition-colors text-xs"
-                                   title="删除字段">✕</button>`}
+                                   title="Delete field">✕</button>`}
                 </td>
             </tr>`;
 
@@ -97,7 +97,7 @@ export const RasterAttrTemplate = {
                     <td colspan="6"
                         class="px-3 py-1 text-[10px] font-semibold text-slate-300
                                bg-slate-50 border-y border-slate-100 select-none tracking-widest">
-                        ▸ 系统字段（只读）
+                        ▸ System Fields（Read-only）
                     </td>
                 </tr>`,
                 ...systemFields.map((f, i) => renderRow(f, i, true)),
@@ -110,7 +110,7 @@ export const RasterAttrTemplate = {
                     <td colspan="6"
                         class="px-3 py-1 text-[10px] font-semibold text-indigo-300
                                bg-indigo-50/40 border-y border-indigo-100 select-none tracking-widest">
-                        ▸ 自定义字段（可编辑）
+                        ▸ Custom Fields（Editable）
                     </td>
                 </tr>`,
                 ...userFields.map((f, i) => renderRow(f, i, false)),
@@ -118,7 +118,7 @@ export const RasterAttrTemplate = {
             : [
                 `<tr>
                     <td colspan="6" class="py-6 text-center text-xs text-slate-300 italic">
-                        暂无自定义字段，点击「+ 新增列」添加
+                        No custom fields. Click + Add Column to add one.
                     </td>
                 </tr>`,
               ];

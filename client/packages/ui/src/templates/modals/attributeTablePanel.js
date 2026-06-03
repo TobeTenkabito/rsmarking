@@ -14,14 +14,14 @@ export const attributeTablePanel = `
           <div class="attr-resize-handle attr-resize-se" data-attr-resize="se"></div>
           <div class="attr-resize-handle attr-resize-sw" data-attr-resize="sw"></div>
 
-          <!-- 工具栏 -->
+          <!-- Toolbar -->
           <div id="attr-toolbar"
                class="flex items-center justify-between px-3 py-1.5
                       bg-slate-50 border-b border-slate-200 shrink-0 select-none cursor-move rounded-t-md">
 
-              <!-- 左侧：标题 + 模式徽章 + 状态 -->
+              <!-- Left side：Title + Mode badge + English -->
               <div class="flex items-center gap-2">
-                  <!-- 拖拽纹理 -->
+                  <!-- Drag texture -->
                   <div class="flex flex-col gap-[3px] opacity-25 mr-1 cursor-move"
                        id="attr-drag-handle">
                       <div class="w-5 h-px bg-slate-500"></div>
@@ -30,49 +30,49 @@ export const attributeTablePanel = `
                   </div>
 
                   <span id="attr-table-title"
-                        class="text-xs font-semibold text-slate-600">属性表</span>
+                        class="text-xs font-semibold text-slate-600">Attribute table</span>
 
-                  <!-- 模式徽章：矢量=indigo / 栅格=amber  ← 新增 -->
+                  <!-- Mode badge：Vector=indigo / English=amber  ← English -->
                   <span id="attr-mode-badge"
                         class="hidden text-[9px] font-bold px-1.5 py-0.5 rounded-full
                                bg-indigo-100 text-indigo-500">
-                      矢量
+                      Vector
                   </span>
 
                   <span id="attr-table-loader"
-                        class="hidden text-[11px] text-indigo-400 animate-pulse">加载中…</span>
+                        class="hidden text-[11px] text-indigo-400 animate-pulse">Loading…</span>
                   <span id="attr-table-count"
                         class="text-[11px] text-slate-400 bg-slate-100
                                px-2 py-0.5 rounded-full"></span>
               </div>
 
-              <!-- 右侧：操作按钮 -->
+              <!-- Right side：ActionsEnglish -->
               <div class="flex items-center gap-1.5">
-                  <!-- id="attr-add-col-btn" 供 _syncToolbar() 动态改文案 ← 新增 id -->
+                  <!-- id="attr-add-col-btn" English _syncToolbar() English ← English id -->
                   <button id="attr-add-col-btn"
                           onclick="RS.attrAddColumn()"
                           class="attr-toolbar-btn text-indigo-600 bg-indigo-50
                                  hover:bg-indigo-100 border border-indigo-200">
-                      + 新增列
+                      + Add Column
                   </button>
                   <button onclick="RS.attrExportCsv()"
-                          title="导出 CSV"
+                          title="Export CSV"
                           class="attr-toolbar-btn">CSV</button>
                   <button onclick="RS.attrRefresh()"
-                          title="刷新数据"
-                          class="attr-toolbar-btn">↻ 刷新</button>
+                          title="Refresh data"
+                          class="attr-toolbar-btn">↻ Refresh</button>
                   <button id="attr-expand-btn"
                           onclick="RS.attrToggleExpand()"
-                          title="展开 / 收起"
-                          class="attr-toolbar-btn">⬆ 展开</button>
+                          title="Expand / Collapse"
+                          class="attr-toolbar-btn">⬆ Expand</button>
                   <button onclick="RS.attrClose()"
-                          title="关闭属性表"
+                          title="Close attribute table"
                           class="attr-toolbar-btn hover:text-red-500 hover:bg-red-50">✕</button>
               </div>
           </div>
 
 
-            <!-- 表格滚动容器 -->
+            <!-- Table scroll container -->
             <div id="attr-scroll" class="flex-1 overflow-auto text-xs">
                 <table class="border-collapse w-max min-w-full">
                     <thead id="attr-table-head"></thead>
@@ -81,7 +81,7 @@ export const attributeTablePanel = `
             </div>
         </div>
 
-        <!-- 属性表样式（scoped inline，避免污染全局） -->
+        <!-- Attribute table styles（scoped inline，avoid global style leakage） -->
         <style>
             .attr-toolbar-btn {
                 font-size: 11px;
@@ -173,7 +173,7 @@ export const attributeTablePanel = `
                 background: #fff;
             }
 
-            /* 字段类型徽章 */
+            /* field type badge */
             .type-badge {
                 display: inline-flex;
                 align-items: center; justify-content: center;
@@ -187,7 +187,7 @@ export const attributeTablePanel = `
             .badge-bool { background:#ffedd5; color:#ea580c; }
             .badge-date { background:#f3e8ff; color:#9333ea; }
 
-            /* 右键菜单 */
+            /* context menu */
             .attr-ctx-menu {
                 position: fixed;
                 z-index: 9999;

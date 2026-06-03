@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AI Gateway Service",
-    description="智能空间数据网关 - 独立服务",
+    description="Intelligent Spatial Data Gateway - standalone service",
     version="1.0.0",
     lifespan=lifespan
 )

@@ -40,14 +40,14 @@ def _compute_raster_stats(file_path: str) -> NumericStats | None:
             hist_dict = {f"{bin_edges[i]:.2f}-{bin_edges[i + 1]:.2f}": int(hist[i]) for i in range(5)}
             return NumericStats(min=min_val, max=max_val, mean=mean_val, std_dev=std_val, histogram=hist_dict)
     except Exception as e:
-        logger.warning(f"提取栅格统计特征失败 ({file_path}): {e}")
+        logger.warning(f"Failed to extract raster statistics ({file_path}): {e}")
         return None
 
 
 async def _extract_raster_data(db: AsyncSession, raster_id: int) -> RasterContextData:
     raster = await RasterCRUD.get_raster_by_index_id(db, raster_id)
     if not raster:
-        raise ValueError(f"未找到 index_id 为 {raster_id} 的栅格数据")
+        raise ValueError(f"No raster data found for index_id {raster_id}")
 
     b_data = raster.bounds or [0.0, 0.0, 0.0, 0.0]
     if isinstance(b_data, dict):
@@ -71,7 +71,7 @@ async def _extract_raster_data(db: AsyncSession, raster_id: int) -> RasterContex
             with rasterio.open(raster.file_path) as src:
                 grid_data = _get_16_point_sampling(src)
         except Exception as e:
-            logger.error(f"采样失败: {e}")
+            logger.error(f"Sampling failed: {e}")
 
     return RasterContextData(
         name=raster.file_name or "unknown",
@@ -92,7 +92,7 @@ async def _extract_vector_data(db: AsyncSession, layer_id: str) -> VectorContext
     layer_crud = LayerCRUD(db)
     layer = await layer_crud.get_layer(layer_id)
     if not layer:
-        raise ValueError(f"未找到 id 为 {layer_id} 的矢量图层")
+        raise ValueError(f"No vector layer found for id {layer_id} ")
 
     stmt_stats = select(Feature.category, func.count(Feature.id)).where(Feature.layer_id == layer_id).group_by(Feature.category)
     result_stats = await db.execute(stmt_stats)
@@ -174,5 +174,5 @@ def _get_16_point_sampling(src: rasterio.DatasetReader) -> dict:
     return {
         "layout": "Inset Grid",
         "sample_values": values,
-        "description": "内缩采，按行优先顺序排列（从左上到右下）。None 表示该位置无有效数据。"
+        "description": "Inset sample arranged row-first from upper-left to lower-right. None means no valid data at that position."
     }

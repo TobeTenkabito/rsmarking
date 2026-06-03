@@ -3,7 +3,7 @@ import { VectorAPI } from '../api/vector.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
 import { t } from '../i18n/index.js';
 
-/** 防抖工具函数 */
+/** EnglishToolsEnglish */
 function debounce(fn, delay) {
     let timer = null;
     return function (...args) {
@@ -13,26 +13,26 @@ function debounce(fn, delay) {
 }
 
 /**
- * MapController - 负责地图引擎与业务状态（Store/UI）的深度联动
+ * MapController - English（Store/UI）English
  */
 export class MapController {
     constructor(engine) {
         this.engine = engine;
 
         /**
-         * AbortController 注册表
+         * AbortController English
          * Key: layerId, Value: AbortController
-         * 用于在新请求发起时取消同一图层的上一次未完成请求
+         * EnglishCancelEnglish
          */
         this._abortControllers = new Map();
 
         /**
-         * 防抖版 fetchViewportFeatures
-         * moveend 事件 300ms 内的连续触发只执行最后一次
+         * English fetchViewportFeatures
+         * moveend English 300ms English
          */
         this._debouncedFetch = debounce(() => this.fetchViewportFeatures(), 300);
 
-        // 初始化地图事件监听
+        // English
         this._boundMoveEndHandler = async () => {
             if (Store.state.visibleVectorLayerIds.size > 0) {
                 this._debouncedFetch();
@@ -53,7 +53,7 @@ export class MapController {
 
 
     /**
-     * 更新侧边栏 UI 与图层计数器
+     * EnglishSidebar UI English
      */
     updateUI() {
         const container =
@@ -101,7 +101,7 @@ export class MapController {
 
 
     /**
-     * 切换栅格图层显示状态
+     * English
      */
     async toggleLayer(id) {
         const numericId = isNaN(id) ? id : Number(id);
@@ -123,9 +123,9 @@ export class MapController {
                 Store.addActiveLayer(numericId);
                 this.applyLayerRenderOrder();
             } catch (err) {
-                console.error('[MapController] 栅格渲染失败:', err);
+                console.error('[MapController] Raster render failed:', err);
             } finally {
-                // 无论成功与否，都清除 loading 状态并刷新 UI
+                // EnglishSucceededEnglish，English loading EnglishRefresh UI
                 Store.setLoading(numericId, false);
                 this.updateUI();
             }
@@ -135,7 +135,7 @@ export class MapController {
     }
 
     /**
-     * 聚焦并缩放到指定图层
+     * English
      */
     async focusLayer(id) {
         const numericId = isNaN(id) ? id : Number(id);
@@ -153,7 +153,7 @@ export class MapController {
 
 
     /**
-     * 切换矢量图层的激活（编辑）状态
+     * EnglishVector LayerEnglish（English）English
      * @param {string} layerId
      */
     async toggleVectorLayer(layerId) {
@@ -162,14 +162,14 @@ export class MapController {
             this.renderVectorData(layerId, { type: 'FeatureCollection', features: [] });
         } else {
             Store.setActiveVectorLayer(layerId);
-            // 激活后立即拉取当前视口数据
+            // English
             await this.fetchViewportFeatures();
         }
         this.updateUI();
     }
 
     /**
-     * 局部刷新特定矢量图层（标注保存或 AI 提取完成后调用）
+     * EnglishRefreshEnglishVector Layer（English AI English）
      * @param {string} layerId
      */
     async refreshVectorLayer(layerId) {
@@ -180,7 +180,7 @@ export class MapController {
 
 
     /**
-     * 初始化地图矢量相关的事件监听
+     * EnglishVectorEnglish
      */
     initVectorEvents() {
         const map = this.engine.map || this.engine;
@@ -190,8 +190,8 @@ export class MapController {
     }
 
     /**
-     * 销毁实例，清理所有事件监听与挂起请求（防止内存泄漏）
-     * 在组件卸载或页面切换时调用
+     * English，English（English）
+     * English
      */
     destroy() {
         const map = this.engine.map || this.engine;
@@ -199,7 +199,7 @@ export class MapController {
             map.off('moveend', this._boundMoveEndHandler);
         }
 
-        // 取消所有挂起的网络请求
+        // CancelEnglish
         for (const controller of this._abortControllers.values()) {
             controller.abort();
         }
@@ -208,10 +208,10 @@ export class MapController {
 
 
     /**
-     * 获取当前视口的矢量要素并更新 Store 与地图
-     * 核心优化：
-     *   1. 每个 layerId 独立维护 AbortController，新请求自动取消旧请求
-     *   2. 通过 signal 传递给 VectorAPI，避免过期响应污染状态
+     * EnglishVectorEnglish Store English
+     * English：
+     *   1. English layerId English AbortController，EnglishCancelEnglish
+     *   2. English signal English VectorAPI，English
      */
     async fetchViewportFeatures() {
         const visibleIds = Store.getVectorRenderOrder();
@@ -221,7 +221,7 @@ export class MapController {
         if (!bbox) return;
 
         const fetchPromises = visibleIds.map(async (layerId) => {
-            // 取消该图层上一次未完成的请求
+            // CancelEnglish
             const prevController = this._abortControllers.get(layerId);
             if (prevController) prevController.abort();
 
@@ -232,13 +232,13 @@ export class MapController {
                 const data = await VectorAPI.fetchFeaturesInBbox(
                     layerId,
                     bbox,
-                    { signal: controller.signal }  // 传递取消信号
+                    { signal: controller.signal }  // Pass the cancel signal
                 );
 
-                // 请求成功后清理注册表
+                // EnglishSucceededEnglish
                 this._abortControllers.delete(layerId);
 
-                // 仅将正在编辑的图层数据写回 Store
+                // English Store
                 if (layerId === Store.state.activeVectorLayerId) {
                     Store.setCurrentFeatures(data);
                 }
@@ -246,10 +246,10 @@ export class MapController {
                 this.renderVectorData(layerId, data);
             } catch (err) {
                 if (err.name === 'AbortError') {
-                    // 请求被主动取消，属于正常流程，静默处理
+                    // EnglishCancel，English，English
                     return;
                 }
-                console.error(`[MapController] 图层 ${layerId} 视口加载失败:`, err);
+                console.error(`[MapController] Layer ${layerId} viewport load failed:`, err);
             }
         });
 
@@ -258,29 +258,29 @@ export class MapController {
 
 
     /**
-     * 处理 Store 中矢量状态的变化通知
-     * 注意：此处不直接调用 fetchViewportFeatures，
-     *       而是通过防抖调度，避免与 constructor 中的订阅回调产生重复请求
+     * English Store EnglishVectorEnglish
+     * English：English fetchViewportFeatures，
+     *       English，English constructor English
      */
     handleVectorStateChange(state) {
-        // 通知底层引擎同步可见图层列表，清理已取消勾选的图层
+        // English，EnglishCancelEnglish
         if (this.engine.syncVisibleLayers) {
             this.engine.syncVisibleLayers(Store.getVectorRenderOrder());
         }
 
-        // 联动编辑工具栏
+        // EnglishToolbar
         if (window.RS?.toggleEditMode) {
             window.RS.toggleEditMode(!!state.activeVectorLayerId);
         }
 
-        // 使用防抖调度数据拉取，避免短时间内多次状态变更触发多次请求
+        // English，English
         this._debouncedFetch();
     }
 
 
     /**
-     * 从当前地图实例提取 BBox 数组 [west, south, east, north]
-     * 兼容 Leaflet 与 OpenLayers
+     * English BBox English [west, south, east, north]
+     * English Leaflet English OpenLayers
      * @returns {number[]|null}
      */
     _getMapBbox() {
@@ -310,7 +310,7 @@ export class MapController {
     }
 
     /**
-     * 调用引擎接口将 GeoJSON 渲染到地图
+     * English GeoJSON English
      * @param {string} layerId
      * @param {Object} geojson
      */

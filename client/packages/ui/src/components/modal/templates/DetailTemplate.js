@@ -1,16 +1,16 @@
 /**
  * DetailTemplate.js
- * 影像元数据详情面板
+ * Imagery metadata detail panel
  */
 export const DetailTemplate = {
 
     renderDetail(raster) {
         const stats = [
-            { label: '文件名称',   value: raster.file_name,                          full: true  },
-            { label: '坐标系',     value: raster.crs        || 'WGS 84',             mono: true  },
-            { label: '数据类型',   value: raster.data_type  || 'Float32',            mono: true  },
-            { label: '空间分辨率', value: `${raster.width} x ${raster.height}`,      mono: true  },
-            { label: '波段数量',   value: raster.bands,                              mono: false },
+            { label: 'File Name',   value: raster.file_name,                          full: true  },
+            { label: 'CRS',     value: raster.crs        || 'WGS 84',             mono: true  },
+            { label: 'Data Type',   value: raster.data_type  || 'Float32',            mono: true  },
+            { label: 'Spatial Resolution', value: `${raster.width} x ${raster.height}`,      mono: true  },
+            { label: 'Band Count',   value: raster.bands,                              mono: false },
         ];
 
         return `
@@ -26,7 +26,7 @@ export const DetailTemplate = {
 
                 ${raster.bounds_wgs84 ? `
                     <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-xl">
-                        <p class="text-[9px] text-indigo-400 font-bold uppercase mb-2">地理包围盒 (WGS84)</p>
+                        <p class="text-[9px] text-indigo-400 font-bold uppercase mb-2">Geographic Bounding Box (WGS84)</p>
                         <div class="grid grid-cols-2 gap-y-2 text-[10px] font-mono font-medium text-indigo-700">
                             <div><span class="text-indigo-300 mr-1">N:</span>${raster.bounds_wgs84[3].toFixed(5)}</div>
                             <div><span class="text-indigo-300 mr-1">E:</span>${raster.bounds_wgs84[2].toFixed(5)}</div>

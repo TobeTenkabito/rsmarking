@@ -1,29 +1,29 @@
 /**
- * AreaAutoFill - 面积自动填充胶水层
+ * AreaAutoFill - area autofill integration layer
  *
- * 职责：
- *   绘制完成后，自动为该矢量图层确保存在 "area" 字段，
- *   并将当前要素的 WGS84 球面面积（单位：平方千米）写入该字段。
+ * Responsibilities：
+ *   After drawing, ensure that the vector layer has an area field，
+ *   and write the WGS84 spherical area in square kilometers to that field。
  *
- * 依赖：
+ * Dependencies：
  *   - VectorAPI.fetchFields(layerId)
  *   - VectorAPI.createField(layerId, payload)
  *   - VectorAPI.updateFeature(featureId, updateData)
  *
- * 不依赖任何第三方库，面积计算使用球面过剩公式（Spherical Excess）。
+ * No third-party dependencies; area uses the spherical excess formula（Spherical Excess）。
  */
 import { VectorAPI } from '../api/vector.js';
 
-/** WGS84 椭球体参数 */
-const WGS84_A = 6378.137;             // 长半轴，单位：千米
-const WGS84_B = 6356.752314245;       // 短半轴，单位：千米
-const E2 = 1 - (WGS84_B * WGS84_B) / (WGS84_A * WGS84_A); // 偏心率平方
-const E = Math.sqrt(E2);              // 第一偏心率
+/** WGS84 ellipsoid parameters */
+const WGS84_A = 6378.137;             // semi-major axis in kilometers
+const WGS84_B = 6356.752314245;       // semi-minor axis in kilometers
+const E2 = 1 - (WGS84_B * WGS84_B) / (WGS84_A * WGS84_A); // eccentricity squared
+const E = Math.sqrt(E2);              // first eccentricity
 const AREA_FIELD_NAME = 'area';
 
 /**
- * 计算 WGS84 等面积积分 q(phi)
- * @param {number} sinPhi 纬度的正弦值
+ * Compute WGS84 equal-area integral q(phi)
+ * @param {number} sinPhi sine of latitude
  * @returns {number}
  */
 function qFunc(sinPhi) {
@@ -33,12 +33,12 @@ function qFunc(sinPhi) {
     return (1 - E2) * (term1 - term2);
 }
 
-// 极点处的 q 值及等面积球半径
+// value at the pole and equal-area radius q English
 const Q_P = qFunc(1.0);
-const R_Q = WGS84_A * Math.sqrt(Q_P / 2); // 约 6371.00718 km
+const R_Q = WGS84_A * Math.sqrt(Q_P / 2); // about 6371.00718 km
 
 /**
- * 将角度转换为弧度
+ * Convert degrees to radians
  * @param {number} deg
  * @returns {number}
  */
@@ -47,8 +47,8 @@ function toRad(deg) {
 }
 
 /**
- * 将几何纬度转换为等面积纬度的正弦值 (sin(beta))
- * @param {number} latDeg 纬度（度）
+ * Convert geodetic latitude to equal-area latitude sine (sin(beta))
+ * @param {number} latDeg latitude（English）
  * @returns {number}
  */
 function getAuthalicSinLat(latDeg) {
@@ -57,8 +57,8 @@ function getAuthalicSinLat(latDeg) {
 }
 
 /**
- * 计算 WGS84 椭球面多边形面积（基于等面积球的球面过剩公式）
- * 复杂度：O(N)
+ * Compute WGS84 ellipsoidal polygon area（based on an equal-area sphere and spherical excess）
+ * Complexity：O(N)
  */
 function computeRingAreaKm2(ring) {
     const n = ring.length;
@@ -70,27 +70,27 @@ function computeRingAreaKm2(ring) {
         const [lng1, lat1] = ring[i];
         const [lng2, lat2] = ring[i + 1];
 
-        // 核心修改：使用等面积纬度的正弦值替代原有理想球体的正弦值
+        // Use equal-area latitude sine instead of ideal-sphere sine
         const sinBeta1 = getAuthalicSinLat(lat1);
         const sinBeta2 = getAuthalicSinLat(lat2);
 
         area += toRad(lng2 - lng1) * (2 + sinBeta1 + sinBeta2);
     }
 
-    // 使用严密等效半径 R_Q 计算最终面积
+    // Use the equivalent radius R_Q for the final area
     return Math.abs(area * R_Q * R_Q / 2);
 }
 
 /**
- * 计算 GeoJSON Geometry 的球面面积
+ * Compute spherical area for GeoJSON geometry
  *
- * 支持：Polygon、MultiPolygon
- * 不支持（返回 0）：Point、LineString 等非面类型
+ * Supports：Polygon、MultiPolygon
+ * Unsupported（returns 0）：Point、LineString Englishnon-polygon type
  *
- * 对于带洞的多边形：外环面积 - 内环面积之和
+ * For polygons with holes：outer ring area - sum of inner ring areas
  *
- * @param {Object} geometry - GeoJSON Geometry 对象
- * @returns {number} 面积，单位：平方千米
+ * @param {Object} geometry - GeoJSON Geometry object
+ * @returns {number} area in square kilometers
  */
 function computeSphericalAreaKm2(geometry) {
     if (!geometry || !geometry.type) return 0;
@@ -100,10 +100,10 @@ function computeSphericalAreaKm2(geometry) {
             const rings = geometry.coordinates;
             if (!rings || rings.length === 0) return 0;
 
-            // 外环面积
+            // outer ring area
             let area = computeRingAreaKm2(rings[0]);
 
-            // 减去内环（洞）面积
+            // subtract inner-ring hole area
             for (let i = 1; i < rings.length; i++) {
                 area -= computeRingAreaKm2(rings[i]);
             }
@@ -126,19 +126,19 @@ function computeSphericalAreaKm2(geometry) {
         }
 
         default:
-            // Point / LineString / GeometryCollection 等无面积类型
+            // Point / LineString / GeometryCollection non-area geometry types
             return 0;
     }
 }
 
 /**
- * 确保图层存在 "area" 字段定义。
+ * Ensure the layer has an area field definition.
  *
- * 策略：先拉取字段列表，若已存在同名字段则直接返回其 id，
- *       否则调用 createField 创建后返回新字段 id。
+ * Strategy: fetch fields first; return the existing field id when present,
+ *       otherwise create the field and return the new id.
  *
  * @param {string} layerId
- * @returns {Promise<string>} area 字段的 id
+ * @returns {Promise<string>} area English id
  */
 async function ensureAreaField(layerId) {
     const fields = await VectorAPI.fetchFields(layerId);
@@ -148,22 +148,22 @@ async function ensureAreaField(layerId) {
         return existing.id;
     }
 
-    // 字段不存在，创建之
+    // Create the field when it is missing
     const newField = await VectorAPI.createField(layerId, {
         field_name : AREA_FIELD_NAME,
-        field_alias: '面积(km²)',
+        field_alias: 'Area (km2)',
         field_type : 'number',
-        field_order: fields.length,   // 追加到末尾
+        field_order: fields.length,   // append to the end
     });
 
     return newField.id;
 }
 
 /**
- * 将面积值写入要素的 properties。
+ * Write the area value into feature properties.
  *
- * 使用 PATCH /features/{featureId}，后端做 JSONB merge，
- * 不会覆盖其他已有属性。
+ * Use PATCH /features/{featureId}，English JSONB merge，
+ * Existing properties are not overwritten.
  *
  * @param {string} featureId
  * @param {number} areaKm2
@@ -178,34 +178,34 @@ async function writeAreaToFeature(featureId, areaKm2) {
 }
 
 /**
- * 计算圆的球面面积（球冠公式，基于等面积球半径 R_Q）
- * @param {number} radiusMeters - 圆半径，单位：米
- * @returns {number} 面积，单位：平方千米
+ * Compute spherical area for a circle（spherical cap formula，English R_Q）
+ * @param {number} radiusMeters - circle radius in meters
+ * @returns {number} area in square kilometers
  */
 function computeCircleAreaKm2(radiusMeters) {
-    const r = radiusMeters / 1000; // 转换为千米
-    // 球冠面积公式：A = 2πR²(1 - cos(r/R))
+    const r = radiusMeters / 1000; // convert to kilometers
+    // spherical cap area formula：A = 2πR²(1 - cos(r/R))
     return 2 * Math.PI * R_Q * R_Q * (1 - Math.cos(r / R_Q));
 }
 
 export const AreaAutoFill = {
 
     /**
-     * 绘制完成后的主入口。
+     * Main entry point after drawing completes.
      *
-     * 调用方（AnnotationModule）在 createFeature 成功后调用此方法，
-     * 传入图层 ID、新要素 ID 和 GeoJSON geometry 对象。
+     * Caller（AnnotationModule）calls this after createFeature succeeds，
+     * passing layer ID, new feature ID, and GeoJSON geometry.
      *
-     * 此方法内部的失败不会向上抛出，仅打印警告，
-     * 确保面积写入失败不影响主绘制流程。
+     * Failures inside this method are logged only，
+     * so area write failure does not affect drawing.
      *
-     * @param {string} layerId     - 当前矢量图层 ID
-     * @param {string} featureId   - 刚创建的要素 ID
-     * @param {Object} geometry    - GeoJSON Geometry（来自 layer.toGeoJSON().geometry）
+     * @param {string} layerId     - current vector layer ID
+     * @param {string} featureId   - newly created feature ID
+     * @param {Object} geometry    - GeoJSON Geometry（from layer.toGeoJSON().geometry）
      * @returns {Promise<void>}
      */
     async run(layerId, featureId, geometry, properties = {}) {
-    console.log('[DEBUG] AreaAutoFill.run 已进入', layerId, featureId, geometry);
+    console.log('[DEBUG] AreaAutoFill.run entered', layerId, featureId, geometry);
     try {
         let areaKm2 = 0;
 
@@ -220,9 +220,9 @@ export const AreaAutoFill = {
             areaKm2 = computeSphericalAreaKm2(geometry);
         }
 
-        // 非面类型（普通点、线）直接跳过
+        // non-polygon type（normal points and lines）skip directly
         if (areaKm2 === 0) {
-            console.log('[AreaAutoFill] 非面类型要素，跳过面积写入');
+            console.log('[AreaAutoFill] non-polygon feature; skipping area write');
             return;
         }
 
@@ -231,10 +231,10 @@ export const AreaAutoFill = {
         await ensureAreaField(layerId);
         await writeAreaToFeature(featureId, areaRounded);
 
-        console.log(`[AreaAutoFill] 面积写入成功 → featureId=${featureId}, area=${areaRounded} km²`);
+        console.log(`[AreaAutoFill] area write succeeded → featureId=${featureId}, area=${areaRounded} km²`);
 
     } catch (err) {
-        console.warn('[AreaAutoFill] 面积自动填充失败（不影响要素保存）:', err);
+        console.warn('[AreaAutoFill] area autofill failed; feature save is unaffected:', err);
     }
 }
 };

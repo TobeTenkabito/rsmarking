@@ -18,7 +18,7 @@ export class GlobalEvents {
     }
 
     bindDOMDelegation() {
-    // 栅格列表委托点击
+    // English
     const listContainer = document.getElementById('raster-list');
     listContainer?.addEventListener('click', async (e) => {
         const item = e.target.closest('[data-id]');
@@ -37,7 +37,7 @@ export class GlobalEvents {
     });
     this.bindLayerDragAndDrop(listContainer);
 
-    // 上传文件监听
+    // English
     document.getElementById('raster-upload-input')?.addEventListener('change', async (e) => {
         const files = Array.from(e.target.files || []);
         if (files.length === 0) return;
@@ -57,7 +57,7 @@ export class GlobalEvents {
         this.app.ui.showGlobalLoader(false);
         e.target.value = "";
         if (results.failed.length === 0) {
-            console.info(`全部上传成功 (${results.success.length} 个)`);
+            console.info(`All uploads succeeded (${results.success.length})`);
         } else {
             const failMsg = results.failed.map(f => `• ${f.name}: ${f.error}`).join('\n');
             alert(t('upload.summary.partial', {
@@ -68,12 +68,12 @@ export class GlobalEvents {
         }
     });
 
-    // 导入 Shapefile 监听
+    // Import Shapefile English
     document.getElementById('shapefile-upload-input')?.addEventListener('change', async (e) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
-        // 校验必要文件
+        // English
         const names = Array.from(files).map(f => f.name.toLowerCase());
         const required = ['.shp', '.shx', '.dbf'];
         const missing = required.filter(ext => !names.some(n => n.endsWith(ext)));
@@ -83,7 +83,7 @@ export class GlobalEvents {
             return;
         }
 
-        // 此处存的是 projectId
+        // English projectId
         const projectId = document.getElementById('shapefile-upload-input').dataset.layerId;
         if (!projectId) {
             alert(t('upload.alert.selectProjectFirst'));
@@ -91,7 +91,7 @@ export class GlobalEvents {
             return;
         }
 
-        // 用 .shp 文件名（去掉扩展名）作为图层名
+        // English .shp File Name（English）English
         const shpFile = Array.from(files).find(f => f.name.toLowerCase().endsWith('.shp'));
         const layerName = shpFile ? shpFile.name.replace(/\.[^.]+$/, '') : 'imported_layer';
 
@@ -110,7 +110,7 @@ export class GlobalEvents {
             if (attrTable?.layerId === newLayer.id) {
                 await attrTable.refresh();}
         } catch (err) {
-            alert(`导入失败: ${err.message}`);
+            alert(`Import failed: ${err.message}`);
         }});
 }
 
@@ -264,14 +264,14 @@ export class GlobalEvents {
                 this.app.mapController.renderVectorData(Store.state.currentFeatures);
             }
         });
-        // 脚本编辑器快捷键
+        // English
         document.addEventListener('keydown', (e) => {
-            // Ctrl/Cmd + E 打开脚本编辑器
+            // Ctrl/Cmd + E English
             if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
                 e.preventDefault();
                 this.app.script?.openScriptEditor();
             }
-            // 在脚本编辑器中，Ctrl/Cmd + Enter 执行脚本
+            // English，Ctrl/Cmd + Enter Run Script
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 const modal = document.getElementById('script-modal');
                 if (modal && !modal.classList.contains('hidden')) {
@@ -285,13 +285,13 @@ export class GlobalEvents {
     bindMapEvents() {
         if (this.app.mapEngine && this.app.mapEngine.map) {
             this.app.mapEngine.map.on('click', async (e) => {
-                // 光譜模式優先攔截
+                // English
                 if (Store.state.spectrumMode) {
                     const { lng, lat } = e.latlng;
                     await this.app.analysis.querySpectrumAt(lng, lat);
-                    return; // 阻止後續邏輯
+                    return; // Stop later logic
                 }
-                // 原有邏輯：取消要素選中
+                // English：CancelEnglish
                 if (Store.state.selectedFeatureId) {
                     Store.setSelectedFeatureId(null);
                     const delBtn = document.getElementById('btn-delete-feature');

@@ -23,7 +23,7 @@ export class ProjectModule {
             const projects = await VectorAPI.fetchProjects();
             Store.setProjects(projects);
         } catch (err) {
-            console.error("[ProjectModule] 矢量项目加载失败:", err);
+            console.error("[ProjectModule] Vector project load failed:", err);
         }
     }
 
@@ -35,7 +35,7 @@ export class ProjectModule {
             await VectorAPI.createProject(name);
             await this.refreshProjects();
         } catch (e) {
-            alert(`创建项目失败: ${e.message}`);
+            alert(`Project creation failed: ${e.message}`);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -55,8 +55,8 @@ export class ProjectModule {
             const layers = await VectorAPI.fetchLayers(proj.id);
             Store.setVectorLayers(layers);
         } catch (e) {
-            console.error("[ProjectModule] 加载矢量图层失败:", e);
-            alert(`加载矢量图层失败: ${e.message}`);
+            console.error("[ProjectModule] Vector layer load failed:", e);
+            alert(`Vector layer load failed: ${e.message}`);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -79,7 +79,7 @@ export class ProjectModule {
             await VectorAPI.createLayer(activeProj.id, name, sourceRasterId);
             await this.handleSelectProject(activeProj.id);
         } catch (e) {
-            alert(`创建图层失败: ${e.message}`);
+            alert(`Layer creation failed: ${e.message}`);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
@@ -89,7 +89,7 @@ export class ProjectModule {
         if (this.app.mapController && typeof this.app.mapController.toggleVectorLayer === 'function') {
             this.app.mapController.toggleVectorLayer(layerId);
         } else {
-            console.warn("[ProjectModule] MapController.toggleVectorLayer 方法未找到");
+            console.warn("[ProjectModule] MapController.toggleVectorLayer method was not found");
         }
     }
 
@@ -129,7 +129,7 @@ export class ProjectModule {
                     await this.app.mapController.refreshVectorLayer(Store.state.activeVectorLayerId);
                 }
             } catch (err) {
-                console.error('删除失败', err);
+                console.error('Delete failed', err);
                 alert(t('project.alert.deleteFailed'));
             }
         }
@@ -151,14 +151,14 @@ export class ProjectModule {
                 const delBtn = document.getElementById('btn-delete-feature');
                 if (delBtn) delBtn.classList.add('hidden');
             } catch (err) {
-                console.error('删除失败', err);
+                console.error('Delete failed', err);
                 alert(t('project.alert.deleteFailed'));
             }
         }
     }
 
     /**
-     * 【调试/管理】删除所有项目并重置 UI 状态
+     * 【Debug/admin】delete all projects and reset UI state
      */
     async handleDeleteAllProjects({ confirmUser = true, refresh = true, showLoader = true } = {}) {
         if (confirmUser && !confirm(t('project.confirm.deleteAll'))) return false;
@@ -171,9 +171,9 @@ export class ProjectModule {
             if (confirmUser) alert(t('project.alert.allCleared'));
             return true;
         } catch (e) {
-            console.error("[ProjectModule] 清空项目失败:", e);
+            console.error("[ProjectModule] Clear projects failed:", e);
             if (confirmUser) {
-                alert(`清空项目失败: ${e.message}`);
+                alert(`Clear projects failed: ${e.message}`);
                 return false;
             }
             throw e;

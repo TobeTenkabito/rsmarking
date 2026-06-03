@@ -17,16 +17,16 @@ export class ScriptModule {
     }
 
     /**
-     * 打开脚本编辑器弹窗
+     * Open script editor modal
      */
     openScriptEditor() {
         const modal = document.getElementById('script-modal');
         if (!modal) {
-            console.error('[ScriptModule] 脚本编辑器弹窗未找到');
+            console.error('[ScriptModule] Script editor modal not found');
             return;
         }
 
-        // 渲染内容
+        // Render content
         const content = document.getElementById('script-content');
         content.innerHTML = ModalComponent.renderScriptEditor(
             Store.getRasters(),
@@ -35,35 +35,35 @@ export class ScriptModule {
         );
         applyTranslations(content);
 
-        // 显示弹窗
+        // Show modal
         modal.classList.remove('hidden');
 
-        // 绑定编辑器事件
+        // Bind editor events
         this.bindEditorEvents();
 
-        // 加载模板选择器
+        // Load template selector
         this.loadTemplates();
 
-        // 初始化代码高亮（如果有）
+        // Initialize code highlighting（if available）
         this.initializeCodeHighlight();
     }
 
     /**
-     * 关闭脚本编辑器
+     * Close script editor
      */
     closeScriptEditor() {
         const modal = document.getElementById('script-modal');
         modal?.classList.add('hidden');
 
-        // 保存当前脚本到草稿
+        // Save current script to draft
         this.saveDraft();
     }
 
     /**
-     * 绑定编辑器事件
+     * Bind editor events
      */
     bindEditorEvents() {
-        // 脚本内容变化
+        // Script content changed
         const editor = document.getElementById('script-editor-textarea');
         if (editor) {
             editor.addEventListener('input', (e) => {
@@ -71,7 +71,7 @@ export class ScriptModule {
                 this.scheduleScriptValidation();
             });
 
-            // Tab键支持
+            // Tabkey support
             editor.addEventListener('keydown', (e) => {
                 if (e.key === 'Tab') {
                     e.preventDefault();
@@ -85,7 +85,7 @@ export class ScriptModule {
             });
         }
 
-        // 栅格选择变化
+        // Raster selection changed
         const rasterCheckboxes = document.querySelectorAll('.script-raster-checkbox');
         rasterCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
@@ -101,7 +101,7 @@ export class ScriptModule {
             });
         });
 
-        // 输出文件名
+        // Output File Name
         const outputInput = document.getElementById('script-output-name');
         if (outputInput) {
             outputInput.addEventListener('input', (e) => {
@@ -111,14 +111,14 @@ export class ScriptModule {
     }
 
     /**
-     * Base64 编码（支持 Unicode）
+     * Base64 encode with Unicode support
      */
     encodeBase64(str) {
         return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
             return String.fromCharCode(parseInt(p1, 16));}));}
 
     /**
-     * Base64 解码（支持 Unicode）
+     * Base64 decode with Unicode support
      */
     decodeBase64(str) {
         return decodeURIComponent(atob(str).split('').map(c => {
@@ -127,7 +127,7 @@ export class ScriptModule {
     }
 
     /**
-     * 加载脚本模板
+     * Load script templates
      */
     async loadTemplates() {
         try {
@@ -135,9 +135,9 @@ export class ScriptModule {
             const selector = document.getElementById('script-template-selector');
 
             if (selector && templates) {
-                selector.innerHTML = '<option value="">-- 选择模板 --</option>' +
+                selector.innerHTML = '<option value="">-- Select Template --</option>' +
                     templates.map(t => {
-                        // 使用支持 Unicode 的 Base64 编码
+                        // Use Unicode-safe Base64 encoding
                         const encodedCode = this.encodeBase64(t.code);
                         return `<option value="${encodedCode}">${t.name} - ${t.description}</option>`;
                     }).join('');
@@ -153,17 +153,17 @@ export class ScriptModule {
                 });
             }
         } catch (error) {
-            console.error('[ScriptModule] 加载模板失败:', error);
+            console.error('[ScriptModule] Template load failed:', error);
         }
     }
 
     /**
-     * 执行脚本
+     * Run Script
      */
     async executeScript() {
         if (this.isExecuting) return;
 
-        // 验证输入
+        // Validate input
         if (!this.currentScript.trim()) {
             alert(t('script.validation.empty'));
             return;
@@ -183,10 +183,10 @@ export class ScriptModule {
         this.updateExecutionUI(true);
 
         try {
-            // 显示进度
+            // Show progress
             this.app.ui.showGlobalLoading(t('script.validation.running'));
 
-            // 调用API
+            // Call API
             const result = await RasterAPI.executeScript(
                 this.currentScript,
                 this.selectedRasterIds,
@@ -196,20 +196,20 @@ export class ScriptModule {
             if (result?.status === 'success') {
                 this.app.ui.showToast(t('script.toast.success'), 'success');
 
-                // 显示执行日志（如果有）
-                // 保存到历史
+                // Show execution logs（if available）
+                // Save to history
                 this.saveToHistory();
 
-                // 刷新数据
+                // Refresh data
                 await this.app.raster.refreshData();
 
-                // 关闭弹窗
+                // Close modal
                 this.closeScriptEditor();
             } else {
-                throw new Error(result?.error || result?.message || '脚本执行失败');
+                throw new Error(result?.error || result?.message || 'Script execution failed');
             }
         } catch (error) {
-            console.error('[ScriptModule] 执行失败:', error);
+            console.error('[ScriptModule] Execution failed:', error);
             this.app.ui.showToast(t('script.toast.failed', { message: error.message }), 'error');
         } finally {
             this.isExecuting = false;
@@ -219,7 +219,7 @@ export class ScriptModule {
     }
 
     /**
-     * 更新执行UI状态
+     * Update execution UI state
      */
     updateExecutionUI(isExecuting) {
         const executeBtn = document.getElementById('script-execute-btn');
@@ -244,7 +244,7 @@ export class ScriptModule {
     }
 
     /**
-     * 验证脚本语法
+     * Validate script syntax
      */
     updateScriptValidation() {
         const validationDiv = document.getElementById('script-validation');
@@ -257,27 +257,27 @@ export class ScriptModule {
             return;
         }
 
-        // 基础语法检查
+        // Basic syntax check
         const issues = [];
 
-        // 检查危险关键字
+        // Check dangerous keywords
         const dangerous = ['__import__', 'exec', 'eval', 'compile', '__builtins__'];
         dangerous.forEach(keyword => {
             if (script.includes(keyword)) {
-                issues.push(`包含禁止的关键字: ${keyword}`);
+                issues.push(`Contains blocked keyword: ${keyword}`);
             }
         });
 
-        // 检查必要的导入
+        // Check required imports
         if (!script.includes('import rasterio') && !script.includes('from rasterio')) {
-            issues.push('建议导入 rasterio 库处理栅格数据');
+            issues.push('Consider importing rasterio for raster processing');
         }
 
-        // 显示验证结果
+        // Show validation result
         if (issues.length > 0) {
             validationDiv.innerHTML = `
                 <div class="text-amber-600 text-xs">
-                    <div class="font-bold mb-1">⚠️ 警告:</div>
+                    <div class="font-bold mb-1">⚠️ Warning:</div>
                     ${issues.map(i => `<div>• ${i}</div>`).join('')}
                 </div>
             `;
@@ -287,17 +287,17 @@ export class ScriptModule {
     }
 
     /**
-     * 更新选中数量显示
+     * Update selected-count display
      */
     updateSelectedCount() {
         const countDiv = document.getElementById('script-selected-count');
         if (countDiv) {
-            countDiv.textContent = `已选择 ${this.selectedRasterIds.length} 个影像`;
+            countDiv.textContent = `Selected ${this.selectedRasterIds.length} imagery items`;
         }
     }
 
     /**
-     * 保存草稿
+     * Save draft
      */
     saveDraft() {
         if (this.currentScript.trim()) {
@@ -311,14 +311,14 @@ export class ScriptModule {
     }
 
     /**
-     * 加载草稿
+     * Load draft
      */
     loadDraft() {
         try {
             const draft = localStorage.getItem('rsmarking_script_draft');
             if (draft) {
                 const data = JSON.parse(draft);
-                // 只加载24小时内的草稿
+                // Only load drafts from the last 24 hours
                 if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
                     this.currentScript = data.script || '';
                     this.selectedRasterIds = data.rasterIds || [];
@@ -327,13 +327,13 @@ export class ScriptModule {
                 }
             }
         } catch (e) {
-            console.error('[ScriptModule] 加载草稿失败:', e);
+            console.error('[ScriptModule] Draft load failed:', e);
         }
         return false;
     }
 
     /**
-     * 保存到历史记录
+     * EnglishHistory
      */
     saveToHistory() {
         const history = {
@@ -345,14 +345,14 @@ export class ScriptModule {
         };
 
         this.scriptHistory.unshift(history);
-        // 只保留最近20条
+        // Keep only the latest 20 entries
         this.scriptHistory = this.scriptHistory.slice(0, 20);
 
         localStorage.setItem('rsmarking_script_history', JSON.stringify(this.scriptHistory));
     }
 
     /**
-     * 加载历史记录
+     * EnglishHistory
      */
     loadScriptHistory() {
         try {
@@ -364,7 +364,7 @@ export class ScriptModule {
     }
 
     /**
-     * 显示历史记录
+     * EnglishHistory
      */
     async _getTemplates() {
         if (this._templateCache) return this._templateCache;
@@ -399,7 +399,7 @@ export class ScriptModule {
     }
 
     /**
-     * 从历史加载脚本
+     * Load script from history
      */
     loadFromHistory(historyId) {
         const history = this.scriptHistory.find(h => h.id === historyId);
@@ -408,7 +408,7 @@ export class ScriptModule {
             this.selectedRasterIds = history.rasterIds;
             this.outputName = history.outputName;
 
-            // 更新UI
+            // Update UI
             const editor = document.getElementById('script-editor-textarea');
             if (editor) editor.value = this.currentScript;
 
@@ -421,17 +421,17 @@ export class ScriptModule {
     }
 
     /**
-     * 初始化代码高亮
+     * Initialize code highlighting
      */
     initializeCodeHighlight() {
-        // 如果引入了代码高亮库（如Prism.js或highlight.js），在这里初始化
+        // If a code highlighting library is included（such asPrism.jsEnglishhighlight.js），initialize it here
         if (window.Prism) {
             Prism.highlightAll();
         }
     }
 
     /**
-     * 清空编辑器
+     * Clear Editor
      */
     clearEditor() {
         this.currentScript = '';

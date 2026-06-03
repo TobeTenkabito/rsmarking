@@ -3,7 +3,7 @@ import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { Store } from '../store/index.js';
 
 /**
- * AnalysisModule - 负责光谱指数计算逻辑
+ * AnalysisModule - EnglishIndex CalculationEnglish
  */
 export class AnalysisModule {
     constructor(app) {
@@ -13,11 +13,11 @@ export class AnalysisModule {
         this._spectrumPanelBound = false;
     }
     /**
-     * 打开计算弹窗并动态生成波段选择器
+     * EnglishbandsEnglish
      */
     openModal(type) {
         if (Store.state.rasters.length === 0) {
-            alert("工作站暂无影像，请先上传数据");
+            alert("No imagery in the workspace. Upload data first.");
             return;
         }
         this.currentType = type;
@@ -41,7 +41,7 @@ export class AnalysisModule {
         const b1 = document.getElementById('index-b1-select').value;
         const b2 = document.getElementById('index-b2-select').value;
         const name = document.getElementById('index-name-input').value;
-        if (!name) return alert("请输入结果图层名称");
+        if (!name) return alert("Enter a result layer name.");
         this.app.ui.showGlobalLoader(true);
         try {
             let result;
@@ -54,35 +54,35 @@ export class AnalysisModule {
             this.closeModal();
             await this.app.raster.refreshData();
         } catch (e) {
-            alert(`空间运算失败: ${e.message}`);
+            alert(`Spatial operation failed: ${e.message}`);
         } finally {
             this.app.ui.showGlobalLoader(false);
         }
     }
 
     /**
-    * 切換光譜拾取模式
-    * @param {string|number} rasterId - 影像 index_id
+    * English
+    * @param {string|number} rasterId - English index_id
     */
     toggleSpectrumMode(rasterId) {
     const isActive = Store.state.spectrumMode &&
                      Store.state.spectrumRasterId == rasterId;
 
     if (isActive) {
-        // 再次點擊同一影像 → 退出模式
+        // English → ExitEnglish
         Store.setSpectrumMode(false);
         this._closeSpectrumPanel();
         document.getElementById('map').style.cursor = '';
     } else {
-        // 進入模式：綁定到指定影像
+        // English：English
         Store.setSpectrumMode(true, rasterId);
         document.getElementById('map').style.cursor = 'crosshair';
-        this._showSpectrumPanel(null); // 顯示空面板，等待點擊
+        this._showSpectrumPanel(null); // Show an empty panel while waiting for a click
     }
 }
 
     /**
-    * 執行光譜查詢（由 GlobalEvents 地圖點擊觸發）
+    * English（English GlobalEvents English）
     * @param {number} lng
     * @param {number} lat
     */
@@ -94,23 +94,23 @@ export class AnalysisModule {
     try {
         const result = await RasterAPI.querySpectrum(rasterId, lng, lat);
         if (requestSeq !== this._spectrumRequestSeq) return;
-        if (!result) throw new Error("查詢返回空結果");
+        if (!result) throw new Error("Query returned an empty result");
         Store.setSpectrumResult(result);
         this._showSpectrumPanel(result);
     } catch (e) {
         if (requestSeq !== this._spectrumRequestSeq) return;
-        console.error("[AnalysisModule] 光譜查詢失敗:", e);
+        console.error("[AnalysisModule] Spectrum query failed:", e);
         this._showSpectrumPanel(null, e.message);
     }
 }
 
     /**
-    * 渲染光譜面板（純 DOM 操作，不依賴 Modal）
+    * English（English DOM Actions，English Modal）
     */
     _showSpectrumPanel(result, errorMsg = null) {
     let panel = document.getElementById('spectrum-panel');
 
-    // 首次創建面板
+    // English
     if (!panel) {
         panel = document.createElement('div');
         panel.id = 'spectrum-panel';
@@ -134,11 +134,11 @@ export class AnalysisModule {
         });
     }
 
-    // 錯誤狀態
+    // English
     if (errorMsg) {
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                <span style="font-weight:600;color:#f87171">⚠ 光譜查詢</span>
+                <span style="font-weight:600;color:#f87171">⚠ Spectrum Query</span>
                 <button data-spectrum-close="true"
                     style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
             </div>
@@ -146,21 +146,21 @@ export class AnalysisModule {
         return;
     }
 
-    // 等待點擊狀態
+    // waitEnglish
     if (!result) {
         panel.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <span style="font-weight:600;color:#a78bfa">📈 光譜查詢</span>
+                <span style="font-weight:600;color:#a78bfa">📈 Spectrum Query</span>
                 <button id="spectrum-close-btn" data-spectrum-close="true"
                     style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
             </div>
             <p style="color:#94a3b8;margin:0;text-align:center;padding:12px 0">
-                點擊地圖上任意像素查看光譜
+                Click any map pixel to inspect the spectrum
             </p>`;
         return;
     }
 
-    // 有結果狀態：渲染波段條形圖
+    // English：EnglishbandsEnglish
     const { bands, coordinate } = result;
     const values = bands.map(b => b.value ?? 0);
     const maxVal = Math.max(...values, 1);
@@ -187,7 +187,7 @@ export class AnalysisModule {
 
     panel.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <span style="font-weight:600;color:#a78bfa">📈 光譜</span>
+            <span style="font-weight:600;color:#a78bfa">📈 Spectrum</span>
             <button id="spectrum-close-btn" data-spectrum-close="true"
                 style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
         </div>

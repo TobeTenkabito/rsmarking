@@ -1,19 +1,19 @@
 """
-任务状态回写器（最终版）
+task status writeback helper(final version)
 ─────────────────────────────────────────────────────────────────────────────
-职责：
-  1. Redis  双写 —— 供前端快速轮询进度
-  2. task_jobs 表 —— 持久化任务生命周期，供管理后台审计
-  3. update_cog_path —— 预处理完成后回写 raster_metadata.cog_path
+responsibilities:
+  1. Redis  dual write - for fast frontend progress polling
+  2. task_jobs table - persist task lifecycle,for admin audit
+  3. update_cog_path - write back after preprocessing raster_metadata.cog_path
 
-对外暴露的函数：
-  set_task_status(task_id, status, progress, message, result)  ← BaseRasterTask 钩子用
-  get_task_status(task_id) -> dict | None                      ← 路由查询用
-  report_running(job_id, celery_task_id)                       ← 任务启动时
-  report_success(job_id, result_payload)                       ← 任务成功时
-  report_failure(job_id, error_msg)                            ← 任务失败时
-  report_retry(job_id, reason, retry_count)                    ← 任务重试时
-  update_cog_path(index_id, cog_path)                          ← 预处理完成后回写
+public functions:
+  set_task_status(task_id, status, progress, message, result)  <- BaseRasterTask hook use
+  get_task_status(task_id) -> dict | None                      <- route query use
+  report_running(job_id, celery_task_id)                       <- when task starts
+  report_success(job_id, result_payload)                       <- when task succeeds
+  report_failure(job_id, error_msg)                            <- when task fails
+  report_retry(job_id, reason, retry_count)                    <- when task retries
+  update_cog_path(index_id, cog_path)                          <- write back after preprocessing
 """
 import json
 import logging
@@ -40,8 +40,8 @@ def set_task_status(
     result: dict | None = None,
 ) -> None:
     """
-    写入 Redis，前端通过 GET /tasks/{task_id}/status 轮询。
-    Redis 不可用时仅记录警告，不阻断任务执行。
+    write Redis,through GET /tasks/{task_id}/status polling.
+    Redis only log a warning when unavailable,do not block task execution.
     """
     bounded_progress = max(0, min(100, int(progress)))
     payload = {
@@ -60,7 +60,7 @@ def set_task_status(
 
 
 def get_task_status(task_id: str) -> dict | None:
-    """从 Redis 读取任务状态，供路由层查询"""
+    """from Redis read task status,for route layer queries"""
     key = f"{_TASK_KEY_PREFIX}{task_id}"
     try:
         raw = _redis_client.get(key)
@@ -71,7 +71,7 @@ def get_task_status(task_id: str) -> dict | None:
 
 
 def report_running(job_id: str, celery_task_id: str) -> None:
-    """任务开始执行：写 RUNNING 状态 + 记录 celery_task_id 和启动时间"""
+    """taskstarts running:text RUNNING text + record celery_task_id start time"""
     _update_job(
         job_id,
         status="running",
@@ -81,7 +81,7 @@ def report_running(job_id: str, celery_task_id: str) -> None:
 
 
 def report_success(job_id: str, result_payload: dict[str, Any] | None = None) -> None:
-    """任务成功：写 SUCCESS + 结果元数据 + 完成时间"""
+    """task:text SUCCESS + result metadata + completion time"""
     _update_job(
         job_id,
         status="success",
@@ -91,7 +91,7 @@ def report_success(job_id: str, result_payload: dict[str, Any] | None = None) ->
 
 
 def report_failure(job_id: str, error_msg: str) -> None:
-    """任务失败：写 FAILED + 错误信息 + 完成时间"""
+    """task:text FAILED + error message + completion time"""
     _update_job(
         job_id,
         status="failed",
@@ -101,7 +101,7 @@ def report_failure(job_id: str, error_msg: str) -> None:
 
 
 def report_retry(job_id: str, reason: str, retry_count: int) -> None:
-    """任务重试：写 RETRYING + 原因 + 重试次数"""
+    """task:text RETRYING + reason + retry count"""
     _update_job(
         job_id,
         status="retrying",
@@ -112,10 +112,10 @@ def report_retry(job_id: str, reason: str, retry_count: int) -> None:
 
 def _update_job(job_id: str, status: str, **kwargs) -> None:
     """
-    通用 task_jobs 行更新。
-    写失败不抛异常，仅记录日志，保证主任务不受影响。
+    generic task_jobs row update.
+    do not raise on write failure,only log,ensure main task is unaffected.
     """
-    # 延迟导入，避免 Worker 启动时循环依赖
+    # deferred import,avoid Worker startup circular dependency
     from worker_cluster.models import TaskJob
 
     try:
@@ -127,7 +127,7 @@ def _update_job(job_id: str, status: str, **kwargs) -> None:
             )
             if job is None:
                 logger.warning(
-                    f"[StatusReporter] job_id={job_id} 不存在于 task_jobs，跳过持久化"
+                    f"[StatusReporter] job_id={job_id} does not exist in task_jobs; skipping persistence"
                 )
                 return
             job.status = status
@@ -136,19 +136,19 @@ def _update_job(job_id: str, status: str, **kwargs) -> None:
                     setattr(job, key, val)
     except Exception as e:
         logger.error(
-            f"[StatusReporter] task_jobs 回写失败 job_id={job_id}: {e}"
+            f"[StatusReporter] task_jobs writeback failed job_id={job_id}: {e}"
         )
 
 
 def update_cog_path(index_id: int, cog_path: str) -> None:
     """
-    COG 转换完成后，将 cog_path 写回 raster_metadata 表。
+    After COG conversion completes, write cog_path back to the raster_metadata table.
 
     Args:
-        index_id : RasterMetadata.index_id（雪花 ID）
-        cog_path : 生成的 COG 文件绝对路径
+        index_id : RasterMetadata.index_id(text ID)
+        cog_path : text COG path
     Raises:
-        RuntimeError: 找不到对应记录时抛出，触发任务重试
+        RuntimeError: Raise when the matching record is not found so the task retries.
     """
     from services.data_service.models import RasterMetadata
 
@@ -160,17 +160,17 @@ def update_cog_path(index_id: int, cog_path: str) -> None:
                 .first()
             )
             if row is None:
-                # 找不到记录是严重错误，应触发任务重试
+                # record,triggertask
                 raise RuntimeError(
                     f"RasterMetadata not found: index_id={index_id}"
                 )
             row.cog_path = cog_path
             logger.info(
                 f"[StatusReporter] cog_path updated: "
-                f"index_id={index_id} → {cog_path}"
+                f"index_id={index_id} -> {cog_path}"
             )
     except RuntimeError:
-        raise   # 向上传播，让 build_cog_task 触发 retry
+        raise   # propagate upward,let build_cog_task trigger retry
     except Exception as e:
         logger.error(
             f"[StatusReporter] update_cog_path failed index_id={index_id}: {e}"

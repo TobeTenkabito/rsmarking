@@ -25,7 +25,7 @@ async def list_raster_fields(
         raster_id: int,
         db: AsyncSession = Depends(get_db)
 ):
-    """获取某栅格的全部业务字段"""
+    """Get all business fields for a raster"""
     crud = RasterFieldCRUD(db)
     return await crud.get_by_raster(raster_id)
 
@@ -40,7 +40,7 @@ async def create_raster_field(
         field_in: RasterFieldCreate,
         db: AsyncSession = Depends(get_db)
 ):
-    """新增业务字段"""
+    """Add a business field"""
     crud = RasterFieldCRUD(db)
     try:
         return await crud.create(raster_id, field_in)
@@ -59,11 +59,11 @@ async def update_raster_field(
         field_in: RasterFieldUpdate,
         db: AsyncSession = Depends(get_db)
 ):
-    """修改字段别名、类型、排序等"""
+    """Update field alias, type, order, and related settings"""
     crud = RasterFieldCRUD(db)
     updated = await crud.update(field_id, field_in)
     if not updated:
-        raise HTTPException(status_code=404, detail="字段不存在")
+        raise HTTPException(status_code=404, detail="Field not found")
     return updated
 
 
@@ -77,11 +77,11 @@ async def delete_raster_field(
         field_id: int,
         db: AsyncSession = Depends(get_db)
 ):
-    """删除非系统字段"""
+    """Delete a non-system field"""
     crud = RasterFieldCRUD(db)
     try:
         if not await crud.delete(field_id):
-            raise HTTPException(status_code=404, detail="字段不存在")
+            raise HTTPException(status_code=404, detail="Field not found")
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
     return None

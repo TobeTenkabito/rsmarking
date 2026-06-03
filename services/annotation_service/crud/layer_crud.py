@@ -25,7 +25,7 @@ class LayerCRUD:
     # --- Layer Operations ---
     async def create_layer(self, project_id: UUID, name: str, source_index_id: Optional[int] = None) -> Layer:
         """
-        创建图层，并可选地关联一个遥感影像 index_id
+        create layer,and optionally link remote-sensing imagery index_id
         """
         layer = Layer(
             project_id=project_id,
@@ -47,9 +47,9 @@ class LayerCRUD:
 
     async def delete_all_projects(self):
         """
-        清空所有项目及其关联数据
-        显式按依赖顺序删除，避免旧数据库约束缺少 ON DELETE CASCADE 时
-        遗留 layer_fields / features / layers。
+        clear all projects and related data
+        delete explicitly in dependency order,avoid old database constraints missing ON DELETE CASCADE when
+        leaving layer_fields / features / layers.
         """
         field_result = await self.db.execute(delete(LayerField))
         feature_result = await self.db.execute(delete(Feature))
@@ -65,8 +65,8 @@ class LayerCRUD:
 
     async def update_layer(self, layer_id: UUID, update_dict: dict) -> Optional[Layer]:
         """
-        更新矢量图层元数据（仅更新传入的字段）
-        用于 AI Modify 模式的"覆盖"分支
+        update vector layer metadata(only update provided fields)
+        used for AI Modify text"overwrite"branch
         """
         result = await self.db.execute(select(Layer).where(Layer.id == layer_id))
         layer = result.scalar_one_or_none()

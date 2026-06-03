@@ -1,7 +1,7 @@
 ├── /services/executor_service
-│   ├── main.py            # 执行服务的 API 入口 (FastAPI)
-│   ├── runner.py          # Docker 管理逻辑 (容器启动、监控、销毁)
-│   ├── /runtime           # 运行环境定义
-│   │   ├── python_base.Dockerfile  # 预装常用库的镜像
-│   │   └── sandbox_entry.py        # 容器内的引导程序，负责加载用户代码
-│   └── config.py          # 存储路径配置 (共享 /storage)
+│   ├── main.py            # text API text (FastAPI)
+│   ├── runner.py          # Docker text (text,text,text)
+│   ├── /runtime           # text
+│   │   ├── python_base.Dockerfile  # text
+│   │   └── sandbox_entry.py        # text,text
+│   └── config.py          # storage path (text /storage)

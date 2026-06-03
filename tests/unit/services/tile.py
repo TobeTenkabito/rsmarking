@@ -2,7 +2,7 @@ import pytest
 
 
 def debug_routes(client):
-    """辅助函数：打印当前客户端注册的所有路由，用于排查 404"""
+    """Helper function:print all routes registered on the current client,for debugging 404"""
     print("\n[Debug] Registered Routes:")
     for route in client.app.routes:
         print(f"  - {route.path} [{route.methods}]")
@@ -10,20 +10,20 @@ def debug_routes(client):
 
 def test_tile_service_health(client):
     """
-    测试瓦片服务的健康检查接口。
+    Test the tile service health endpoint.
     """
-    # 诊断：如果怀疑没挂载成功，取消下面这行的注释查看路由表
+    # Diagnostic:if mounting may have failed,uncomment the next line to inspect the route table
     debug_routes(client)
 
-    # 尝试访问挂载路径
+    # try the mounted path
     response = client.get("/tile/health")
 
-    # 容错处理：如果 404，可能是因为在 conftest 中 prefix 重复或缺失
+    # Fallback handling:if 404,may be becausetext conftest text prefix is duplicated or missing
     if response.status_code == 404:
-        # 尝试根路径
+        # try root path
         response = client.get("/health")
 
-    assert response.status_code == 200, f"路由未找到，当前可用路由请查看 debug_routes 输出"
+    assert response.status_code == 200, f"Route not found,see current available routes in debug_routes output"
     data = response.json()
     assert data.get("status") == "ready"
     assert data.get("service") == "tile_service"
@@ -31,10 +31,10 @@ def test_tile_service_health(client):
 
 def test_get_tile_invalid_coord(client):
     """
-    测试非法瓦片坐标请求。
+    Test invalid tile coordinate requests.
     """
     response = client.get("/tile/v1/99/99/99.png")
-    # 如果 404 可能是 prefix 导致的，也尝试不带 prefix
+    # if 404 text prefix text,also try without prefix
     if response.status_code == 404:
         response = client.get("/v1/99/99/99.png")
 
@@ -43,8 +43,8 @@ def test_get_tile_invalid_coord(client):
 
 def test_tile_service_cors_headers(client):
     """
-    验证 CORS 头部。
-    注意：若路由 404，FastAPI 中间件可能不会附加 CORS 头部。
+    Verify CORS headers.
+    Note:if the route 404,FastAPI middleware may not attach CORS headers.
     """
     target_path = "/tile/health"
     res_check = client.get(target_path)
@@ -57,14 +57,14 @@ def test_tile_service_cors_headers(client):
     })
 
     origin = response.headers.get("access-control-allow-origin")
-    # 如果依然为 None，说明 CORSMiddleware 没有被 master_app 加载
-    assert origin is not None, "CORS 头部缺失，请检查 master_app 是否添加了中间件"
+    # if it is still None,means CORSMiddleware was not master_app loaded
+    assert origin is not None, "CORS headersmissing,check master_app whether middleware was added"
     assert origin in ["*", "http://localhost:3000"]
 
 
 def test_tile_not_found_error_format(client):
     """
-    验证错误响应是否为标准的 JSON 格式。
+    Verifywhether error responses use standard JSON format.
     """
     response = client.get("/tile/non_existent_path_really_random")
     assert response.status_code == 404

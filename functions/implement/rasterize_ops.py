@@ -19,29 +19,29 @@ def vector_to_raster(
         nodata: int = 0
 ) -> str:
     """
-    将矢量要素转换为栅格文件 (TIFF)
+    convert vector features to a raster file (TIFF)
 
-    工业级优化：
-    1. 支持生成器惰性求值，防止千万级矢量导致 OOM
-    2. 兼容 Shapely 对象与 GeoJSON 字典
-    3. 支持动态烧录值读取
+    optimize:
+    1. supportslazy generator evaluation,preventmassive vector data causing OOM
+    2. compatible with Shapely objects and GeoJSON dictionaries
+    3. supportsdynamic burn value reading
     """
 
-    # 1. 使用生成器 (Generator) 替代列表推导式
-    # 空间复杂度从 O(N) 降低至 O(1)
+    # 1. uses (Generator) table
+    # space complexityfrom O(N) reduced to O(1)
     def shape_generator() -> Generator[Tuple[BaseGeometry, int], None, None]:
         for f in features:
             geom = f['geometry']
 
-            # 兼容性兜底：如果在外部没有被转化为 shapely 对象，则在此转换
+            # compatibility fallback:if not converted externally to shapely object,convert it here
             if not isinstance(geom, BaseGeometry):
                 geom = shape(geom)
 
-            # 读取外部计算好的烧录值 (burn value)，如果不存在则默认 1
+            # read externally calculated burn value (burn value),default if absent 1
             val = f.get('value', 1)
             yield (geom, val)
 
-    # 2. 创建输出掩码阵列 (C底层实现，速度极快)
+    # 2. create output mask array (Clow-level implementation,very fast)
     out_arr = rasterize(
         shapes=shape_generator(),
         out_shape=(template_meta['height'], template_meta['width']),
@@ -51,7 +51,7 @@ def vector_to_raster(
         dtype=dtype
     )
 
-    # 3. 写入文件
+    # 3. write file
     with rasterio.open(
             out_path,
             'w',
@@ -64,7 +64,7 @@ def vector_to_raster(
             transform=template_meta['transform'],
             nodata=nodata,
             compress='lzw',
-            predictor=2  # 对整型栅格数据有极大压缩增益的预测器
+            predictor=2  # predictor with strong compression gains for integer raster data
     ) as dst:
         dst.write(out_arr, 1)
 

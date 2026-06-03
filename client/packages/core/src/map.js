@@ -1,6 +1,6 @@
 export class MapEngine {
     constructor(containerId) {
-        console.group("%c[MapEngine] 🏗️ 引擎初始化", "color: #8b5cf6; font-weight: bold;");
+        console.group("%c[MapEngine] 🏗️ engine initialization", "color: #8b5cf6; font-weight: bold;");
         this.containerId = containerId;
 
         this.layers = new Map();
@@ -25,7 +25,7 @@ export class MapEngine {
 
     _initMap() {
         if (typeof L === 'undefined') {
-            console.error("[MapEngine] ❌ Leaflet 未加载");
+            console.error("[MapEngine] ❌ Leaflet is not loaded");
             return;
         }
         try {
@@ -35,15 +35,15 @@ export class MapEngine {
                 attribution: '© OpenStreetMap', crossOrigin: 'anonymous'
             }).addTo(this.map);
             this.isReady = true;
-            console.log("[MapEngine] ✅ 地图实例已就绪");
+            console.log("[MapEngine] ✅ map instance is ready");
         } catch (e) {
-            console.error("[MapEngine] 初始化异常:", e);
+            console.error("[MapEngine] initialization error:", e);
         }
     }
 
     _projectToWGS84(boundsArray, sourceCRS = "EPSG:32651") {
         if (typeof proj4 === 'undefined') {
-            console.error("[MapEngine] ❌ 未发现 proj4 库。");
+            console.error("[MapEngine] ❌ proj4 library not found。");
             return boundsArray;
         }
         try {
@@ -55,10 +55,10 @@ export class MapEngine {
             const toProj   = this.PROJ_DEFS["WGS84"];
             const sw = proj4(fromProj, toProj, [xmin, ymin]);
             const ne = proj4(fromProj, toProj, [xmax, ymax]);
-            console.log(`[MapEngine] 🔄 投影转换成功 [${sourceCRS} -> WGS84]`);
+            console.log(`[MapEngine] 🔄 projection transform succeeded [${sourceCRS} -> WGS84]`);
             return [sw[0], sw[1], ne[0], ne[1]];
         } catch (err) {
-            console.error("[MapEngine] 坐标转换失败:", err);
+            console.error("[MapEngine] coordinate transform failed:", err);
             return null;
         }
     }
@@ -109,7 +109,7 @@ export class MapEngine {
 
     async addGeoRasterLayer(raster) {
         const indexId = String(raster.index_id).trim();
-        console.group(`%c[MapEngine] ➕ 图层加载: ${indexId}`, "color: #3b82f6;");
+        console.group(`%c[MapEngine] ➕ layer load: ${indexId}`, "color: #3b82f6;");
         if (!this.isReady) { console.groupEnd(); return false; }
 
         this.removeLayer(indexId);
@@ -133,7 +133,7 @@ export class MapEngine {
             console.groupEnd();
             return true;
         } catch (error) {
-            console.error("[MapEngine] 渲染异常:", error);
+            console.error("[MapEngine] render error:", error);
             console.groupEnd();
             return false;
         }
@@ -142,7 +142,7 @@ export class MapEngine {
     removeLayer(indexId) {
         if (!indexId) return false;
         const id = String(indexId).trim();
-        console.log(`[MapEngine] ➖ 执行移除指令，目标标识: [${id}]`);
+        console.log(`[MapEngine] ➖ removing layer, target id: [${id}]`);
         let removed = false;
 
         const layer = this.layers.get(id);
@@ -150,7 +150,7 @@ export class MapEngine {
             this.map.removeLayer(layer);
             this.layers.delete(id);
             removed = true;
-            console.log(`[MapEngine] ✅ 已成功移除图层引用: ${id}`);
+            console.log(`[MapEngine] ✅ successfully removed layer reference: ${id}`);
         }
 
         this.map.eachLayer((l) => {
@@ -160,11 +160,11 @@ export class MapEngine {
                 this.map.removeLayer(l);
                 this.layers.delete(id);
                 removed = true;
-                console.log(`[MapEngine] 🛡️ 暴力清理成功: ${id}`);
+                console.log(`[MapEngine] 🛡️ forced cleanup succeeded: ${id}`);
             }
         });
 
-        if (!removed) console.warn(`[MapEngine] ⚠️ 地图上未发现活动图层 [${id}]`);
+        if (!removed) console.warn(`[MapEngine] ⚠️ active layer not found on map [${id}]`);
         this._applyRasterLayerOrder();
         if (this._is3D) this._syncRastersToCesium();
         return removed;
@@ -194,7 +194,7 @@ export class MapEngine {
 
     fitLayer(indexId, data) {
         const id = String(indexId).trim();
-        console.group(`%c[MapEngine] 🎯 触发定位: ${id}`, "color: #f59e0b;");
+        console.group(`%c[MapEngine] 🎯 locate triggered: ${id}`, "color: #f59e0b;");
         if (!this.map) { console.groupEnd(); return; }
         const targetBoundsArray = Array.isArray(data) ? data : (data?.bounds || data?.extent || null);
         const leafletBounds     = this._convertBounds(targetBoundsArray);
@@ -242,7 +242,7 @@ export class MapEngine {
         }
 
         if (!vectorLayer) {
-            console.log(`[MapEngine] 🎨 首次创建图层实例: ${layerId}`);
+            console.log(`[MapEngine] 🎨 created layer instance: ${layerId}`);
             vectorLayer = L.geoJSON(geojson, {
                 style: getFeatureStyle,
                 pointToLayer,
@@ -339,7 +339,7 @@ export class MapEngine {
         if (layer) {
             this.map.removeLayer(layer);
             this.vectorLayers.delete(layerId);
-            console.log(`[MapEngine] ➖ 移除矢量图层: ${layerId}`);
+            console.log(`[MapEngine] ➖ remove vector layer: ${layerId}`);
         }
         this._applyVectorLayerOrder();
         if (this._is3D && this._cesiumViewer) {
@@ -420,7 +420,7 @@ export class MapEngine {
 
         container.style.display = 'none';
 
-        console.log('[MapEngine] 🌐 Cesium 3D 引擎已就绪');
+        console.log('[MapEngine] 🌐 Cesium 3D engine is ready');
     }
 
     switchTo3D() {
@@ -439,13 +439,13 @@ export class MapEngine {
             });
             this._syncRastersToCesium();
             this._syncVectorsToCesium();
-        }, 50);  // 50ms 等待 reflow
+        }, 50);  // 50ms wait reflow
         const btn   = document.getElementById('globe-toggle-btn');
         const label = document.getElementById('globe-btn-label');
         if (btn)   btn.classList.add('is-3d');
         if (label) label.textContent = '2D';
         this._is3D = true;
-        console.log('[MapEngine] 🌐 已切换到 3D 球形视图');
+        console.log('[MapEngine] 🌐 switched to 3D globe view');
     }
 
     switchTo2D() {
@@ -465,7 +465,7 @@ export class MapEngine {
         if (btn)   btn.classList.remove('is-3d');
         if (label) label.textContent = '3D';
         this._is3D = false;
-        console.log('[MapEngine] 🗺️ 已切换回 2D 平面视图');
+        console.log('[MapEngine] 🗺️ switched back to 2D map view');
     }
 
     toggleGlobeView() {
@@ -545,7 +545,7 @@ export class MapEngine {
     async _syncSingleVectorToCesium(layerId) {
         if (!this._cesiumViewer) return;
 
-        // 先清除同名旧数据源，避免重复叠加
+        // clear any previous data source with the same name to avoid duplicate overlays
         const syncToken = this._invalidateCesiumVectorSync(layerId);
         this._removeCesiumVectorDataSource(layerId);
 
@@ -618,9 +618,9 @@ export class MapEngine {
             await this._cesiumViewer.dataSources.add(dataSource);
             this._cesiumVectorDataSources.set(layerId, dataSource);
             this._applyCesiumVectorOrder();
-            console.log(`[MapEngine] 🔷 矢量图层已同步到 Cesium: ${layerId}`);
+            console.log(`[MapEngine] 🔷 vector layer synced to Cesium: ${layerId}`);
         } catch (err) {
-            console.error(`[MapEngine] ❌ 矢量图层同步失败 [${layerId}]:`, err);
+            console.error(`[MapEngine] ❌ vector layer sync failed [${layerId}]:`, err);
         }
     }
 

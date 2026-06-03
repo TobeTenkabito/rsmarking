@@ -3,22 +3,22 @@ import { API_CONFIG } from './config.js';
 const BASE_URL = API_CONFIG.dataServiceUrl;
 
 /**
- * ChangeAPI — 变化检测接口
- * 对应后端 change_router.py（prefix: /change）
+ * ChangeAPI — Change detection API
+ * Backend endpoint change_router.py（prefix: /change）
  *
- * 响应结构（ChangeDetectResponse）:
+ * Response shape（ChangeDetectResponse）:
  * {
- *   diff_index_id      : number,   // 差值图 index_id，可直接传入 RasterModule 加载
- *   mask_index_id      : number | null,  // 二值掩膜 index_id
+ *   diff_index_id      : number,   // difference raster index_id，can be loaded directly by RasterModule
+ *   mask_index_id      : number | null,  // binary mask index_id
  *   method             : string,
  *   change_pixel_count : number | null,
- *   change_area_ratio  : number | null,  // 变化像元占比 0~1
+ *   change_area_ratio  : number | null,  // changed-pixel ratio 0~1
  * }
  */
 export const ChangeAPI = {
 
   /**
-   * 内部：统一 JSON POST 请求
+   * Internal shared JSON POST request
    * @param {string} endpoint
    * @param {object} payload
    * @returns {Promise<object>}
@@ -31,28 +31,28 @@ export const ChangeAPI = {
     });
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.detail ?? `变化检测请求失败: ${response.status}`);
+      throw new Error(err.detail ?? `Change detection request failed: ${response.status}`);
     }
     return await response.json();
   },
 
 
   /**
-   * 单波段差值变化检测  →  POST /change/band-diff
+   * Single-band difference change detection  →  POST /change/band-diff
    *
-   * @param {number}  indexIdT1       - 早期影像 index_id
-   * @param {number}  indexIdT2       - 晚期影像 index_id
+   * @param {number}  indexIdT1       - earlier image index_id
+   * @param {number}  indexIdT2       - later image index_id
    * @param {object}  [opts]
-   * @param {number}  [opts.bandIdx=1]              - 使用的波段（1-based）
-   * @param {number}  [opts.threshold=0.1]          - 变化判定阈值
+   * @param {number}  [opts.bandIdx=1]              - selected band（1-based）
+   * @param {number}  [opts.threshold=0.1]          - change threshold
    * @param {string}  [opts.thresholdMode="abs"]    - abs / positive / negative
-   * @param {boolean} [opts.outputMask=true]        - 是否输出二值掩膜
+   * @param {boolean} [opts.outputMask=true]        - whether to output a binary mask
    * @returns {Promise<ChangeDetectResponse>}
    *
    * @example
    * const result = await ChangeAPI.bandDiff(1001, 1002, { threshold: 0.15 });
-   * // result.diff_index_id → 加载差值图
-   * // result.mask_index_id → 加载变化掩膜
+   * // result.diff_index_id → load difference raster
+   * // result.mask_index_id → load change mask
    */
   async bandDiff(indexIdT1, indexIdT2, opts = {}) {
     const {
@@ -74,9 +74,9 @@ export const ChangeAPI = {
 
 
   /**
-   * 单波段比值变化检测  →  POST /change/band-ratio
+   * Single-band ratio change detection  →  POST /change/band-ratio
    *
-   * 比值偏离 1.0 超过 threshold 视为变化，可消除光照差异影响。
+   * Ratios that deviate from 1.0 beyond the threshold are treated as changes, reducing lighting effects.
    *
    * @param {number}  indexIdT1
    * @param {number}  indexIdT2
@@ -107,20 +107,20 @@ export const ChangeAPI = {
 
 
   /**
-   * 指数差值变化检测  →  POST /change/index-diff
+   * Index-difference change detection  →  POST /change/index-diff
    *
-   * 各 index_type 的波段约定（b1 / b2）:
+   * Band conventions for each index_type（b1 / b2）:
    *   ndvi  : b1=Red,   b2=NIR
    *   ndwi  : b1=Green, b2=NIR
    *   ndbi  : b1=SWIR,  b2=NIR
    *   mndwi : b1=Green, b2=SWIR
    *
-   * @param {object} t1Bands               - 早期影像波段 index_id
-   * @param {number} t1Bands.b1            - 早期波段1 index_id
-   * @param {number} t1Bands.b2            - 早期波段2 index_id
-   * @param {object} t2Bands               - 晚期影像波段 index_id
-   * @param {number} t2Bands.b1            - 晚期波段1 index_id
-   * @param {number} t2Bands.b2            - 晚期波段2 index_id
+   * @param {object} t1Bands               - earlier image bands index_id
+   * @param {number} t1Bands.b1            - earlier band1 index_id
+   * @param {number} t1Bands.b2            - earlier band2 index_id
+   * @param {object} t2Bands               - later image bands index_id
+   * @param {number} t2Bands.b1            - later band1 index_id
+   * @param {number} t2Bands.b2            - later band2 index_id
    * @param {object} [opts]
    * @param {string} [opts.indexType="ndvi"]         - ndvi / ndwi / ndbi / mndwi
    * @param {number} [opts.threshold=0.15]
@@ -129,7 +129,7 @@ export const ChangeAPI = {
    * @returns {Promise<ChangeDetectResponse>}
    *
    * @example
-   * // 检测植被变化（NDVI 差值）
+   * // Detect vegetation change（NDVI English）
    * const result = await ChangeAPI.indexDiff(
    *   { b1: redT1Id, b2: nirT1Id },
    *   { b1: redT2Id, b2: nirT2Id },

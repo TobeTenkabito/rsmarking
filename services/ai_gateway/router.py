@@ -34,7 +34,7 @@ logger = logging.getLogger("ai_gateway.router")
 
 router = APIRouter(
     prefix="/ai",
-    tags=["AI Gateway - 智能空间数据网关"],
+    tags=["AI Gateway - Intelligent Spatial Data Gateway"],
 )
 
 

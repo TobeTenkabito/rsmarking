@@ -17,10 +17,10 @@ async def process_ai_task(
     vector_db: AsyncSession,
 ) -> Dict[str, Any]:
 
-    # 1. 构建地图上下文片段（注入 payload，供 handler 使用）
+    # 1. Build a map-context fragment and inject it into the payload for handlers.
     map_ctx_str = build_map_context(payload.map_context)
 
-    # 3. 分发到对应 handler
+    # 3. Dispatch to the matching handler
     if payload.mode == TaskMode.ANALYZE:
         result = await handle_analyze(
             payload, db, vector_db, get_ai_model(),

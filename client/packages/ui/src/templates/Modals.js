@@ -1,7 +1,7 @@
 /**
- * Modals.js - 聚合入口
- * 各 Modal 已拆分至 ./modals/ 子目录，此文件负责统一导出
- * 外部调用方无需感知内部结构变化
+ * Modals.js - aggregation entry
+ * Modals live under ./modals/ and are re-exported here
+ * Callers do not need to know the internal structure
  */
 
 import { indexModal }             from './modals/indexModal.js';

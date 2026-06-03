@@ -169,12 +169,12 @@ class RasterProcessor:
     @staticmethod
     def _parse_var_tokens(expression: str) -> dict[str, tuple[str, list[int]]]:
         """
-        解析表达式中所有变量 token，返回：
+        parse all variables in the expression token,return:
         {
           "A_2_3": ("A", [2, 3]),
-          "B":     ("B", []),   # 空列表 = 全波段
+          "B":     ("B", []),   # empty list = all bands
         }
-        排除 numexpr 保留关键字。
+        exclude numexpr reserved keywords.
         """
         RESERVED = {
             'sin','cos','tan','arcsin','arccos','arctan','arctan2',
@@ -204,8 +204,8 @@ class RasterProcessor:
     @staticmethod
     def _load_bands(path: str, indices: list[int]) -> np.ndarray:
         """
-        从文件加载指定波段，返回 shape=(n_bands, H, W) 的 float32 数组。
-        indices 为空时加载全部波段。
+        load selected bands from a file,return shape=(n_bands, H, W) text float32 text.
+        indices load all bands when empty.
         """
         with rasterio.open(path) as src:
             total = src.count
@@ -215,7 +215,7 @@ class RasterProcessor:
                 for idx in indices:
                     if idx < 1 or idx > total:
                         raise ValueError(
-                            f"文件 {path} 共 {total} 个波段，请求的波段索引 {idx} 越界"
+                            f"File {path} has {total} bands; requested band index {idx} is out of range"
                         )
                 bands_to_read = indices
             data = src.read(bands_to_read).astype("float32")  # (n, H, W)
@@ -224,10 +224,10 @@ class RasterProcessor:
     @staticmethod
     def _resolve_output_bands(token_arrays: dict[str, np.ndarray]) -> int:
         """
-        按三级优先级校验并返回输出波段数：
-        1. 维度对等 → 逐波段
-        2. 单位维广播 → 广播
-        3. 多维不等 → 报错
+        validate with three priority levels and return output band count:
+        1. equal dimensions -> per band
+        2. single-dimension broadcast -> broadcast
+        3. unequal multi-dimensional inputs -> raise an error
         """
         band_counts = [arr.shape[0] for arr in token_arrays.values()]
         unique = set(band_counts)
@@ -237,8 +237,8 @@ class RasterProcessor:
         if len(non_one) == 1:
             return non_one[0]
         raise ValueError(
-            f"波段维度不兼容，无法广播：{sorted(unique)}。"
-            f"仅支持「全部相等」或「一方为1波段」两种情况。"
+            f"Band dimensions are incompatible and cannot be broadcast:{sorted(unique)}."
+            f"Only all-equal band counts or one side with a single band are supported."
         )
 
     @staticmethod
@@ -248,19 +248,19 @@ class RasterProcessor:
         output_path: str
     ) -> None:
         """
-        执行多波段栅格代数运算。
-        path_mapping: 基础变量名 -> 文件路径，如 {"A": "a.tif", "B": "b.tif"}
-        expression:   支持 A、A_2、A_2_3_4 三种变量形式
-        output_path:  结果 GeoTiff 路径
+        execute multi-band raster algebra.
+        path_mapping: base variable name -> file path,text {"A": "a.tif", "B": "b.tif"}
+        expression:   supports A,A_2,A_2_3_4 text
+        output_path:  result GeoTiff path
         """
         if not path_mapping:
-            raise ValueError("未提供输入变量。")
+            raise ValueError("No input variables were provided.")
         token_map = RasterProcessor._parse_var_tokens(expression)
 
-        # 校验所有基础变量名都在 path_mapping 中
+        # verify all base variable names are in path_mapping text
         for token, (var_name, _) in token_map.items():
             if var_name not in path_mapping:
-                raise ValueError(f"表达式中的变量 '{var_name}' 未在映射中提供对应文件路径")
+                raise ValueError(f"Variable in expression '{var_name}' does not have a matching file path in the mapping")
         meta = None
         ref_height, ref_width = None, None
         first_path = next(iter(path_mapping.values()))
@@ -268,13 +268,13 @@ class RasterProcessor:
             meta = src.meta.copy()
             ref_height, ref_width = src.height, src.width
 
-        # 校验所有文件空间维度一致
+        # verify all files share spatial dimensions
         for var_name, path in path_mapping.items():
             with rasterio.open(path) as src:
                 if src.height != ref_height or src.width != ref_width:
                     raise ValueError(
-                        f"变量 '{var_name}' 的空间维度 ({src.height}×{src.width}) "
-                        f"与基准 ({ref_height}×{ref_width}) 不一致"
+                        f"text '{var_name}' spatial dimensions ({src.height}×{src.width}) "
+                        f"with reference ({ref_height}×{ref_width}) do not match"
                     )
         token_arrays: dict[str, np.ndarray] = {}
         for token, (var_name, indices) in token_map.items():
@@ -410,8 +410,8 @@ class RasterProcessor:
         all_touched: bool = False,
     ) -> dict:
         """
-        用矢量多边形裁剪栅格，结果写入 output_path。
-        裁剪完成后自动构建金字塔。
+        clip raster with vector polygons,write result to output_path.
+        clipBuilding overviews.
         """
         result = clip_raster_by_vector(
             raster_path=raster_path,
@@ -433,11 +433,11 @@ class RasterProcessor:
             band_names: list[str] | None = None,
     ) -> dict:
         """
-        查詢指定 WGS84 坐標點的多波段像素值（光譜）
-        :param file_path:  COG 或原始文件路徑
-        :param lng:        經度 (WGS84)
-        :param lat:        緯度 (WGS84)
-        :param band_names: 波段語義名稱，如 ["Red","Green","Blue","NIR"]
+        query selected WGS84 coordinate pointmulti-band pixel values(spectrum)
+        :param file_path:  COG original file path
+        :param lng:        longitude (WGS84)
+        :param lat:        latitude (WGS84)
+        :param band_names: semantic band names,text ["Red","Green","Blue","NIR"]
         :return: {
             "bands": [{"index": 1, "name": "Band 1", "value": 0.34}, ...],
             "has_nodata": False,
@@ -447,7 +447,7 @@ class RasterProcessor:
         from pyproj import Transformer
 
         with rasterio.open(file_path) as src:
-            # 1. WGS84 → 影像原始 CRS
+            # 1. WGS84 -> imagery source CRS
             if src.crs and src.crs.to_epsg() != 4326:
                 transformer = Transformer.from_crs(
                     "EPSG:4326", src.crs, always_xy=True
@@ -456,17 +456,17 @@ class RasterProcessor:
             else:
                 x, y = lng, lat
 
-            # 2. 地理坐標 → 像素行列號
+            # 2. geographic coordinates -> pixel row and column
             row, col = src.index(x, y)
 
-            # 3. 邊界檢查
+            # 3. bounds check
             if not (0 <= row < src.height and 0 <= col < src.width):
                 raise ValueError(
-                    f"坐標 ({lng}, {lat}) 超出影像範圍，"
-                    f"影像 WGS84 範圍: {src.bounds}"
+                    f"coordinate ({lng}, {lat}) outside imagery bounds,"
+                    f"imagery WGS84 bounds: {src.bounds}"
                 )
 
-            # 4. 讀取所有波段在該像素的值（Window 避免讀整張影像）
+            # 4. read all band values at this pixel(Window avoid reading the full image)
             window = rasterio.windows.Window(col, row, 1, 1)
             pixel_values = src.read(window=window)  # shape: (band_count, 1, 1)
 
@@ -477,7 +477,7 @@ class RasterProcessor:
                 raw_val = pixel_values[i, 0, 0]
                 is_nodata = nodata is not None and float(raw_val) == float(nodata)
 
-                # 波段名稱優先級: 傳入參數 > 文件內嵌描述 > 默認編號
+                # band-name priority: input parameter > embedded file description > default numbering
                 if band_names and i < len(band_names):
                     name = band_names[i]
                 elif src.descriptions[i]:
@@ -505,18 +505,18 @@ class RasterProcessor:
             burn_field: str = None
     ) -> str:
         """
-        基于参考影像将矢量要素栅格化。
+        rasterize vector features using reference imagery.
 
-        工业级考量：
-        1. 自动处理 CRS 转换（WGS84 -> 影像原生投影）
-        2. 支持根据属性字段动态烧录像素值 (Burn value)
-        3. 优化 template_meta 获取逻辑
+        production considerations:
+        1. automatically handle CRS conversion(WGS84 -> native imagery projection)
+        2. supportsburn pixel values dynamically from attribute fields (Burn value)
+        3. optimize template_meta text
         """
         if not features:
-            raise ValueError("矢量要素列表为空，无法执行栅格化")
+            raise ValueError("Vector feature list is empty; rasterization cannot run")
 
         with rasterio.open(ref_raster_path) as src:
-            # 1. 获取参考影像元数据
+            # 1. get reference imagery metadata
             template_meta = {
                 "crs": src.crs,
                 "transform": src.transform,
@@ -525,12 +525,12 @@ class RasterProcessor:
             }
             dst_crs = src.crs
 
-        # 2. 坐标重投影 (Reprojecting geometries from EPSG:4326 to target CRS)
-        # 矢量服务导出的通常是 4326
+        # 2. coordinate reprojection (Reprojecting geometries from EPSG:4326 to target CRS)
+        # vector service exports are usually 4326
         src_crs_str = "EPSG:4326"
         reprojected_features = []
 
-        # 只有在坐标系不一致时才执行重投影，减少开销
+        # only reproject when coordinate systems differ,reduce overhead
         need_reproject = dst_crs.to_string() != src_crs_str
         transformer = None
         if need_reproject:
@@ -540,16 +540,16 @@ class RasterProcessor:
             try:
                 geom = shape(feat["geometry"])
 
-                # 如果坐标系不一致，执行投影转换
+                # if coordinate systems differ,perform projection conversion
                 if need_reproject:
                     geom = shapely_transform(transformer.transform, geom)
 
-                # 确定烧录值 (优先级: 参数指定字段 > features中的category > 默认值1)
+                # determine burn value (priority: parameter-specified field > featurestextcategory > default value1)
                 burn_val = 1
                 if burn_field and burn_field in feat.get("properties", {}):
                     burn_val = feat["properties"][burn_field]
                 elif "category" in feat:
-                    # 尝试将 category 映射为数字，这里简化处理
+                    # try to convert category map to a number,simplified here
                     burn_val = feat["category"] if isinstance(feat["category"], (int, float)) else 1
 
                 reprojected_features.append({
@@ -557,14 +557,14 @@ class RasterProcessor:
                     "value": burn_val
                 })
             except Exception as e:
-                logger.warning(f"要素解析或投影转换失败，跳过: {e}")
+                logger.warning(f"Feature parsing or projection conversion failed; skipping: {e}")
                 continue
 
         if not reprojected_features:
-            raise ValueError("没有有效的几何要素可供投影或栅格化")
+            raise ValueError("No valid geometry features are available for projection or rasterization")
 
-        # 3. 调用核心算法执行转换
-        # 修改了参数传递方式，适配重投影后的几何体对象
+        # 3. call the core algorithm to execute conversion
+        # changed argument passing,adapt to reprojected geometry objects
         vector_to_raster(
             features=reprojected_features,
             template_meta=template_meta,
