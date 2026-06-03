@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import traceback
@@ -127,17 +128,47 @@ def main():
     output_dir = "/data/outputs"
     script_path = "/data/scripts/user_code.py"
     output_filename = os.environ.get("OUTPUT_FILENAME", "result.tif")
+    input_metadata_by_name = {}
 
     try:
-        input_files = []
+        try:
+            raw_input_map = os.environ.get("SANDBOX_INPUT_MAP", "[]")
+            input_metadata = json.loads(raw_input_map)
+        except Exception as metadata_error:
+            print(f"WARNING: failed to parse sandbox input map: {metadata_error}")
+            input_metadata = []
+        if isinstance(input_metadata, list):
+            input_metadata_by_name = {
+                str(item.get("name")): item
+                for item in input_metadata
+                if isinstance(item, dict) and item.get("name")
+            }
+
+        discovered_inputs = {}
         if os.path.exists(input_dir):
             for file_name in sorted(os.listdir(input_dir)):
                 if file_name.lower().endswith((".tif", ".tiff", ".img", ".hdf")):
-                    input_files.append(os.path.join(input_dir, file_name))
+                    discovered_inputs[file_name] = os.path.join(input_dir, file_name)
+
+        input_files = []
+        if isinstance(input_metadata, list) and input_metadata:
+            for item in input_metadata:
+                if not isinstance(item, dict):
+                    continue
+                file_name = str(item.get("name") or "")
+                file_path = discovered_inputs.pop(file_name, None)
+                if file_path:
+                    input_files.append(file_path)
+        input_files.extend(discovered_inputs[name] for name in sorted(discovered_inputs))
 
         print(f"Found {len(input_files)} input file(s)")
         for idx, file_path in enumerate(input_files):
-            print(f"  input_{idx} -> {os.path.basename(file_path)}")
+            basename = os.path.basename(file_path)
+            metadata = input_metadata_by_name.get(basename, {})
+            alias = metadata.get("alias")
+            raster_id = metadata.get("raster_id")
+            alias_note = f", alias={alias}, raster_id={raster_id}" if alias or raster_id is not None else ""
+            print(f"  input_{idx} -> {basename}{alias_note}")
     except Exception as e:
         print(f"ERROR: failed to read input directory: {e}", file=sys.stderr)
         sys.exit(1)
@@ -157,6 +188,8 @@ def main():
         input_mapping[idx] = file_path
 
     output_file = os.path.join(output_dir, output_filename)
+    raster_files = {}
+    raster_filenames = {}
 
     exec_globals = {
         "__builtins__": SAFE_BUILTINS,
@@ -169,6 +202,8 @@ def main():
         "INPUT_FILES": input_files,
         "OUTPUT_FILE": output_file,
         "inputs": input_mapping,
+        "raster_files": raster_files,
+        "raster_filenames": raster_filenames,
         "os": os,
         "sys": sys,
         "math": _REAL_IMPORT("math"),
@@ -180,6 +215,20 @@ def main():
 
     for idx, file_path in enumerate(input_files):
         exec_globals[f"input_{idx}"] = file_path
+        basename = os.path.basename(file_path)
+        metadata = input_metadata_by_name.get(basename, {})
+        alias = str(metadata.get("alias") or "")
+        if alias.isidentifier():
+            exec_globals[alias] = file_path
+
+        raster_id = metadata.get("raster_id")
+        if raster_id is not None:
+            try:
+                raster_key = int(raster_id)
+            except (TypeError, ValueError):
+                raster_key = str(raster_id)
+            raster_files[raster_key] = file_path
+            raster_filenames[raster_key] = basename
 
     if len(input_files) == 1:
         exec_globals["input_file"] = input_files[0]

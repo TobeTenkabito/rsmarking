@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from typing import Any, Literal, Optional, Union
 
@@ -334,9 +335,11 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "For atmospheric correction, use atmospheric_correction before generating sandbox code.",
             "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
-            "Sandbox scripts must read the actual Python variables input_0, input_1, ... and write a GeoTIFF to OUTPUT_FILE.",
-            "For a single raster input, use input_0. Do not use the example placeholder input_file, and never pass the literal string 'input_file' to rasterio.open().",
-            "If the exact filename is required, read it from INPUT_FILES or inputs; otherwise prefer input_0/input_1 variables.",
+            "Before writing run_script_sandbox code, read the Sandbox Input Map from the context and use its exact sandbox_alias or open_expr values.",
+            "The gateway injects stable sandbox aliases such as raster_<index_id> and raster_files[<index_id>] before the generated script runs.",
+            "If you use ordered variables, map them from the raster_ids order: raster_ids[0] is input_0, raster_ids[1] is input_1, and so on.",
+            "Do not invent filenames. If using the actual filename, call rasterio.open(inputs[\"actual_filename.tif\"]) exactly as shown in open_expr.",
+            "Never pass the literal string 'input_file' or an unqualified guessed filename to rasterio.open().",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Use the workspace context to stay familiar with available projects, layers, and rasters.",
             "Use conversation archive memory only as background from user-saved prior chats.",
@@ -369,6 +372,10 @@ async def _build_agent_user_prompt(
     target_context = await _build_target_context(payload, db, vector_db)
     if target_context:
         sections.append(target_context)
+
+    sandbox_context = await _build_target_sandbox_context(payload, db)
+    if sandbox_context:
+        sections.append(sandbox_context)
 
     attachment_context = _build_attachment_context(payload.attachments)
     if attachment_context:
@@ -445,6 +452,34 @@ async def _build_target_context(
     )
 
 
+async def _build_target_sandbox_context(
+    payload: AgentRequestPayload,
+    db: AsyncSession,
+) -> str:
+    if payload.target_id is None or payload.data_type != DataType.RASTER:
+        return ""
+
+    try:
+        from services.data_service.crud.raster_crud import RasterCRUD
+
+        raster = await RasterCRUD.get_raster_by_index_id(db, int(payload.target_id))
+    except Exception as exc:
+        logger.warning("[agent] target sandbox input map unavailable: %s", exc)
+        return ""
+
+    if not raster:
+        return ""
+
+    return "\n".join(
+        [
+            "[Sandbox Input Map]",
+            "Use this exact mapping when generating run_script_sandbox code for the target raster.",
+            "The gateway injects stable aliases before the generated script runs.",
+            _format_sandbox_input_map_line(raster, ordered_variable="input_0 when this raster_id is first in raster_ids"),
+        ]
+    )
+
+
 async def _build_workspace_context(
     db: AsyncSession,
     vector_db: AsyncSession,
@@ -453,12 +488,13 @@ async def _build_workspace_context(
     sections = ["[Workspace Context]"]
     sections.append(
         "Compact inventory of the current RSMarking workspace. Treat ids as the "
-        "source of truth and ask before destructive or ambiguous actions."
+        "source of truth and ask before destructive or ambiguous actions. For sandbox "
+        "scripts, use the exact sandbox_alias or open_expr shown here; do not invent filenames."
     )
 
     raster_lines = await _build_raster_inventory(db, limit)
     if raster_lines:
-        sections.append("Raster datasets:\n" + "\n".join(raster_lines))
+        sections.append("Raster datasets and sandbox input map:\n" + "\n".join(raster_lines))
 
     project_lines = await _build_vector_project_inventory(vector_db, limit)
     if project_lines:
@@ -499,6 +535,7 @@ async def _build_raster_inventory(db: AsyncSession, limit: int) -> list[str]:
         bundle_id = getattr(raster, "bundle_id", None)
         if bundle_id:
             parts.append(f"bundle_id={bundle_id}")
+        parts.extend(_sandbox_input_map_parts(raster))
         lines.append("- " + ", ".join(parts))
 
     if len(rasters) == limit:
@@ -579,6 +616,62 @@ def _format_size(width: Any, height: Any) -> str:
     return f"{width}x{height}"
 
 
+def _format_sandbox_input_map_line(raster: Any, ordered_variable: str | None = None) -> str:
+    parts = [
+        f"index_id={getattr(raster, 'index_id', '')}",
+        f"name={getattr(raster, 'file_name', '')}",
+        *_sandbox_input_map_parts(raster),
+    ]
+    if ordered_variable:
+        parts.append(f"ordered_variable={ordered_variable}")
+    return "- " + ", ".join(parts)
+
+
+def _sandbox_input_map_parts(raster: Any) -> list[str]:
+    raster_id = getattr(raster, "index_id", "")
+    sandbox_filename = _sandbox_filename_for_raster(raster)
+    if not sandbox_filename:
+        return []
+
+    try:
+        from services.data_service.bridges.executor_bridge import _sandbox_raster_alias
+
+        alias = _sandbox_raster_alias(raster_id)
+    except Exception:
+        alias = f"raster_{str(raster_id).replace('-', '_')}"
+
+    filename_literal = _json_dumps(sandbox_filename)
+    return [
+        f"sandbox_alias={alias}",
+        f"sandbox_filename={sandbox_filename}",
+        f"open_expr=inputs[{filename_literal}]",
+    ]
+
+
+def _sandbox_filename_for_raster(raster: Any) -> str:
+    candidates: list[Any] = []
+    try:
+        from services.data_service.bridges.executor_bridge import _resolve_executor_input_path
+
+        candidates.append(_resolve_executor_input_path(raster))
+    except Exception as exc:
+        logger.debug("[agent] could not resolve exact sandbox path for raster: %s", exc)
+
+    candidates.extend(
+        [
+            getattr(raster, "file_path", None),
+            getattr(raster, "cog_path", None),
+            getattr(raster, "file_name", None),
+        ]
+    )
+
+    for candidate in candidates:
+        filename = os.path.basename(str(candidate or "").strip())
+        if filename:
+            return filename
+    return ""
+
+
 async def _invoke_agent_tool(
     name: str,
     arguments: dict[str, Any],
@@ -601,8 +694,9 @@ async def _invoke_agent_tool(
         error = str(exc)
         if name == "run_script_sandbox" and "input_file" in str(arguments.get("script") or ""):
             error = (
-                f"{error}\nSandbox input hint: use input_0, input_1, ... variables in rasterio.open(); "
-                "use input_0 for a single raster and do not pass the literal string 'input_file'."
+                f"{error}\nSandbox input hint: use the exact Sandbox Input Map entries, such as "
+                "raster_<index_id>, raster_files[<index_id>], or inputs[\"actual_filename.tif\"]. "
+                "Do not pass the literal string 'input_file'."
             )
         return {"status": "error", "name": name, "arguments": arguments, "error": error}
 

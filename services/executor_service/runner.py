@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import json
 import shutil
 import uuid
 from typing import Any
@@ -84,7 +85,7 @@ class DockerRunner:
         self,
         script_id: str,
         script: str,
-        input_files: list[dict[str, str]],
+        input_files: list[dict[str, Any]],
         output_name: str,
     ) -> dict[str, Any]:
         is_valid, blocked_label = validate_script_content(script)
@@ -121,7 +122,7 @@ def run_in_sandbox(
     input_filenames: list[str],
     output_filename: str,
     script_id: str | None = None,
-    input_files: list[dict[str, str]] | None = None,
+    input_files: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     del input_filenames
 
@@ -151,6 +152,7 @@ def run_in_sandbox(
             f.write(script_content)
 
         copied_inputs: list[str] = []
+        sandbox_input_map: list[dict[str, Any]] = []
         for idx, file_info in enumerate(input_files or []):
             src_path = file_info.get("path", "")
             if not src_path or not os.path.exists(src_path):
@@ -163,6 +165,14 @@ def run_in_sandbox(
             dst_path = os.path.join(temp_input_dir, file_name)
             shutil.copy2(src_path, dst_path)
             copied_inputs.append(file_name)
+            sandbox_input_map.append(
+                {
+                    "index": idx,
+                    "name": file_name,
+                    "raster_id": file_info.get("raster_id"),
+                    "alias": file_info.get("alias"),
+                }
+            )
 
         volumes = {
             script_host_path: {
@@ -184,7 +194,10 @@ def run_in_sandbox(
         logger.info("Starting sandbox container for script %s", task_id)
         container = client.containers.run(
             image=DOCKER_IMAGE_NAME,
-            environment={"OUTPUT_FILENAME": safe_output_name},
+            environment={
+                "OUTPUT_FILENAME": safe_output_name,
+                "SANDBOX_INPUT_MAP": json.dumps(sandbox_input_map, ensure_ascii=False),
+            },
             volumes=volumes,
             mem_limit=SANDBOX_MEM_LIMIT,
             nano_cpus=cpu_limit,

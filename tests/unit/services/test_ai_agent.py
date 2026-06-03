@@ -410,16 +410,16 @@ def test_agent_registry_wrappers_can_be_restricted(monkeypatch):
     assert [tool["function"]["name"] for tool in tools] == ["calculate_ndvi"]
 
 
-def test_agent_sandbox_tool_schema_prefers_indexed_input_variables():
+def test_agent_sandbox_tool_schema_mentions_exact_input_map():
     tools = agent_handler._get_agent_tools(["run_script_sandbox"])
     properties = tools[0]["function"]["parameters"]["properties"]
 
-    assert "input_0" in properties["raster_ids"]["description"]
-    assert "actual input_0/input_1" in properties["script"]["description"]
-    assert "literal string 'input_file'" in properties["raster_ids"]["description"]
+    assert "raster_<index_id>" in properties["raster_ids"]["description"]
+    assert "Sandbox Input Map" in properties["raster_ids"]["description"]
+    assert 'inputs["actual_filename.tif"]' in properties["script"]["description"]
 
 
-def test_agent_sandbox_error_mentions_indexed_input_variable(monkeypatch):
+def test_agent_sandbox_error_mentions_exact_input_map(monkeypatch):
     from services.ai_gateway import function_registry
 
     async def failing_invoke(request, db, vector_db):
@@ -437,7 +437,8 @@ def test_agent_sandbox_error_mentions_indexed_input_variable(monkeypatch):
     )
 
     assert result["status"] == "error"
-    assert "input_0" in result["error"]
+    assert "Sandbox Input Map" in result["error"]
+    assert "raster_files[<index_id>]" in result["error"]
     assert "literal string 'input_file'" in result["error"]
 
 
@@ -446,8 +447,33 @@ def test_agent_system_prompt_mentions_sandbox_fallback():
 
     assert "run_script_sandbox" in prompt
     assert "no dedicated tool" in prompt
+    assert "Sandbox Input Map" in prompt
+    assert "raster_<index_id>" in prompt
     assert "input_0" in prompt
-    assert "Do not use the example placeholder input_file" in prompt
+    assert "Do not invent filenames" in prompt
+
+
+def test_agent_formats_exact_sandbox_input_map(tmp_path):
+    input_path = tmp_path / "source.tif"
+    input_path.write_bytes(b"source")
+    raster = SimpleNamespace(
+        index_id=42,
+        file_name="Displayed raster",
+        file_path=str(input_path),
+        cog_path=None,
+        bands=1,
+        crs="EPSG:4326",
+        width=10,
+        height=20,
+        bundle_id=None,
+    )
+
+    line = agent_handler._format_sandbox_input_map_line(raster)
+
+    assert "index_id=42" in line
+    assert "sandbox_alias=raster_42" in line
+    assert "sandbox_filename=source.tif" in line
+    assert 'open_expr=inputs["source.tif"]' in line
 
 
 def test_agent_session_can_be_restored():

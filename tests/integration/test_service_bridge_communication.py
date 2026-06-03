@@ -170,5 +170,7 @@ def test_script_bridge_posts_to_executor_service_port(monkeypatch, tmp_path):
     assert requests[0].url.path == "/execute"
     payload = _request_json(requests[0])
     assert payload["script"] == "print('script ready')"
-    assert payload["input_files"] == [{"path": str(input_path), "name": "source.tif"}]
+    assert payload["input_files"] == [
+        {"path": str(input_path), "name": "source.tif", "raster_id": 42, "alias": "raster_42"}
+    ]
     assert payload["output_name"].endswith("_script_raw.tif")

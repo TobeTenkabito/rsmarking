@@ -22,6 +22,8 @@ app = FastAPI(
 class InputFilePayload(BaseModel):
     path: str = Field(..., description="Absolute host path to an input raster.")
     name: Optional[str] = Field(default=None, description="Filename exposed inside the sandbox.")
+    raster_id: Optional[int] = Field(default=None, description="RSMarking raster index_id for alias mapping.")
+    alias: Optional[str] = Field(default=None, description="Python variable alias exposed inside the sandbox.")
 
 
 class ScriptExecutionRequest(BaseModel):

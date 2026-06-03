@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import uuid
 
 import httpx
@@ -16,6 +17,11 @@ logger = logging.getLogger("data_service.executor_bridge")
 EXECUTOR_URL = os.getenv("EXECUTOR_SERVICE_URL", "http://localhost:8004/execute")
 MAX_EXECUTOR_LOG_LINES = 40
 MAX_EXECUTOR_LOG_CHARS = 4000
+
+
+def _sandbox_raster_alias(raster_id: int) -> str:
+    token = re.sub(r"\W+", "_", str(raster_id)).strip("_") or "input"
+    return f"raster_{token}"
 
 
 def _trim_executor_logs(logs: str) -> str:
@@ -75,6 +81,8 @@ async def dispatch_user_script(
         input_files_payload.append({
             "path": resolved_path,
             "name": os.path.basename(resolved_path),
+            "raster_id": raster_id,
+            "alias": _sandbox_raster_alias(raster_id),
         })
 
     task_id = str(uuid.uuid4())
