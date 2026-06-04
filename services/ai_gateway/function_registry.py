@@ -127,6 +127,60 @@ class AtmosphericCorrectionArgs(BaseModel):
     clamp: bool = Field(default=True, description="Clamp output reflectance to the [0, 1] interval.")
 
 
+class RadiometricCalibrationArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    new_name: str = Field(..., description="Name for the generated calibrated raster.")
+    calibration_type: Literal["auto", "radiance", "reflectance", "scale"] = Field(
+        default="auto",
+        description=(
+            "Calibration target. auto uses product metadata when available; scale applies scale_factor/offset; "
+            "radiance applies gain/bias; reflectance applies reflectance multipliers or radiance-to-reflectance conversion."
+        ),
+    )
+    scale_factor: float | None = Field(default=None, description="Generic DN scale factor.")
+    offset: float | None = Field(default=None, description="Generic DN offset.")
+    radiance_mult: float | None = Field(default=None, description="Radiance multiplicative gain.")
+    radiance_add: float | None = Field(default=None, description="Radiance additive bias.")
+    reflectance_mult: float | None = Field(default=None, description="Reflectance multiplicative coefficient.")
+    reflectance_add: float | None = Field(default=None, description="Reflectance additive coefficient.")
+    sun_elevation: float | None = Field(default=None, description="Sun elevation angle in degrees.")
+    earth_sun_distance: float = Field(default=1.0, gt=0, description="Earth-sun distance in astronomical units.")
+    solar_irradiance: float | None = Field(default=None, description="Band solar irradiance/ESUN value.")
+    sun_elevation_correction: bool = Field(default=True, description="Apply sun-angle correction for reflectance.")
+    clamp: bool = Field(default=False, description="Clamp calibrated values to [0, 1].")
+
+
+class GeometricCorrectionArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    new_name: str = Field(..., description="Name for the generated geometrically corrected raster.")
+    dst_crs: str | None = Field(default=None, description="Optional target CRS, for example EPSG:4326.")
+    resampling_method: Literal[
+        "nearest",
+        "bilinear",
+        "cubic",
+        "cubic_spline",
+        "lanczos",
+        "average",
+        "mode",
+        "max",
+        "min",
+        "med",
+        "q1",
+        "q3",
+    ] = Field(default="bilinear", description="Raster resampling method used when reprojection/resampling is needed.")
+    target_resolution_x: float | None = Field(default=None, gt=0, description="Optional target pixel width.")
+    target_resolution_y: float | None = Field(default=None, gt=0, description="Optional target pixel height.")
+    shift_x: float = Field(default=0.0, description="Affine x shift in source CRS units.")
+    shift_y: float = Field(default=0.0, description="Affine y shift in source CRS units.")
+    scale_x: float = Field(default=1.0, gt=0, description="Affine x scale around raster center.")
+    scale_y: float = Field(default=1.0, gt=0, description="Affine y scale around raster center.")
+    rotation_degrees: float = Field(default=0.0, description="Affine rotation around raster center.")
+    gcps: list[dict[str, float]] | None = Field(
+        default=None,
+        description="Optional GCPs with row, col, x, and y. At least three are required when provided.",
+    )
+
+
 class SupervisedClassificationArgs(BaseModel):
     raster_id: int = Field(..., description="Source raster index_id to classify.")
     samples: list[dict[str, Any]] = Field(
@@ -742,6 +796,56 @@ async def _run_atmospheric_correction(
     )
 
 
+async def _run_radiometric_calibration(
+    args: RadiometricCalibrationArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_radiometric_calibration_task(
+        db=db,
+        raster_id=args.raster_id,
+        new_name=args.new_name,
+        calibration_type=args.calibration_type,
+        scale_factor=args.scale_factor,
+        offset=args.offset,
+        radiance_mult=args.radiance_mult,
+        radiance_add=args.radiance_add,
+        reflectance_mult=args.reflectance_mult,
+        reflectance_add=args.reflectance_add,
+        sun_elevation=args.sun_elevation,
+        earth_sun_distance=args.earth_sun_distance,
+        solar_irradiance=args.solar_irradiance,
+        sun_elevation_correction=args.sun_elevation_correction,
+        clamp=args.clamp,
+    )
+
+
+async def _run_geometric_correction(
+    args: GeometricCorrectionArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_geometric_correction_task(
+        db=db,
+        raster_id=args.raster_id,
+        new_name=args.new_name,
+        dst_crs=args.dst_crs,
+        resampling_method=args.resampling_method,
+        target_resolution_x=args.target_resolution_x,
+        target_resolution_y=args.target_resolution_y,
+        shift_x=args.shift_x,
+        shift_y=args.shift_y,
+        scale_x=args.scale_x,
+        scale_y=args.scale_y,
+        rotation_degrees=args.rotation_degrees,
+        gcps=args.gcps,
+    )
+
+
 async def _run_supervised_classification(
     args: SupervisedClassificationArgs,
     db: AsyncSession,
@@ -1334,6 +1438,26 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="atmospheric_correction",
             arguments_model=AtmosphericCorrectionArgs,
             handler=_run_atmospheric_correction,
+        ),
+        RegisteredFunction(
+            name="radiometric_calibration",
+            description=(
+                "Calibrate raster DN values into radiance, reflectance, or generic scale/offset corrected values. "
+                "Use this for sensor/product radiometric calibration before analysis or classification."
+            ),
+            category="radiometric_calibration",
+            arguments_model=RadiometricCalibrationArgs,
+            handler=_run_radiometric_calibration,
+        ),
+        RegisteredFunction(
+            name="geometric_correction",
+            description=(
+                "Apply geometric correction using affine shift/scale/rotation, optional GCP-derived transform, "
+                "and optional reprojection/resampling to a target CRS or resolution."
+            ),
+            category="geometric_correction",
+            arguments_model=GeometricCorrectionArgs,
+            handler=_run_geometric_correction,
         ),
         RegisteredFunction(
             name="supervised_classification",

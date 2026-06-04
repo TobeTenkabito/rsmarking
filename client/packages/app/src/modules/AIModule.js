@@ -1012,6 +1012,42 @@ export class AIModule {
             };
         }
 
+        if (name === 'radiometric_calibration') {
+            return {
+                raster_id: primary,
+                new_name: this._defaultNewName('radiometric'),
+                calibration_type: 'auto',
+                scale_factor: null,
+                offset: null,
+                radiance_mult: null,
+                radiance_add: null,
+                reflectance_mult: null,
+                reflectance_add: null,
+                sun_elevation: null,
+                earth_sun_distance: 1,
+                solar_irradiance: null,
+                sun_elevation_correction: true,
+                clamp: false,
+            };
+        }
+
+        if (name === 'geometric_correction') {
+            return {
+                raster_id: primary,
+                new_name: this._defaultNewName('geometric'),
+                dst_crs: null,
+                resampling_method: 'bilinear',
+                target_resolution_x: null,
+                target_resolution_y: null,
+                shift_x: 0,
+                shift_y: 0,
+                scale_x: 1,
+                scale_y: 1,
+                rotation_degrees: 0,
+                gcps: null,
+            };
+        }
+
         if (name === 'supervised_classification') {
             return {
                 raster_id: primary,

@@ -344,6 +344,78 @@ export const RasterAPI = {
     );
   },
 
+  async radiometricCalibration({
+    rasterId,
+    calibrationType = 'auto',
+    scaleFactor = null,
+    offset = null,
+    radianceMult = null,
+    radianceAdd = null,
+    reflectanceMult = null,
+    reflectanceAdd = null,
+    sunElevation = null,
+    earthSunDistance = 1,
+    solarIrradiance = null,
+    sunElevationCorrection = true,
+    clamp = false,
+    newName,
+  }) {
+    return postForm(
+      '/radiometric-calibration',
+      {
+        raster_id: rasterId,
+        calibration_type: calibrationType,
+        scale_factor: scaleFactor,
+        offset,
+        radiance_mult: radianceMult,
+        radiance_add: radianceAdd,
+        reflectance_mult: reflectanceMult,
+        reflectance_add: reflectanceAdd,
+        sun_elevation: sunElevation,
+        earth_sun_distance: earthSunDistance,
+        solar_irradiance: solarIrradiance,
+        sun_elevation_correction: sunElevationCorrection,
+        clamp,
+        new_name: newName,
+      },
+      'Radiometric calibration failed'
+    );
+  },
+
+  async geometricCorrection({
+    rasterId,
+    dstCrs = null,
+    resamplingMethod = 'bilinear',
+    targetResolutionX = null,
+    targetResolutionY = null,
+    shiftX = 0,
+    shiftY = 0,
+    scaleX = 1,
+    scaleY = 1,
+    rotationDegrees = 0,
+    gcps = null,
+    newName,
+  }) {
+    return postForm(
+      '/geometric-correction',
+      {
+        raster_id: rasterId,
+        dst_crs: dstCrs,
+        resampling_method: resamplingMethod,
+        target_resolution_x: targetResolutionX,
+        target_resolution_y: targetResolutionY,
+        shift_x: shiftX,
+        shift_y: shiftY,
+        scale_x: scaleX,
+        scale_y: scaleY,
+        rotation_degrees: rotationDegrees,
+        gcps: Array.isArray(gcps) ? JSON.stringify(gcps) : gcps,
+        new_name: newName,
+      },
+      'Geometric correction failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

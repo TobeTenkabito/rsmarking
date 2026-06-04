@@ -75,6 +75,13 @@ export class GlobalBridge {
             handleResampleInputChange: () => this.app.resample?.handleInputChange(),
             executeResample: () => this.app.resample?.execute(),
 
+            // --- Radiometric and Geometric Preprocessing ---
+            openPreprocessingModal: (mode, rasterId) => this.app.preprocessing?.openModal(mode, rasterId),
+            closePreprocessingModal: () => this.app.preprocessing?.closeModal(),
+            switchPreprocessingMode: (mode) => this.app.preprocessing?.switchMode(mode),
+            handlePreprocessingInputChange: () => this.app.preprocessing?.handleInputChange(),
+            executePreprocessing: () => this.app.preprocessing?.execute(),
+
             // --- Classification and Segmentation ---
             openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
             closeClassificationModal: () => this.app.classification?.closeModal(),

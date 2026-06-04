@@ -34,6 +34,8 @@ from functions.implement.manipulation import (
 )
 from functions.implement.resampling import resample_raster
 from functions.implement.atmospheric_correction import atmospheric_correction
+from functions.implement.radiometric import radiometric_calibration
+from functions.implement.geometric import geometric_correction
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -143,6 +145,74 @@ class RasterProcessor:
             dark_percentile=dark_percentile,
             bright_percentile=bright_percentile,
             clamp=clamp,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def radiometric_calibration(
+        input_path: str,
+        output_path: str,
+        calibration_type: str = "auto",
+        scale_factor: float | None = None,
+        offset: float | None = None,
+        radiance_mult: float | None = None,
+        radiance_add: float | None = None,
+        reflectance_mult: float | None = None,
+        reflectance_add: float | None = None,
+        sun_elevation: float | None = None,
+        earth_sun_distance: float = 1.0,
+        solar_irradiance: float | None = None,
+        sun_elevation_correction: bool = True,
+        clamp: bool = False,
+    ) -> dict[str, object]:
+        result = radiometric_calibration(
+            input_path=input_path,
+            output_path=output_path,
+            calibration_type=calibration_type,
+            scale_factor=scale_factor,
+            offset=offset,
+            radiance_mult=radiance_mult,
+            radiance_add=radiance_add,
+            reflectance_mult=reflectance_mult,
+            reflectance_add=reflectance_add,
+            sun_elevation=sun_elevation,
+            earth_sun_distance=earth_sun_distance,
+            solar_irradiance=solar_irradiance,
+            sun_elevation_correction=sun_elevation_correction,
+            clamp=clamp,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def geometric_correction(
+        input_path: str,
+        output_path: str,
+        dst_crs: str | None = None,
+        resampling_method: str = "bilinear",
+        target_resolution_x: float | None = None,
+        target_resolution_y: float | None = None,
+        shift_x: float = 0.0,
+        shift_y: float = 0.0,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
+        rotation_degrees: float = 0.0,
+        gcps: list[dict[str, float]] | None = None,
+    ) -> dict[str, object]:
+        result = geometric_correction(
+            input_path=input_path,
+            output_path=output_path,
+            dst_crs=dst_crs,
+            resampling_method=resampling_method,
+            target_resolution_x=target_resolution_x,
+            target_resolution_y=target_resolution_y,
+            shift_x=shift_x,
+            shift_y=shift_y,
+            scale_x=scale_x,
+            scale_y=scale_y,
+            rotation_degrees=rotation_degrees,
+            gcps=gcps,
         )
         build_raster_overviews(output_path)
         return result

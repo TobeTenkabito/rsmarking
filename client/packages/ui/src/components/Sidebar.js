@@ -180,6 +180,14 @@ export const SidebarComponent = {
                                   d="M4 7h10m0 0l-3-3m3 3l-3 3M20 17H10m0 0l3-3m-3 3l3 3"/>
                         </svg>
                     </button>
+                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openPreprocessingModal('radiometric', '${indexId}')"
+                            class="p-1.5 text-slate-400 hover:text-cyan-500 hover:bg-cyan-50 rounded transition-colors"
+                            title="Radiometric and geometric correction">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M4 19h16M6 17l3-8 4 5 3-9 2 12M5 5h14"/>
+                        </svg>
+                    </button>
                     <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openClassificationModal('unsupervised', '${indexId}')"
                             class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-colors"
                             title="Classification and segmentation">

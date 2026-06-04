@@ -9,6 +9,7 @@ import { extractionModal }        from './modals/extractionModal.js';
 import { mergeModal }             from './modals/mergeModal.js';
 import { extractModal }           from './modals/extractModal.js';
 import { resampleModal }          from './modals/resampleModal.js';
+import { preprocessingModal }     from './modals/preprocessingModal.js';
 import { classificationModal }    from './modals/classificationModal.js';
 import { calculatorModal }        from './modals/calculatorModal.js';
 import { scriptModal }            from './modals/scriptModal.js';
@@ -27,6 +28,7 @@ export const ModalTemplates = {
     mergeModal,
     extractModal,
     resampleModal,
+    preprocessingModal,
     classificationModal,
     calculatorModal,
     scriptModal,

@@ -447,6 +447,142 @@ async def process_atmospheric_correction_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_radiometric_calibration_task(
+    db: AsyncSession,
+    raster_id: int,
+    new_name: str,
+    calibration_type: str = "auto",
+    scale_factor: float | None = None,
+    offset: float | None = None,
+    radiance_mult: float | None = None,
+    radiance_add: float | None = None,
+    reflectance_mult: float | None = None,
+    reflectance_add: float | None = None,
+    sun_elevation: float | None = None,
+    earth_sun_distance: float = 1.0,
+    solar_irradiance: float | None = None,
+    sun_elevation_correction: bool = True,
+    clamp: bool = False,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_radiometric_raw.tif")
+        cog_filename = f"{task_id}_radiometric.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        calibration_meta = RasterProcessor.radiometric_calibration(
+            input_path=input_path,
+            output_path=tmp_path,
+            calibration_type=calibration_type,
+            scale_factor=scale_factor,
+            offset=offset,
+            radiance_mult=radiance_mult,
+            radiance_add=radiance_add,
+            reflectance_mult=reflectance_mult,
+            reflectance_add=reflectance_add,
+            sun_elevation=sun_elevation,
+            earth_sun_distance=earth_sun_distance,
+            solar_irradiance=solar_irradiance,
+            sun_elevation_correction=sun_elevation_correction,
+            clamp=clamp,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "radiometric",
+            bands_count=actual_bands,
+            metadata_source=tmp_path,
+        )
+        result["calibration"] = calibration_meta
+        return result
+    except Exception as e:
+        logger.error(f"radiometric calibration task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_geometric_correction_task(
+    db: AsyncSession,
+    raster_id: int,
+    new_name: str,
+    dst_crs: str | None = None,
+    resampling_method: str = "bilinear",
+    target_resolution_x: float | None = None,
+    target_resolution_y: float | None = None,
+    shift_x: float = 0.0,
+    shift_y: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    rotation_degrees: float = 0.0,
+    gcps: list[dict[str, float]] | None = None,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_geometric_raw.tif")
+        cog_filename = f"{task_id}_geometric.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        correction_meta = RasterProcessor.geometric_correction(
+            input_path=input_path,
+            output_path=tmp_path,
+            dst_crs=dst_crs,
+            resampling_method=resampling_method,
+            target_resolution_x=target_resolution_x,
+            target_resolution_y=target_resolution_y,
+            shift_x=shift_x,
+            shift_y=shift_y,
+            scale_x=scale_x,
+            scale_y=scale_y,
+            rotation_degrees=rotation_degrees,
+            gcps=gcps,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "geometric",
+            bands_count=actual_bands,
+            metadata_source=tmp_path,
+        )
+        result["correction"] = correction_meta
+        return result
+    except Exception as e:
+        logger.error(f"geometric correction task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def process_supervised_classification_task(
     db: AsyncSession,
     raster_id: int,
