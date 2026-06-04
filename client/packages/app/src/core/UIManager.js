@@ -21,6 +21,7 @@ export class UIManager {
                 ModalTemplates.resampleModal +
                 ModalTemplates.preprocessingModal +
                 ModalTemplates.demModal +
+                ModalTemplates.transformModal +
                 ModalTemplates.classificationModal +
                 ModalTemplates.calculatorModal +
                 ModalTemplates.scriptModal +

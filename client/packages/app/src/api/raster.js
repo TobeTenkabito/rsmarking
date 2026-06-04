@@ -446,6 +446,34 @@ export const RasterAPI = {
     );
   },
 
+  async rasterTransformAnalysis({
+    rasterId,
+    transformType,
+    bandIndex = 1,
+    fourierOutput = 'magnitude',
+    waveletOutput = 'detail_energy',
+    waveletLevel = 1,
+    pcaComponents = 3,
+    pcaStandardize = false,
+    newName,
+  }) {
+    return postForm(
+      '/raster-transform-analysis',
+      {
+        raster_id: rasterId,
+        transform_type: transformType,
+        band_index: bandIndex,
+        fourier_output: fourierOutput,
+        wavelet_output: waveletOutput,
+        wavelet_level: waveletLevel,
+        pca_components: pcaComponents,
+        pca_standardize: pcaStandardize,
+        new_name: newName,
+      },
+      'Raster transform analysis failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

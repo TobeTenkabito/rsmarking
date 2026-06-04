@@ -16,6 +16,7 @@ from services.data_service.routers.atmospheric_router import router as atmospher
 from services.data_service.routers.classification_router import router as classification_router
 from services.data_service.routers.preprocessing_router import router as preprocessing_router
 from services.data_service.routers.dem_router import router as dem_router
+from services.data_service.routers.transform_router import router as transform_router
 
 router = APIRouter()
 
@@ -24,6 +25,7 @@ router.include_router(atmospheric_router)
 router.include_router(classification_router)
 router.include_router(preprocessing_router)
 router.include_router(dem_router)
+router.include_router(transform_router)
 router.include_router(upload_router)
 router.include_router(indices_router)
 router.include_router(extract_router)

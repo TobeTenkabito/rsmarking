@@ -89,6 +89,13 @@ export class GlobalBridge {
             handleDEMAnalysisInputChange: () => this.app.demAnalysis?.handleInputChange(),
             executeDEMAnalysis: () => this.app.demAnalysis?.execute(),
 
+            // --- Raster Transform Analysis ---
+            openTransformAnalysisModal: (type, rasterId) => this.app.rasterTransform?.openModal(type, rasterId),
+            closeTransformAnalysisModal: () => this.app.rasterTransform?.closeModal(),
+            switchTransformAnalysisType: (type) => this.app.rasterTransform?.switchType(type, { resetName: true }),
+            handleTransformAnalysisInputChange: () => this.app.rasterTransform?.handleInputChange(),
+            executeTransformAnalysis: () => this.app.rasterTransform?.execute(),
+
             // --- Classification and Segmentation ---
             openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
             closeClassificationModal: () => this.app.classification?.closeModal(),

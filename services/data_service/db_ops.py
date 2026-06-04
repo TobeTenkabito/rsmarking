@@ -643,6 +643,67 @@ async def process_dem_analysis_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_raster_transform_task(
+    db: AsyncSession,
+    raster_id: int,
+    transform_type: str,
+    new_name: str,
+    band_index: int = 1,
+    fourier_output: str = "magnitude",
+    wavelet_output: str = "detail_energy",
+    wavelet_level: int = 1,
+    pca_components: int = 3,
+    pca_standardize: bool = False,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+        prefix = f"raster_{_safe_operation_name(transform_type)}"
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        transform_meta = RasterProcessor.raster_transform_analysis(
+            input_path=input_path,
+            output_path=tmp_path,
+            transform_type=transform_type,
+            band_index=band_index,
+            fourier_output=fourier_output,
+            wavelet_output=wavelet_output,
+            wavelet_level=wavelet_level,
+            pca_components=pca_components,
+            pca_standardize=pca_standardize,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            prefix,
+            bands_count=actual_bands,
+            metadata_source=tmp_path,
+        )
+        result["raster_transform"] = transform_meta
+        return result
+    except Exception as e:
+        logger.error(f"raster transform task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def process_supervised_classification_task(
     db: AsyncSession,
     raster_id: int,

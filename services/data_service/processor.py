@@ -37,6 +37,7 @@ from functions.implement.atmospheric_correction import atmospheric_correction
 from functions.implement.radiometric import radiometric_calibration
 from functions.implement.geometric import geometric_correction
 from functions.implement.dem_analysis import dem_analysis
+from functions.implement.raster_transforms import raster_transform_analysis
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -242,6 +243,32 @@ class RasterProcessor:
             hillshade_altitude=hillshade_altitude,
             relief_window_size=relief_window_size,
             min_slope_degrees=min_slope_degrees,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def raster_transform_analysis(
+        input_path: str,
+        output_path: str,
+        transform_type: str,
+        band_index: int = 1,
+        fourier_output: str = "magnitude",
+        wavelet_output: str = "detail_energy",
+        wavelet_level: int = 1,
+        pca_components: int = 3,
+        pca_standardize: bool = False,
+    ) -> dict[str, object]:
+        result = raster_transform_analysis(
+            input_path=input_path,
+            output_path=output_path,
+            transform_type=transform_type,
+            band_index=band_index,
+            fourier_output=fourier_output,
+            wavelet_output=wavelet_output,
+            wavelet_level=wavelet_level,
+            pca_components=pca_components,
+            pca_standardize=pca_standardize,
         )
         build_raster_overviews(output_path)
         return result
