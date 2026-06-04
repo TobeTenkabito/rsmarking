@@ -583,6 +583,66 @@ async def process_geometric_correction_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_dem_analysis_task(
+    db: AsyncSession,
+    raster_id: int,
+    operation: str,
+    new_name: str,
+    band_index: int = 1,
+    z_factor: float = 1.0,
+    slope_unit: str = "degrees",
+    hillshade_azimuth: float = 315.0,
+    hillshade_altitude: float = 45.0,
+    relief_window_size: int = 3,
+    min_slope_degrees: float = 0.1,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+        prefix = f"dem_{_safe_operation_name(operation)}"
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        dem_meta = RasterProcessor.dem_analysis(
+            input_path=input_path,
+            output_path=tmp_path,
+            operation=operation,
+            band_index=band_index,
+            z_factor=z_factor,
+            slope_unit=slope_unit,
+            hillshade_azimuth=hillshade_azimuth,
+            hillshade_altitude=hillshade_altitude,
+            relief_window_size=relief_window_size,
+            min_slope_degrees=min_slope_degrees,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            prefix,
+            bands_count=1,
+            metadata_source=tmp_path,
+        )
+        result["dem_analysis"] = dem_meta
+        return result
+    except Exception as e:
+        logger.error(f"DEM analysis task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def process_supervised_classification_task(
     db: AsyncSession,
     raster_id: int,
@@ -768,6 +828,12 @@ def _resolve_record_path_or_404(raster_record: models.RasterMetadata) -> str:
     if not input_path:
         raise HTTPException(status_code=404, detail="Raster file not found")
     return input_path
+
+
+def _safe_operation_name(operation: str) -> str:
+    value = re.sub(r"[^a-z0-9_]+", "_", str(operation or "analysis").strip().lower())
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value or "analysis"
 
 
 async def get_dynamic_band_ids(request: Request) -> List[int]:

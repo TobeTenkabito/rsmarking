@@ -1835,6 +1835,10 @@ export class AIModule {
     async _refreshSidebar(dataType) {
         if (dataType === 'raster') {
             await this.app.raster?.refreshData();
+            if (this.app.mapController?.updateUI) {
+                this.app.mapController.updateUI();
+                return;
+            }
             const rasterListEl = document.getElementById('raster-list');
             if (rasterListEl) {
                 rasterListEl.innerHTML = SidebarComponent.renderRasterSection(
@@ -1846,6 +1850,10 @@ export class AIModule {
 
         } else {
             await this.app.project?.refreshProjects();
+            if (this.app.mapController?.updateUI) {
+                this.app.mapController.updateUI();
+                return;
+            }
             const vectorContainerEl = document.getElementById('vector-list-container');
             if (vectorContainerEl) {
                 vectorContainerEl.innerHTML = SidebarComponent.renderVectorSection(

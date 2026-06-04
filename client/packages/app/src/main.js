@@ -22,6 +22,7 @@ import { RasterStatisticsModule } from './modules/RasterStatisticsModule.js';
 import { ResampleModule } from './modules/ResampleModule.js';
 import { ClassificationModule } from './modules/ClassificationModule.js';
 import { PreprocessingModule } from './modules/PreprocessingModule.js';
+import { DEMAnalysisModule } from './modules/DEMAnalysisModule.js';
 import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
@@ -49,6 +50,7 @@ class App {
         this.resample = null;
         this.classification = null;
         this.preprocessing = null;
+        this.demAnalysis = null;
     }
 
     async init() {
@@ -76,6 +78,7 @@ class App {
             this.resample = new ResampleModule(this);
             this.classification = new ClassificationModule(this);
             this.preprocessing = new PreprocessingModule(this);
+            this.demAnalysis = new DEMAnalysisModule(this);
 
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();

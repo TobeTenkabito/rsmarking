@@ -36,6 +36,7 @@ from functions.implement.resampling import resample_raster
 from functions.implement.atmospheric_correction import atmospheric_correction
 from functions.implement.radiometric import radiometric_calibration
 from functions.implement.geometric import geometric_correction
+from functions.implement.dem_analysis import dem_analysis
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -213,6 +214,34 @@ class RasterProcessor:
             scale_y=scale_y,
             rotation_degrees=rotation_degrees,
             gcps=gcps,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def dem_analysis(
+        input_path: str,
+        output_path: str,
+        operation: str,
+        band_index: int = 1,
+        z_factor: float = 1.0,
+        slope_unit: str = "degrees",
+        hillshade_azimuth: float = 315.0,
+        hillshade_altitude: float = 45.0,
+        relief_window_size: int = 3,
+        min_slope_degrees: float = 0.1,
+    ) -> dict[str, object]:
+        result = dem_analysis(
+            input_path=input_path,
+            output_path=output_path,
+            operation=operation,
+            band_index=band_index,
+            z_factor=z_factor,
+            slope_unit=slope_unit,
+            hillshade_azimuth=hillshade_azimuth,
+            hillshade_altitude=hillshade_altitude,
+            relief_window_size=relief_window_size,
+            min_slope_degrees=min_slope_degrees,
         )
         build_raster_overviews(output_path)
         return result

@@ -82,6 +82,13 @@ export class GlobalBridge {
             handlePreprocessingInputChange: () => this.app.preprocessing?.handleInputChange(),
             executePreprocessing: () => this.app.preprocessing?.execute(),
 
+            // --- DEM Analysis ---
+            openDEMAnalysisModal: (operation, rasterId) => this.app.demAnalysis?.openModal(operation, rasterId),
+            closeDEMAnalysisModal: () => this.app.demAnalysis?.closeModal(),
+            switchDEMAnalysisOperation: (operation) => this.app.demAnalysis?.switchOperation(operation, { resetName: true }),
+            handleDEMAnalysisInputChange: () => this.app.demAnalysis?.handleInputChange(),
+            executeDEMAnalysis: () => this.app.demAnalysis?.execute(),
+
             // --- Classification and Segmentation ---
             openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
             closeClassificationModal: () => this.app.classification?.closeModal(),

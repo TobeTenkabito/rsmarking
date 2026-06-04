@@ -416,6 +416,36 @@ export const RasterAPI = {
     );
   },
 
+  async demAnalysis({
+    rasterId,
+    operation,
+    bandIndex = 1,
+    zFactor = 1,
+    slopeUnit = 'degrees',
+    hillshadeAzimuth = 315,
+    hillshadeAltitude = 45,
+    reliefWindowSize = 3,
+    minSlopeDegrees = 0.1,
+    newName,
+  }) {
+    return postForm(
+      '/dem-analysis',
+      {
+        raster_id: rasterId,
+        operation,
+        band_index: bandIndex,
+        z_factor: zFactor,
+        slope_unit: slopeUnit,
+        hillshade_azimuth: hillshadeAzimuth,
+        hillshade_altitude: hillshadeAltitude,
+        relief_window_size: reliefWindowSize,
+        min_slope_degrees: minSlopeDegrees,
+        new_name: newName,
+      },
+      'DEM analysis failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },
