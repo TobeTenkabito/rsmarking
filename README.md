@@ -11,11 +11,46 @@ The repository is currently most useful as a local development stack for GeoTIFF
 - On-the-fly raster tile rendering from stored raster records.
 - Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.
 - Vector tile service using PostGIS `ST_AsMVT`.
-- Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, rasterization, clipping, and change detection.
+- Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, rasterization, clipping, and change detection.
 - Extraction algorithms for vegetation, water, buildings, and clouds.
 - AI gateway built around LiteLLM with analyze/modify modes and a callable function registry for analysis tools.
 - Docker-isolated Python script executor with shared access to `storage/raw`.
 - Optional Celery worker cluster for offline preprocessing, index calculation, and GeoJSON export jobs.
+
+## Frontend Tool Placement Standards
+
+RSMarking separates raster workflows between the main **Imagery Processing Center** and each raster row's hidden **RASTER FUNCTIONS** menu.
+
+Use **Imagery Processing Center** for reusable processing workflows that can be started without first opening a specific raster row. A tool belongs here when it creates a derived raster/vector product, changes raster geometry or radiometry, combines multiple inputs, runs a classification or extraction algorithm, or opens a full workflow modal with its own source-raster selector and parameters.
+
+Current Processing Center groups:
+
+| Group | Tools |
+|---|---|
+| DEM Analysis | Elevation, slope, aspect, hillshade/shading, curvature, topographic relief, topographic humidity index, flow direction, flow accumulation, watershed delineation |
+| Transform Analysis | Fourier analysis, wavelet analysis, PCA |
+| Band Processing | Band merge, band extraction, resampling |
+| Preprocessing | Radiometric calibration, geometric correction |
+| Index Calculation | NDVI, NDWI, NDBI, MNDWI |
+| Feature Extraction | Vegetation, water, building, cloud extraction |
+| Classification | Supervised classification, unsupervised classification, deep learning segmentation |
+| Raster Calculator | General raster calculator |
+| Script Programming | Python script editor |
+| Change Detection | Band difference, ratio, and index-difference workflows |
+| Format Conversion | Vector-to-raster and raster-to-vector conversion |
+
+Use **RASTER FUNCTIONS** for row-context actions on the exact raster item the user opened. A tool belongs here when it inspects, manages, or edits metadata for that one raster and does not represent a general algorithm workflow. These actions may use the raster row as their only context and should remain quick, local, and non-discoverability-critical.
+
+Current RASTER FUNCTIONS actions:
+
+| Action | Reason |
+|---|---|
+| Spectral Profile | Starts map inspection for the selected raster |
+| Raster Statistics | Opens descriptive statistics for the selected raster |
+| Attribute Table | Manages metadata/fields attached to the selected raster |
+| Remove Raster | Deletes the selected raster item |
+
+When adding a new tool, place it in **Imagery Processing Center** by default if it produces a new analytical output or needs a parameter form. Place it in **RASTER FUNCTIONS** only when the action is fundamentally tied to the opened raster row and is primarily inspect/manage/delete behavior. If a Processing Center workflow benefits from a selected raster shortcut, pass that raster into the modal as a preselected source rather than duplicating the workflow in RASTER FUNCTIONS.
 
 ## Architecture
 
@@ -267,8 +302,13 @@ Data service (`:8002`):
 - `DELETE /raster/{raster_id}`
 - `POST /merge-bands`
 - `POST /extract-bands`
+- `POST /resample-raster`
+- `POST /radiometric-calibration`, `/geometric-correction`
 - `POST /calculate-ndvi`, `/calculate-ndwi`, `/calculate-ndbi`, `/calculate-mndwi`
 - `POST /extract-vegetation`, `/extract-water`, `/extract-buildings`, `/extract-clouds`
+- `POST /dem-analysis`
+- `POST /raster-transform-analysis`
+- `POST /classify-supervised`, `/classify-unsupervised`, `/segment-deep-learning`
 - `POST /clip-raster-by-vector`
 - `POST /raster-calculator`
 - `GET /tasks/{task_id}/status`
