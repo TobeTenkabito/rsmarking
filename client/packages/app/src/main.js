@@ -20,6 +20,7 @@ import { ChangeDetectionModule } from './modules/ChangeDetectionModule.js';
 import { ConversionModule } from './modules/ConversionModule.js';
 import { RasterStatisticsModule } from './modules/RasterStatisticsModule.js';
 import { ResampleModule } from './modules/ResampleModule.js';
+import { ClassificationModule } from './modules/ClassificationModule.js';
 import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
@@ -45,6 +46,7 @@ class App {
         this.conversion = null;
         this.rasterStatistics = null;
         this.resample = null;
+        this.classification = null;
     }
 
     async init() {
@@ -70,6 +72,7 @@ class App {
             this.conversion = new ConversionModule(this);
             this.rasterStatistics = new RasterStatisticsModule(this);
             this.resample = new ResampleModule(this);
+            this.classification = new ClassificationModule(this);
 
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();

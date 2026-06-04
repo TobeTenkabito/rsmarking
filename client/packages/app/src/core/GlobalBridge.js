@@ -75,6 +75,15 @@ export class GlobalBridge {
             handleResampleInputChange: () => this.app.resample?.handleInputChange(),
             executeResample: () => this.app.resample?.execute(),
 
+            // --- Classification and Segmentation ---
+            openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
+            closeClassificationModal: () => this.app.classification?.closeModal(),
+            switchClassificationMode: (mode) => this.app.classification?.switchMode(mode),
+            handleClassificationInputChange: () => this.app.classification?.handleInputChange(),
+            addClassificationSample: () => this.app.classification?.addSample(),
+            removeClassificationSample: (index) => this.app.classification?.removeSample(index),
+            executeClassification: () => this.app.classification?.execute(),
+
             // --- UI English ---
             hideDetail: () => this.app.ui.hideDetail(),
 
