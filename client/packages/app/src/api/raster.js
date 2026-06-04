@@ -260,6 +260,90 @@ export const RasterAPI = {
     );
   },
 
+  async supervisedClassification({
+    rasterId,
+    samples,
+    classifier = 'nearest_centroid',
+    bandIndices = null,
+    nEstimators = 100,
+    randomSeed = 13,
+    smoothing = 0,
+    newName,
+  }) {
+    return postForm(
+      '/classify-supervised',
+      {
+        raster_id: rasterId,
+        samples: JSON.stringify(samples || []),
+        classifier,
+        band_indices: Array.isArray(bandIndices) ? JSON.stringify(bandIndices) : bandIndices,
+        n_estimators: nEstimators,
+        random_seed: randomSeed,
+        smoothing,
+        new_name: newName,
+      },
+      'Supervised classification failed'
+    );
+  },
+
+  async unsupervisedClassification({
+    rasterId,
+    nClasses = 5,
+    method = 'kmeans',
+    bandIndices = null,
+    maxSamples = 50000,
+    randomSeed = 13,
+    smoothing = 0,
+    newName,
+  }) {
+    return postForm(
+      '/classify-unsupervised',
+      {
+        raster_id: rasterId,
+        n_classes: nClasses,
+        method,
+        band_indices: Array.isArray(bandIndices) ? JSON.stringify(bandIndices) : bandIndices,
+        max_samples: maxSamples,
+        random_seed: randomSeed,
+        smoothing,
+        new_name: newName,
+      },
+      'Unsupervised classification failed'
+    );
+  },
+
+  async deepLearningSegmentation({
+    rasterId,
+    modelPath = null,
+    backend = 'auto',
+    nClasses = 2,
+    bandIndices = null,
+    threshold = 0.5,
+    randomSeed = 13,
+    maxSamples = 50000,
+    compactness = 0.15,
+    smoothing = 1,
+    newName,
+  }) {
+    return postForm(
+      '/segment-deep-learning',
+      {
+        raster_id: rasterId,
+        model_path: modelPath,
+        backend,
+        n_classes: nClasses,
+        band_indices: Array.isArray(bandIndices) ? JSON.stringify(bandIndices) : bandIndices,
+        threshold,
+        random_seed: randomSeed,
+        max_samples: maxSamples,
+        compactness,
+        smoothing,
+        new_name: newName,
+      },
+      'Deep learning segmentation failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

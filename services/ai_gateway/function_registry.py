@@ -127,6 +127,70 @@ class AtmosphericCorrectionArgs(BaseModel):
     clamp: bool = Field(default=True, description="Clamp output reflectance to the [0, 1] interval.")
 
 
+class SupervisedClassificationArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id to classify.")
+    samples: list[dict[str, Any]] = Field(
+        ...,
+        min_length=2,
+        description=(
+            "Training samples. Each item needs class_id/class_value/label plus either row+col, "
+            "x+y, lng+lat, or spectral features/values matching selected bands."
+        ),
+    )
+    classifier: Literal["nearest_centroid", "random_forest", "svm"] = Field(
+        default="nearest_centroid",
+        description="Supervised classifier. nearest_centroid is robust for small training sets.",
+    )
+    band_indices: list[int] | None = Field(
+        default=None,
+        description="Optional one-based raster bands to use. Defaults to all bands.",
+    )
+    n_estimators: int = Field(default=100, ge=1, le=1000, description="Random forest tree count.")
+    random_seed: int = Field(default=13, description="Deterministic random seed.")
+    smoothing: int = Field(default=0, ge=0, le=5, description="Optional median-filter smoothing radius in pixels.")
+    new_name: str = Field(..., description="Name for the generated classification raster.")
+
+
+class UnsupervisedClassificationArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id to classify.")
+    n_classes: int = Field(default=5, ge=2, le=255, description="Number of output spectral classes.")
+    method: Literal["kmeans", "mini_batch_kmeans"] = Field(
+        default="kmeans",
+        description="Clustering method.",
+    )
+    band_indices: list[int] | None = Field(
+        default=None,
+        description="Optional one-based raster bands to use. Defaults to all bands.",
+    )
+    max_samples: int = Field(default=50000, ge=100, description="Maximum valid pixels used to fit clusters.")
+    random_seed: int = Field(default=13, description="Deterministic random seed.")
+    smoothing: int = Field(default=0, ge=0, le=5, description="Optional median-filter smoothing radius in pixels.")
+    new_name: str = Field(..., description="Name for the generated classification raster.")
+
+
+class DeepLearningSegmentationArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id to segment.")
+    new_name: str = Field(..., description="Name for the generated segmentation raster.")
+    model_path: str | None = Field(
+        default=None,
+        description="Optional local ONNX model path. When omitted, built-in spectral-spatial segmentation is used.",
+    )
+    backend: Literal["auto", "onnx", "spectral_spatial", "slic", "watershed"] = Field(
+        default="auto",
+        description="Segmentation backend. auto uses ONNX when model_path is present, otherwise spectral_spatial.",
+    )
+    n_classes: int = Field(default=2, ge=2, le=255, description="Class/segment count for built-in segmentation.")
+    band_indices: list[int] | None = Field(
+        default=None,
+        description="Optional one-based raster bands to use. Defaults to all bands.",
+    )
+    threshold: float = Field(default=0.5, ge=0, le=1, description="Binary threshold for one-channel ONNX outputs.")
+    random_seed: int = Field(default=13, description="Deterministic random seed.")
+    max_samples: int = Field(default=50000, ge=100, description="Maximum valid pixels used by built-in segmentation.")
+    compactness: float = Field(default=0.15, ge=0, le=10, description="Spatial compactness for built-in segmentation.")
+    smoothing: int = Field(default=1, ge=0, le=5, description="Optional median-filter smoothing radius in pixels.")
+
+
 class ScriptSandboxArgs(BaseModel):
     raster_ids: list[int] = Field(
         ...,
@@ -678,6 +742,69 @@ async def _run_atmospheric_correction(
     )
 
 
+async def _run_supervised_classification(
+    args: SupervisedClassificationArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_supervised_classification_task(
+        db=db,
+        raster_id=args.raster_id,
+        samples=args.samples,
+        classifier=args.classifier,
+        new_name=args.new_name,
+        band_indices=args.band_indices,
+        n_estimators=args.n_estimators,
+        random_seed=args.random_seed,
+        smoothing=args.smoothing,
+    )
+
+
+async def _run_unsupervised_classification(
+    args: UnsupervisedClassificationArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_unsupervised_classification_task(
+        db=db,
+        raster_id=args.raster_id,
+        n_classes=args.n_classes,
+        method=args.method,
+        new_name=args.new_name,
+        band_indices=args.band_indices,
+        max_samples=args.max_samples,
+        random_seed=args.random_seed,
+        smoothing=args.smoothing,
+    )
+
+
+async def _run_deep_learning_segmentation(
+    args: DeepLearningSegmentationArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_deep_learning_segmentation_task(
+        db=db,
+        raster_id=args.raster_id,
+        new_name=args.new_name,
+        model_path=args.model_path,
+        backend=args.backend,
+        n_classes=args.n_classes,
+        band_indices=args.band_indices,
+        threshold=args.threshold,
+        random_seed=args.random_seed,
+        max_samples=args.max_samples,
+        compactness=args.compactness,
+        smoothing=args.smoothing,
+    )
+
+
 async def _run_script_sandbox(
     args: ScriptSandboxArgs,
     db: AsyncSession,
@@ -1207,6 +1334,36 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="atmospheric_correction",
             arguments_model=AtmosphericCorrectionArgs,
             handler=_run_atmospheric_correction,
+        ),
+        RegisteredFunction(
+            name="supervised_classification",
+            description=(
+                "Run supervised raster classification from labeled training samples and save a uint16 class raster. "
+                "Use when the user provides or selects representative class samples."
+            ),
+            category="classification",
+            arguments_model=SupervisedClassificationArgs,
+            handler=_run_supervised_classification,
+        ),
+        RegisteredFunction(
+            name="unsupervised_classification",
+            description=(
+                "Run unsupervised spectral clustering, such as KMeans, and save a uint16 class raster. "
+                "Use when no training labels are available."
+            ),
+            category="classification",
+            arguments_model=UnsupervisedClassificationArgs,
+            handler=_run_unsupervised_classification,
+        ),
+        RegisteredFunction(
+            name="deep_learning_segmentation",
+            description=(
+                "Run deep-learning segmentation when a local ONNX model path is supplied, or use the built-in "
+                "spectral-spatial segmentation backend with the same output contract."
+            ),
+            category="segmentation",
+            arguments_model=DeepLearningSegmentationArgs,
+            handler=_run_deep_learning_segmentation,
         ),
         RegisteredFunction(
             name="run_script_sandbox",

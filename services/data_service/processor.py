@@ -34,6 +34,11 @@ from functions.implement.manipulation import (
 )
 from functions.implement.resampling import resample_raster
 from functions.implement.atmospheric_correction import atmospheric_correction
+from functions.implement.classification import (
+    supervised_classification,
+    unsupervised_classification,
+)
+from functions.implement.segmentation import deep_learning_segmentation
 from functions.implement.extraction import (
     extract_vegetation,
     extract_water,
@@ -138,6 +143,84 @@ class RasterProcessor:
             dark_percentile=dark_percentile,
             bright_percentile=bright_percentile,
             clamp=clamp,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def supervised_classification(
+        input_path: str,
+        output_path: str,
+        samples: list[dict[str, Any]],
+        classifier: str = "nearest_centroid",
+        band_indices: list[int] | None = None,
+        n_estimators: int = 100,
+        random_seed: int = 13,
+        smoothing: int = 0,
+    ) -> dict[str, object]:
+        result = supervised_classification(
+            input_path=input_path,
+            output_path=output_path,
+            samples=samples,
+            classifier=classifier,
+            band_indices=band_indices,
+            n_estimators=n_estimators,
+            random_seed=random_seed,
+            smoothing=smoothing,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def unsupervised_classification(
+        input_path: str,
+        output_path: str,
+        n_classes: int = 5,
+        method: str = "kmeans",
+        band_indices: list[int] | None = None,
+        max_samples: int = 50000,
+        random_seed: int = 13,
+        smoothing: int = 0,
+    ) -> dict[str, object]:
+        result = unsupervised_classification(
+            input_path=input_path,
+            output_path=output_path,
+            n_classes=n_classes,
+            method=method,
+            band_indices=band_indices,
+            max_samples=max_samples,
+            random_seed=random_seed,
+            smoothing=smoothing,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def deep_learning_segmentation(
+        input_path: str,
+        output_path: str,
+        model_path: str | None = None,
+        backend: str = "auto",
+        n_classes: int = 2,
+        band_indices: list[int] | None = None,
+        threshold: float = 0.5,
+        random_seed: int = 13,
+        max_samples: int = 50000,
+        compactness: float = 0.15,
+        smoothing: int = 1,
+    ) -> dict[str, object]:
+        result = deep_learning_segmentation(
+            input_path=input_path,
+            output_path=output_path,
+            model_path=model_path,
+            backend=backend,
+            n_classes=n_classes,
+            band_indices=band_indices,
+            threshold=threshold,
+            random_seed=random_seed,
+            max_samples=max_samples,
+            compactness=compactness,
+            smoothing=smoothing,
         )
         build_raster_overviews(output_path)
         return result

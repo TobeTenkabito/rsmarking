@@ -5,7 +5,7 @@ import re
 import rasterio
 from uuid import UUID
 from fastapi import HTTPException, Request
-from typing import List, Callable
+from typing import Any, List, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from rasterio.warp import transform_bounds
@@ -445,6 +445,193 @@ async def process_atmospheric_correction_task(
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_supervised_classification_task(
+    db: AsyncSession,
+    raster_id: int,
+    samples: list[dict[str, Any]],
+    classifier: str,
+    new_name: str,
+    band_indices: list[int] | None = None,
+    n_estimators: int = 100,
+    random_seed: int = 13,
+    smoothing: int = 0,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_supervised_classification_raw.tif")
+        cog_filename = f"{task_id}_supervised_classification.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        classification_meta = RasterProcessor.supervised_classification(
+            input_path=input_path,
+            output_path=tmp_path,
+            samples=samples,
+            classifier=classifier,
+            band_indices=band_indices,
+            n_estimators=n_estimators,
+            random_seed=random_seed,
+            smoothing=smoothing,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "supervised_classification",
+            bands_count=1,
+            metadata_source=tmp_path,
+        )
+        result["classification"] = classification_meta
+        return result
+    except Exception as e:
+        logger.error(f"supervised classification task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_unsupervised_classification_task(
+    db: AsyncSession,
+    raster_id: int,
+    n_classes: int,
+    method: str,
+    new_name: str,
+    band_indices: list[int] | None = None,
+    max_samples: int = 50000,
+    random_seed: int = 13,
+    smoothing: int = 0,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_unsupervised_classification_raw.tif")
+        cog_filename = f"{task_id}_unsupervised_classification.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        classification_meta = RasterProcessor.unsupervised_classification(
+            input_path=input_path,
+            output_path=tmp_path,
+            n_classes=n_classes,
+            method=method,
+            band_indices=band_indices,
+            max_samples=max_samples,
+            random_seed=random_seed,
+            smoothing=smoothing,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "unsupervised_classification",
+            bands_count=1,
+            metadata_source=tmp_path,
+        )
+        result["classification"] = classification_meta
+        return result
+    except Exception as e:
+        logger.error(f"unsupervised classification task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def process_deep_learning_segmentation_task(
+    db: AsyncSession,
+    raster_id: int,
+    new_name: str,
+    model_path: str | None = None,
+    backend: str = "auto",
+    n_classes: int = 2,
+    band_indices: list[int] | None = None,
+    threshold: float = 0.5,
+    random_seed: int = 13,
+    max_samples: int = 50000,
+    compactness: float = 0.15,
+    smoothing: int = 1,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_deep_segmentation_raw.tif")
+        cog_filename = f"{task_id}_deep_segmentation.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        segmentation_meta = RasterProcessor.deep_learning_segmentation(
+            input_path=input_path,
+            output_path=tmp_path,
+            model_path=model_path,
+            backend=backend,
+            n_classes=n_classes,
+            band_indices=band_indices,
+            threshold=threshold,
+            random_seed=random_seed,
+            max_samples=max_samples,
+            compactness=compactness,
+            smoothing=smoothing,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            "deep_segmentation",
+            bands_count=1,
+            metadata_source=tmp_path,
+        )
+        result["segmentation"] = segmentation_meta
+        return result
+    except Exception as e:
+        logger.error(f"deep learning segmentation task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _get_raster_record_or_404(db: AsyncSession, raster_id: int) -> models.RasterMetadata:
+    stmt = select(models.RasterMetadata).where(models.RasterMetadata.index_id == raster_id)
+    res = await db.execute(stmt)
+    raster_record = res.scalar_one_or_none()
+    if not raster_record:
+        raise HTTPException(status_code=404, detail="Raster not found")
+    return raster_record
+
+
+def _resolve_record_path_or_404(raster_record: models.RasterMetadata) -> str:
+    input_path = resolve_raster_record_path(raster_record)
+    if not input_path:
+        raise HTTPException(status_code=404, detail="Raster file not found")
+    return input_path
 
 
 async def get_dynamic_band_ids(request: Request) -> List[int]:

@@ -333,6 +333,8 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "Tool calls can create new raster/vector outputs or run analysis jobs.",
             "Prefer dedicated geospatial tools when one fits the request.",
             "For atmospheric correction, use atmospheric_correction before generating sandbox code.",
+            "For classification or segmentation requests, prefer supervised_classification, unsupervised_classification, or deep_learning_segmentation before generating sandbox code.",
+            "Use supervised_classification only when labeled samples are available; otherwise use unsupervised_classification or ask for training samples.",
             "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
             "Before writing run_script_sandbox code, read the Sandbox Input Map from the context and use its exact sandbox_alias or open_expr values.",

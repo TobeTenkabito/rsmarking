@@ -1012,6 +1012,51 @@ export class AIModule {
             };
         }
 
+        if (name === 'supervised_classification') {
+            return {
+                raster_id: primary,
+                samples: [
+                    { row: 0, col: 0, class_id: 1 },
+                    { row: 1, col: 1, class_id: 2 },
+                ],
+                classifier: 'nearest_centroid',
+                band_indices: null,
+                n_estimators: 100,
+                random_seed: 13,
+                smoothing: 0,
+                new_name: this._defaultNewName('supervised_classification'),
+            };
+        }
+
+        if (name === 'unsupervised_classification') {
+            return {
+                raster_id: primary,
+                n_classes: 5,
+                method: 'kmeans',
+                band_indices: null,
+                max_samples: 50000,
+                random_seed: 13,
+                smoothing: 0,
+                new_name: this._defaultNewName('unsupervised_classification'),
+            };
+        }
+
+        if (name === 'deep_learning_segmentation') {
+            return {
+                raster_id: primary,
+                new_name: this._defaultNewName('deep_segmentation'),
+                model_path: null,
+                backend: 'auto',
+                n_classes: 2,
+                band_indices: null,
+                threshold: 0.5,
+                random_seed: 13,
+                max_samples: 50000,
+                compactness: 0.15,
+                smoothing: 1,
+            };
+        }
+
         if (name === 'run_script_sandbox') {
             return {
                 raster_ids: rasterIds.slice(0, 1),
