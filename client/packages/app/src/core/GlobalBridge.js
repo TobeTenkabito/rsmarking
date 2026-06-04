@@ -93,6 +93,7 @@ export class GlobalBridge {
 
             // --- UI English ---
             hideDetail: () => this.app.ui.hideDetail(),
+            positionRasterActionMenu: (details) => this.app.ui.positionRasterActionMenu(details),
 
             // --- VectorProjectSystem ---
             createProject: () => this.app.project.handleCreateProject(),

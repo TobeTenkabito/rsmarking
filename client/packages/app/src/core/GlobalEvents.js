@@ -35,6 +35,12 @@ export class GlobalEvents {
             await this.app.mapController.focusLayer(id);
         }
     });
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('.layer-action-menu')) return;
+        document
+            .querySelectorAll('.layer-action-menu[open]')
+            .forEach((menu) => menu.removeAttribute('open'));
+    });
     this.bindLayerDragAndDrop(listContainer);
 
     // English
@@ -266,6 +272,11 @@ export class GlobalEvents {
         });
         // English
         document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document
+                    .querySelectorAll('.layer-action-menu[open]')
+                    .forEach((menu) => menu.removeAttribute('open'));
+            }
             // Ctrl/Cmd + E English
             if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
                 e.preventDefault();

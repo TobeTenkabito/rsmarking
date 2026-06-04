@@ -220,7 +220,8 @@ export const SidebarComponent = {
         ];
 
         return `
-            <details class="layer-action-menu relative shrink-0 ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <details class="layer-action-menu relative shrink-0 ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                     ontoggle="RS.positionRasterActionMenu(this)">
                 <summary onclick="event.stopPropagation()"
                          class="list-none [&::-webkit-details-marker]:hidden w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
                          title="Layer actions">
@@ -229,7 +230,8 @@ export const SidebarComponent = {
                               d="M12 6h.01M12 12h.01M12 18h.01"/>
                     </svg>
                 </summary>
-                <div class="absolute right-0 top-8 z-30 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                <div data-raster-action-panel
+                     class="fixed z-[1500] w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                     <div class="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
                         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white">
                             <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

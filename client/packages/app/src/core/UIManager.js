@@ -136,6 +136,39 @@ export class UIManager {
         document.getElementById('detail-panel')?.classList.add('hidden');
     }
 
+    positionRasterActionMenu(details) {
+        if (!details?.open) return;
+
+        document.querySelectorAll('.layer-action-menu[open]').forEach((menu) => {
+            if (menu !== details) menu.removeAttribute('open');
+        });
+
+        const trigger = details.querySelector('summary');
+        const panel = details.querySelector('[data-raster-action-panel]');
+        if (!trigger || !panel) return;
+
+        const triggerRect = trigger.getBoundingClientRect();
+        const gap = 10;
+        const margin = 12;
+        const navHeight = 72;
+        const panelWidth = panel.offsetWidth || 256;
+        const panelHeight = Math.min(panel.scrollHeight || 360, window.innerHeight - margin * 2);
+
+        let left = triggerRect.right + gap;
+        if (left + panelWidth > window.innerWidth - margin) {
+            left = Math.max(margin, triggerRect.left - panelWidth - gap);
+        }
+
+        let top = triggerRect.top - 8;
+        if (top + panelHeight > window.innerHeight - margin) {
+            top = window.innerHeight - panelHeight - margin;
+        }
+        top = Math.max(navHeight, top);
+
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+    }
+
     _initClipModalEvents() {
         const modal = document.getElementById('clip-modal');
         if (!modal) return;
