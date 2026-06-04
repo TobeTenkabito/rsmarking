@@ -70,7 +70,7 @@ export const SidebarComponent = {
         });
 
         return Object.entries(groups).map(([bundleId, items]) => `
-            <div class="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden mb-4 mx-2 shadow-sm">
+            <div class="bg-slate-50 rounded-xl border border-slate-200 overflow-visible mb-4 mx-2 shadow-sm">
                 <div class="px-3 py-2 bg-slate-100 border-b border-slate-200 text-[9px] font-black text-slate-500 flex justify-between items-center uppercase tracking-wider">
                     <div class="flex items-center">
                         <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
@@ -144,6 +144,80 @@ export const SidebarComponent = {
         const indexId = esc(raster.index_id);
         const rasterId = esc(raster.id);
         const fileName = esc(raster.file_name);
+        const actions = [
+            {
+                label: 'Spectral Profile',
+                title: t('sidebar.raster.spectrumTitle'),
+                tone: 'violet',
+                icon: this.renderActionIcon('spectrum'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.showSpectrumMode('${indexId}')`,
+            },
+            {
+                label: 'Raster Statistics',
+                title: t('sidebar.raster.statsTitle'),
+                tone: 'sky',
+                icon: this.renderActionIcon('stats'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openRasterStatistics('${indexId}')`,
+            },
+            {
+                label: 'Resample Raster',
+                title: 'Resample raster',
+                tone: 'teal',
+                icon: this.renderActionIcon('resample'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openResampleModal('${indexId}')`,
+            },
+            {
+                label: 'Radiometric Calibration',
+                title: 'Radiometric calibration',
+                tone: 'cyan',
+                icon: this.renderActionIcon('radiometric'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openPreprocessingModal('radiometric', '${indexId}')`,
+            },
+            {
+                label: 'Geometric Correction',
+                title: 'Geometric correction',
+                tone: 'cyan',
+                icon: this.renderActionIcon('geometric'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openPreprocessingModal('geometric', '${indexId}')`,
+            },
+            {
+                label: 'Supervised Classification',
+                title: 'Supervised classification',
+                tone: 'emerald',
+                icon: this.renderActionIcon('classification'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openClassificationModal('supervised', '${indexId}')`,
+            },
+            {
+                label: 'Unsupervised Classification',
+                title: 'Unsupervised classification',
+                tone: 'emerald',
+                icon: this.renderActionIcon('clusters'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openClassificationModal('unsupervised', '${indexId}')`,
+            },
+            {
+                label: 'Deep Learning Segmentation',
+                title: 'Deep learning segmentation',
+                tone: 'emerald',
+                icon: this.renderActionIcon('segmentation'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openClassificationModal('segmentation', '${indexId}')`,
+            },
+            {
+                label: 'Attribute Table',
+                title: t('sidebar.raster.attrTitle'),
+                tone: 'indigo',
+                icon: this.renderActionIcon('table'),
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster('${indexId}','${fileName}')`,
+            },
+            {
+                label: 'Remove Raster',
+                title: t('sidebar.raster.removeTitle'),
+                tone: 'red',
+                icon: this.renderActionIcon('delete'),
+                className: 'btn-delete',
+                dataAttrs: `data-id="${rasterId}"`,
+                onclick: `this.closest('details')?.removeAttribute('open')`,
+            },
+        ];
 
         return `
             <details class="layer-action-menu relative shrink-0 ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -155,67 +229,96 @@ export const SidebarComponent = {
                               d="M12 6h.01M12 12h.01M12 18h.01"/>
                     </svg>
                 </summary>
-                <div class="absolute right-8 top-0 z-20 flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.showSpectrumMode('${indexId}')"
-                            class="p-1.5 text-slate-400 hover:text-violet-500 hover:bg-violet-50 rounded transition-colors"
-                            title="${t('sidebar.raster.spectrumTitle')}">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                        </svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openRasterStatistics('${indexId}')"
-                            class="p-1.5 text-slate-400 hover:text-sky-500 hover:bg-sky-50 rounded transition-colors"
-                            title="${t('sidebar.raster.statsTitle')}">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-5"/>
-                        </svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openResampleModal('${indexId}')"
-                            class="p-1.5 text-slate-400 hover:text-teal-500 hover:bg-teal-50 rounded transition-colors"
-                            title="Resample raster">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M4 7h10m0 0l-3-3m3 3l-3 3M20 17H10m0 0l3-3m-3 3l3 3"/>
-                        </svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openPreprocessingModal('radiometric', '${indexId}')"
-                            class="p-1.5 text-slate-400 hover:text-cyan-500 hover:bg-cyan-50 rounded transition-colors"
-                            title="Radiometric and geometric correction">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M4 19h16M6 17l3-8 4 5 3-9 2 12M5 5h14"/>
-                        </svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openClassificationModal('unsupervised', '${indexId}')"
-                            class="p-1.5 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-colors"
-                            title="Classification and segmentation">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z"/>
-                        </svg>
-                    </button>
-                    <button onclick="event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster('${indexId}','${fileName}')"
-                            class="p-1.5 text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded transition-colors"
-                            title="${t('sidebar.raster.attrTitle')}">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
-                        </svg>
-                    </button>
-                    <button data-id="${rasterId}"
-                            onclick="this.closest('details')?.removeAttribute('open')"
-                            class="btn-delete p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                            title="${t('sidebar.raster.removeTitle')}">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                        </svg>
-                    </button>
+                <div class="absolute right-0 top-8 z-30 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                    <div class="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
+                        <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                      d="M4 7h16M4 12h16M4 17h16"/>
+                            </svg>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="truncate text-[10px] font-black uppercase tracking-widest text-slate-600">Raster Functions</div>
+                            <div class="truncate text-[9px] font-semibold text-slate-400">${fileName}</div>
+                        </div>
+                    </div>
+                    <div class="max-h-72 overflow-y-auto p-1.5">
+                        ${actions.map(action => this.renderRasterActionItem(action)).join('')}
+                    </div>
                 </div>
             </details>
         `;
+    },
+
+    renderRasterActionItem(action) {
+        const tone = this.rasterActionToneClasses(action.tone);
+        const className = action.className ? ` ${action.className}` : '';
+        const dataAttrs = action.dataAttrs ? ` ${action.dataAttrs}` : '';
+
+        return `
+            <button${dataAttrs}
+                    onclick="${action.onclick}"
+                    class="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs font-bold text-slate-600 transition-colors ${tone.row}${className}"
+                    title="${esc(action.title)}">
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 transition-colors ${tone.icon}">
+                    ${action.icon}
+                </span>
+                <span class="min-w-0 flex-1 truncate">${action.label}</span>
+            </button>
+        `;
+    },
+
+    rasterActionToneClasses(tone) {
+        const classes = {
+            violet: {
+                row: 'hover:bg-violet-50 hover:text-violet-600',
+                icon: 'group-hover:bg-violet-100 group-hover:text-violet-600',
+            },
+            sky: {
+                row: 'hover:bg-sky-50 hover:text-sky-600',
+                icon: 'group-hover:bg-sky-100 group-hover:text-sky-600',
+            },
+            teal: {
+                row: 'hover:bg-teal-50 hover:text-teal-600',
+                icon: 'group-hover:bg-teal-100 group-hover:text-teal-600',
+            },
+            cyan: {
+                row: 'hover:bg-cyan-50 hover:text-cyan-600',
+                icon: 'group-hover:bg-cyan-100 group-hover:text-cyan-600',
+            },
+            emerald: {
+                row: 'hover:bg-emerald-50 hover:text-emerald-600',
+                icon: 'group-hover:bg-emerald-100 group-hover:text-emerald-600',
+            },
+            indigo: {
+                row: 'hover:bg-indigo-50 hover:text-indigo-600',
+                icon: 'group-hover:bg-indigo-100 group-hover:text-indigo-600',
+            },
+            red: {
+                row: 'hover:bg-red-50 hover:text-red-600',
+                icon: 'group-hover:bg-red-100 group-hover:text-red-600',
+            },
+        };
+        return classes[tone] || {
+            row: 'hover:bg-slate-50 hover:text-slate-700',
+            icon: 'group-hover:bg-slate-200 group-hover:text-slate-700',
+        };
+    },
+
+    renderActionIcon(name) {
+        const icons = {
+            spectrum: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6m6 0V9a2 2 0 012-2h2a2 2 0 012 2v10m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14"/></svg>',
+            stats: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19V5m0 14h16M8 17V9m4 8V7m4 10v-5"/></svg>',
+            resample: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h10m0 0l-3-3m3 3l-3 3M20 17H10m0 0l3-3m-3 3l3 3"/></svg>',
+            radiometric: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 19h16M6 17l3-8 4 5 3-9 2 12"/></svg>',
+            geometric: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h7v7H4zM13 12l7 7m0-7v7h-7"/></svg>',
+            classification: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6z"/></svg>',
+            clusters: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h.01M12 6h.01M17 8h.01M9 14h.01M15 14h.01M12 19h.01"/></svg>',
+            segmentation: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8l4-4 4 4-4 4-4-4zm8 8l4-4 4 4-4 4-4-4z"/></svg>',
+            table: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 6h18M3 14h18M3 18h18"/></svg>',
+            delete: '<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862A2 2 0 015.867 19.142L5 7m5 4v6m4-6v6M4 7h16"/></svg>',
+        };
+        return icons[name] || icons.table;
     },
 
     renderVectorSection(projects, activeProject, layers, activeLayerId, visibleIds) {
