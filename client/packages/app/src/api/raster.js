@@ -474,6 +474,46 @@ export const RasterAPI = {
     );
   },
 
+  async textureFeatureAnalysis({
+    rasterId,
+    textureType,
+    bandIndex = 1,
+    grayLevels = 32,
+    windowSize = 7,
+    glcmDistance = 1,
+    glcmAngle = 0,
+    glcmProperty = 'contrast',
+    localStat = 'mean',
+    gaborFrequency = 0.2,
+    gaborTheta = 0,
+    gaborSigma = 2,
+    lbpRadius = 1,
+    lbpPoints = 8,
+    newName,
+  }) {
+    return postForm(
+      '/texture-feature-analysis',
+      {
+        raster_id: rasterId,
+        texture_type: textureType,
+        band_index: bandIndex,
+        gray_levels: grayLevels,
+        window_size: windowSize,
+        glcm_distance: glcmDistance,
+        glcm_angle: glcmAngle,
+        glcm_property: glcmProperty,
+        local_stat: localStat,
+        gabor_frequency: gaborFrequency,
+        gabor_theta: gaborTheta,
+        gabor_sigma: gaborSigma,
+        lbp_radius: lbpRadius,
+        lbp_points: lbpPoints,
+        new_name: newName,
+      },
+      'Texture feature extraction failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

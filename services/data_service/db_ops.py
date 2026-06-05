@@ -704,6 +704,76 @@ async def process_raster_transform_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_texture_feature_task(
+    db: AsyncSession,
+    raster_id: int,
+    texture_type: str,
+    new_name: str,
+    band_index: int = 1,
+    gray_levels: int = 32,
+    window_size: int = 7,
+    glcm_distance: int = 1,
+    glcm_angle: float = 0.0,
+    glcm_property: str = "contrast",
+    local_stat: str = "mean",
+    gabor_frequency: float = 0.2,
+    gabor_theta: float = 0.0,
+    gabor_sigma: float = 2.0,
+    lbp_radius: float = 1.0,
+    lbp_points: int = 8,
+):
+    try:
+        raster_record = await _get_raster_record_or_404(db, raster_id)
+        input_path = _resolve_record_path_or_404(raster_record)
+        prefix = f"texture_{_safe_operation_name(texture_type)}"
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        texture_meta = RasterProcessor.texture_feature_analysis(
+            input_path=input_path,
+            output_path=tmp_path,
+            texture_type=texture_type,
+            band_index=band_index,
+            gray_levels=gray_levels,
+            window_size=window_size,
+            glcm_distance=glcm_distance,
+            glcm_angle=glcm_angle,
+            glcm_property=glcm_property,
+            local_stat=local_stat,
+            gabor_frequency=gabor_frequency,
+            gabor_theta=gabor_theta,
+            gabor_sigma=gabor_sigma,
+            lbp_radius=lbp_radius,
+            lbp_points=lbp_points,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            prefix,
+            bands_count=1,
+            metadata_source=tmp_path,
+        )
+        result["texture_feature"] = texture_meta
+        return result
+    except Exception as e:
+        logger.error(f"texture feature task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def process_supervised_classification_task(
     db: AsyncSession,
     raster_id: int,

@@ -96,6 +96,13 @@ export class GlobalBridge {
             handleTransformAnalysisInputChange: () => this.app.rasterTransform?.handleInputChange(),
             executeTransformAnalysis: () => this.app.rasterTransform?.execute(),
 
+            // --- Texture Feature Extraction ---
+            openTextureFeatureModal: (type, rasterId) => this.app.textureFeature?.openModal(type, rasterId),
+            closeTextureFeatureModal: () => this.app.textureFeature?.closeModal(),
+            switchTextureFeatureType: (type) => this.app.textureFeature?.switchType(type, { resetName: true }),
+            handleTextureFeatureInputChange: () => this.app.textureFeature?.handleInputChange(),
+            executeTextureFeature: () => this.app.textureFeature?.execute(),
+
             // --- Classification and Segmentation ---
             openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
             closeClassificationModal: () => this.app.classification?.closeModal(),

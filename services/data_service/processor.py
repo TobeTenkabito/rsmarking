@@ -38,6 +38,7 @@ from functions.implement.radiometric import radiometric_calibration
 from functions.implement.geometric import geometric_correction
 from functions.implement.dem_analysis import dem_analysis
 from functions.implement.raster_transforms import raster_transform_analysis
+from functions.implement.texture_features import texture_feature_analysis
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -269,6 +270,44 @@ class RasterProcessor:
             wavelet_level=wavelet_level,
             pca_components=pca_components,
             pca_standardize=pca_standardize,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def texture_feature_analysis(
+        input_path: str,
+        output_path: str,
+        texture_type: str,
+        band_index: int = 1,
+        gray_levels: int = 32,
+        window_size: int = 7,
+        glcm_distance: int = 1,
+        glcm_angle: float = 0.0,
+        glcm_property: str = "contrast",
+        local_stat: str = "mean",
+        gabor_frequency: float = 0.2,
+        gabor_theta: float = 0.0,
+        gabor_sigma: float = 2.0,
+        lbp_radius: float = 1.0,
+        lbp_points: int = 8,
+    ) -> dict[str, object]:
+        result = texture_feature_analysis(
+            input_path=input_path,
+            output_path=output_path,
+            texture_type=texture_type,
+            band_index=band_index,
+            gray_levels=gray_levels,
+            window_size=window_size,
+            glcm_distance=glcm_distance,
+            glcm_angle=glcm_angle,
+            glcm_property=glcm_property,
+            local_stat=local_stat,
+            gabor_frequency=gabor_frequency,
+            gabor_theta=gabor_theta,
+            gabor_sigma=gabor_sigma,
+            lbp_radius=lbp_radius,
+            lbp_points=lbp_points,
         )
         build_raster_overviews(output_path)
         return result
