@@ -245,6 +245,120 @@ class DeepLearningSegmentationArgs(BaseModel):
     smoothing: int = Field(default=1, ge=0, le=5, description="Optional median-filter smoothing radius in pixels.")
 
 
+class DEMAnalysisArgs(BaseModel):
+    raster_id: int = Field(..., description="Source DEM raster index_id.")
+    operation: Literal[
+        "elevation",
+        "slope",
+        "aspect",
+        "hillshade",
+        "curvature",
+        "relief",
+        "twi",
+        "flow_direction",
+        "flow_accumulation",
+        "watershed",
+    ] = Field(..., description="DEM-derived product to generate.")
+    new_name: str = Field(..., description="Name for the generated DEM analysis raster.")
+    band_index: int = Field(default=1, ge=1, description="One-based elevation band index.")
+    z_factor: float = Field(default=1.0, gt=0, description="Vertical scale factor applied before terrain derivatives.")
+    slope_unit: Literal["degrees", "percent", "radians"] = Field(
+        default="degrees",
+        description="Output unit for slope products.",
+    )
+    hillshade_azimuth: float = Field(default=315.0, ge=0, le=360, description="Hillshade light azimuth in degrees.")
+    hillshade_altitude: float = Field(default=45.0, gt=0, le=90, description="Hillshade light altitude in degrees.")
+    relief_window_size: int = Field(default=3, ge=3, description="Neighborhood size for topographic relief.")
+    min_slope_degrees: float = Field(default=0.1, gt=0, description="Minimum slope used to stabilize TWI.")
+
+
+class RasterTransformAnalysisArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    transform_type: Literal["fourier", "wavelet", "pca"] = Field(..., description="Transform analysis to run.")
+    new_name: str = Field(..., description="Name for the generated transform raster.")
+    band_index: int = Field(default=1, ge=1, description="One-based band index for Fourier or wavelet analysis.")
+    fourier_output: Literal["magnitude", "power", "phase"] = Field(
+        default="magnitude",
+        description="Fourier output product.",
+    )
+    wavelet_output: Literal["detail_energy", "approximation", "horizontal", "vertical", "diagonal"] = Field(
+        default="detail_energy",
+        description="Haar wavelet output product.",
+    )
+    wavelet_level: int = Field(default=1, ge=1, description="Wavelet decomposition level.")
+    pca_components: int = Field(default=3, ge=1, description="Number of PCA components to write.")
+    pca_standardize: bool = Field(default=False, description="Standardize bands before PCA.")
+
+
+class TextureFeatureAnalysisArgs(BaseModel):
+    raster_id: int = Field(..., description="Source raster index_id.")
+    texture_type: Literal["glcm", "local_statistics", "gabor", "lbp"] = Field(
+        ...,
+        description="Texture feature extraction method.",
+    )
+    new_name: str = Field(..., description="Name for the generated texture raster.")
+    band_index: int = Field(default=1, ge=1, description="One-based source band index.")
+    gray_levels: int = Field(default=32, ge=2, le=256, description="Quantization levels for GLCM/local entropy.")
+    window_size: int = Field(default=7, ge=3, description="Neighborhood size for GLCM and local statistics.")
+    glcm_distance: int = Field(default=1, ge=1, description="Pixel offset distance for GLCM.")
+    glcm_angle: float = Field(default=0.0, description="GLCM offset angle in degrees.")
+    glcm_property: Literal[
+        "contrast",
+        "dissimilarity",
+        "homogeneity",
+        "asm",
+        "energy",
+        "entropy",
+        "correlation",
+    ] = Field(default="contrast", description="GLCM texture property.")
+    local_stat: Literal["mean", "std", "variance", "range", "entropy"] = Field(
+        default="mean",
+        description="Local statistics window output.",
+    )
+    gabor_frequency: float = Field(default=0.2, gt=0, description="Gabor sinusoid frequency.")
+    gabor_theta: float = Field(default=0.0, description="Gabor orientation in degrees.")
+    gabor_sigma: float = Field(default=2.0, gt=0, description="Gabor Gaussian envelope sigma.")
+    lbp_radius: float = Field(default=1.0, gt=0, description="LBP sampling radius.")
+    lbp_points: int = Field(default=8, ge=1, le=24, description="LBP neighbor count.")
+
+
+class TimeSeriesAnalysisArgs(BaseModel):
+    raster_ids: list[int] = Field(
+        ...,
+        min_length=1,
+        description="Ordered raster index_id list representing the time series.",
+    )
+    operation: Literal[
+        "monthly_composite",
+        "annual_composite",
+        "maximum_composite",
+        "median_composite",
+        "moving_window_smoothing",
+        "savitzky_golay",
+        "trend",
+        "seasonality",
+        "phenology",
+    ] = Field(..., description="Time-series analysis operation.")
+    new_name: str = Field(..., description="Name for the generated time-series analysis raster.")
+    band_index: int = Field(default=1, ge=1, description="One-based source band index used from each raster.")
+    dates: list[str] | str | None = Field(
+        default=None,
+        description=(
+            "Optional acquisition dates in raster_ids order. Use YYYY-MM-DD, YYYY-MM, or YYYY. "
+            "When omitted, raster created_at dates are used."
+        ),
+    )
+    moving_window_size: int = Field(default=3, ge=1, description="Temporal window for moving-window smoothing.")
+    savgol_window_length: int = Field(default=5, ge=3, description="Odd temporal window for Savitzky-Golay filtering.")
+    savgol_polyorder: int = Field(default=2, ge=0, description="Polynomial order for Savitzky-Golay filtering.")
+    phenology_threshold_ratio: float = Field(
+        default=0.2,
+        ge=0,
+        le=1,
+        description="Fraction of seasonal amplitude used to define start/end of season.",
+    )
+
+
 class ScriptSandboxArgs(BaseModel):
     raster_ids: list[int] = Field(
         ...,
@@ -909,6 +1023,101 @@ async def _run_deep_learning_segmentation(
     )
 
 
+async def _run_dem_analysis(
+    args: DEMAnalysisArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_dem_analysis_task(
+        db=db,
+        raster_id=args.raster_id,
+        operation=args.operation,
+        new_name=args.new_name,
+        band_index=args.band_index,
+        z_factor=args.z_factor,
+        slope_unit=args.slope_unit,
+        hillshade_azimuth=args.hillshade_azimuth,
+        hillshade_altitude=args.hillshade_altitude,
+        relief_window_size=args.relief_window_size,
+        min_slope_degrees=args.min_slope_degrees,
+    )
+
+
+async def _run_raster_transform_analysis(
+    args: RasterTransformAnalysisArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_raster_transform_task(
+        db=db,
+        raster_id=args.raster_id,
+        transform_type=args.transform_type,
+        new_name=args.new_name,
+        band_index=args.band_index,
+        fourier_output=args.fourier_output,
+        wavelet_output=args.wavelet_output,
+        wavelet_level=args.wavelet_level,
+        pca_components=args.pca_components,
+        pca_standardize=args.pca_standardize,
+    )
+
+
+async def _run_texture_feature_analysis(
+    args: TextureFeatureAnalysisArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    return await db_ops.process_texture_feature_task(
+        db=db,
+        raster_id=args.raster_id,
+        texture_type=args.texture_type,
+        new_name=args.new_name,
+        band_index=args.band_index,
+        gray_levels=args.gray_levels,
+        window_size=args.window_size,
+        glcm_distance=args.glcm_distance,
+        glcm_angle=args.glcm_angle,
+        glcm_property=args.glcm_property,
+        local_stat=args.local_stat,
+        gabor_frequency=args.gabor_frequency,
+        gabor_theta=args.gabor_theta,
+        gabor_sigma=args.gabor_sigma,
+        lbp_radius=args.lbp_radius,
+        lbp_points=args.lbp_points,
+    )
+
+
+async def _run_time_series_analysis(
+    args: TimeSeriesAnalysisArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    db_ops = _get_data_service_ops()
+    if isinstance(args.dates, list):
+        dates = ",".join(args.dates)
+    else:
+        dates = args.dates
+    return await db_ops.process_time_series_task(
+        db=db,
+        raster_ids=args.raster_ids,
+        operation=args.operation,
+        new_name=args.new_name,
+        band_index=args.band_index,
+        dates=dates,
+        moving_window_size=args.moving_window_size,
+        savgol_window_length=args.savgol_window_length,
+        savgol_polyorder=args.savgol_polyorder,
+        phenology_threshold_ratio=args.phenology_threshold_ratio,
+    )
+
+
 async def _run_script_sandbox(
     args: ScriptSandboxArgs,
     db: AsyncSession,
@@ -1488,6 +1697,46 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="segmentation",
             arguments_model=DeepLearningSegmentationArgs,
             handler=_run_deep_learning_segmentation,
+        ),
+        RegisteredFunction(
+            name="dem_analysis",
+            description=(
+                "Generate DEM-derived rasters such as elevation, slope, aspect, hillshade, curvature, "
+                "topographic relief, TWI, D8 flow direction, flow accumulation, or watershed labels."
+            ),
+            category="dem_analysis",
+            arguments_model=DEMAnalysisArgs,
+            handler=_run_dem_analysis,
+        ),
+        RegisteredFunction(
+            name="raster_transform_analysis",
+            description=(
+                "Generate raster transform products using Fourier analysis, Haar wavelet analysis, or PCA. "
+                "Use this for frequency-domain, multi-scale, or principal-component raster products."
+            ),
+            category="raster_transform_analysis",
+            arguments_model=RasterTransformAnalysisArgs,
+            handler=_run_raster_transform_analysis,
+        ),
+        RegisteredFunction(
+            name="texture_feature_analysis",
+            description=(
+                "Generate texture feature rasters using GLCM, local statistics windows, Gabor filtering, "
+                "or local binary patterns."
+            ),
+            category="texture_feature_analysis",
+            arguments_model=TextureFeatureAnalysisArgs,
+            handler=_run_texture_feature_analysis,
+        ),
+        RegisteredFunction(
+            name="time_series_analysis",
+            description=(
+                "Generate time-series raster products: monthly or annual composites, maximum/median composites, "
+                "moving-window smoothing, Savitzky-Golay filtering, trend, seasonality, or phenology parameters."
+            ),
+            category="time_series_analysis",
+            arguments_model=TimeSeriesAnalysisArgs,
+            handler=_run_time_series_analysis,
         ),
         RegisteredFunction(
             name="run_script_sandbox",

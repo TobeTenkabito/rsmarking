@@ -336,6 +336,7 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "For radiometric calibration or geometric correction, use radiometric_calibration or geometric_correction before generating sandbox code.",
             "For classification or segmentation requests, prefer supervised_classification, unsupervised_classification, or deep_learning_segmentation before generating sandbox code.",
             "Use supervised_classification only when labeled samples are available; otherwise use unsupervised_classification or ask for training samples.",
+            "For DEM, Fourier/wavelet/PCA, texture feature, or time-series raster requests, prefer dem_analysis, raster_transform_analysis, texture_feature_analysis, or time_series_analysis before generating sandbox code.",
             "For vector work, use vector project, layer, field, feature, and raster/vector conversion tools directly.",
             "If no dedicated tool can fulfill a raster-processing request, generate safe Python code and call run_script_sandbox.",
             "Before writing run_script_sandbox code, read the Sandbox Input Map from the context and use its exact sandbox_alias or open_expr values.",
