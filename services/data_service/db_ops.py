@@ -774,6 +774,92 @@ async def process_texture_feature_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def process_time_series_task(
+    db: AsyncSession,
+    raster_ids: str | list[int],
+    operation: str,
+    new_name: str,
+    band_index: int = 1,
+    dates: str | None = None,
+    moving_window_size: int = 3,
+    savgol_window_length: int = 5,
+    savgol_polyorder: int = 2,
+    phenology_threshold_ratio: float = 0.2,
+):
+    try:
+        ids = _parse_time_series_raster_ids(raster_ids)
+        if len(ids) < 1:
+            raise HTTPException(status_code=400, detail="At least one raster is required")
+
+        unique_ids = list(dict.fromkeys(ids))
+        stmt = select(models.RasterMetadata).where(models.RasterMetadata.index_id.in_(unique_ids))
+        res = await db.execute(stmt)
+        records = res.scalars().all()
+        if len(records) != len(unique_ids):
+            raise HTTPException(status_code=404, detail="Some raster IDs do not exist")
+
+        record_map = {record.index_id: record for record in records}
+        ordered_records = [record_map[index_id] for index_id in ids]
+        input_paths = []
+        for record in ordered_records:
+            path = resolve_raster_record_path(record)
+            if not path:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Raster file not found for index_id={record.index_id}",
+                )
+            input_paths.append(path)
+
+        date_values = dates if dates and dates.strip() else ",".join(
+            (record.created_at.date().isoformat() if record.created_at else "")
+            for record in ordered_records
+        )
+        prefix = f"time_series_{_safe_operation_name(operation)}"
+
+        task_id = str(uuid.uuid4())
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        os.makedirs(COG_DIR, exist_ok=True)
+        tmp_path = os.path.join(UPLOAD_DIR, f"{task_id}_{prefix}_raw.tif")
+        cog_filename = f"{task_id}_{prefix}.tif"
+        cog_path = os.path.join(COG_DIR, cog_filename)
+
+        time_series_meta = RasterProcessor.time_series_analysis(
+            input_paths=input_paths,
+            output_path=tmp_path,
+            operation=operation,
+            band_index=band_index,
+            dates=date_values,
+            moving_window_size=moving_window_size,
+            savgol_window_length=savgol_window_length,
+            savgol_polyorder=savgol_polyorder,
+            phenology_threshold_ratio=phenology_threshold_ratio,
+        )
+        RasterProcessor.convert_to_cog(tmp_path, cog_path)
+
+        with rasterio.open(tmp_path) as src:
+            actual_bands = src.count
+
+        result = await save_to_db(
+            db,
+            task_id,
+            new_name,
+            tmp_path,
+            cog_filename,
+            cog_path,
+            prefix,
+            bands_count=actual_bands,
+            metadata_source=tmp_path,
+        )
+        result["time_series"] = time_series_meta
+        return result
+    except Exception as e:
+        logger.error(f"time-series analysis task failed: {str(e)}")
+        await db.rollback()
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def process_supervised_classification_task(
     db: AsyncSession,
     raster_id: int,
@@ -965,6 +1051,13 @@ def _safe_operation_name(operation: str) -> str:
     value = re.sub(r"[^a-z0-9_]+", "_", str(operation or "analysis").strip().lower())
     value = re.sub(r"_+", "_", value).strip("_")
     return value or "analysis"
+
+
+def _parse_time_series_raster_ids(raster_ids: str | list[int]) -> list[int]:
+    if isinstance(raster_ids, str):
+        parts = [part.strip() for part in raster_ids.split(",") if part.strip()]
+        return [int(part) for part in parts]
+    return [int(item) for item in raster_ids]
 
 
 async def get_dynamic_band_ids(request: Request) -> List[int]:

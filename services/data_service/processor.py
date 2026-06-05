@@ -39,6 +39,7 @@ from functions.implement.geometric import geometric_correction
 from functions.implement.dem_analysis import dem_analysis
 from functions.implement.raster_transforms import raster_transform_analysis
 from functions.implement.texture_features import texture_feature_analysis
+from functions.implement.time_series_analysis import time_series_analysis
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -308,6 +309,32 @@ class RasterProcessor:
             gabor_sigma=gabor_sigma,
             lbp_radius=lbp_radius,
             lbp_points=lbp_points,
+        )
+        build_raster_overviews(output_path)
+        return result
+
+    @staticmethod
+    def time_series_analysis(
+        input_paths: list[str],
+        output_path: str,
+        operation: str,
+        band_index: int = 1,
+        dates: list[str] | str | None = None,
+        moving_window_size: int = 3,
+        savgol_window_length: int = 5,
+        savgol_polyorder: int = 2,
+        phenology_threshold_ratio: float = 0.2,
+    ) -> dict[str, object]:
+        result = time_series_analysis(
+            input_paths=input_paths,
+            output_path=output_path,
+            operation=operation,
+            band_index=band_index,
+            dates=dates,
+            moving_window_size=moving_window_size,
+            savgol_window_length=savgol_window_length,
+            savgol_polyorder=savgol_polyorder,
+            phenology_threshold_ratio=phenology_threshold_ratio,
         )
         build_raster_overviews(output_path)
         return result

@@ -25,6 +25,7 @@ import { PreprocessingModule } from './modules/PreprocessingModule.js';
 import { DEMAnalysisModule } from './modules/DEMAnalysisModule.js';
 import { RasterTransformModule } from './modules/RasterTransformModule.js';
 import { TextureFeatureModule } from './modules/TextureFeatureModule.js';
+import { TimeSeriesModule } from './modules/TimeSeriesModule.js';
 import { initializeI18n, onLanguageChange } from './i18n/index.js';
 
 
@@ -55,6 +56,7 @@ class App {
         this.demAnalysis = null;
         this.rasterTransform = null;
         this.textureFeature = null;
+        this.timeSeries = null;
     }
 
     async init() {
@@ -85,6 +87,7 @@ class App {
             this.demAnalysis = new DEMAnalysisModule(this);
             this.rasterTransform = new RasterTransformModule(this);
             this.textureFeature = new TextureFeatureModule(this);
+            this.timeSeries = new TimeSeriesModule(this);
 
             new GlobalBridge(this).mount();
             new GlobalEvents(this).bindAll();

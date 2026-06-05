@@ -103,6 +103,14 @@ export class GlobalBridge {
             handleTextureFeatureInputChange: () => this.app.textureFeature?.handleInputChange(),
             executeTextureFeature: () => this.app.textureFeature?.execute(),
 
+            // --- Time-Series Analysis ---
+            openTimeSeriesModal: (operation) => this.app.timeSeries?.openModal(operation),
+            closeTimeSeriesModal: () => this.app.timeSeries?.closeModal(),
+            switchTimeSeriesOperation: (operation) => this.app.timeSeries?.switchOperation(operation, { resetName: true }),
+            handleTimeSeriesSelectionChange: () => this.app.timeSeries?.handleSelectionChange(),
+            handleTimeSeriesInputChange: () => this.app.timeSeries?.handleInputChange(),
+            executeTimeSeriesAnalysis: () => this.app.timeSeries?.execute(),
+
             // --- Classification and Segmentation ---
             openClassificationModal: (mode, rasterId) => this.app.classification?.openModal(mode, rasterId),
             closeClassificationModal: () => this.app.classification?.closeModal(),

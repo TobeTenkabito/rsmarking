@@ -514,6 +514,34 @@ export const RasterAPI = {
     );
   },
 
+  async timeSeriesAnalysis({
+    rasterIds,
+    operation,
+    bandIndex = 1,
+    dates = '',
+    movingWindowSize = 3,
+    savgolWindowLength = 5,
+    savgolPolyorder = 2,
+    phenologyThresholdRatio = 0.2,
+    newName,
+  }) {
+    return postForm(
+      '/time-series-analysis',
+      {
+        raster_ids: Array.isArray(rasterIds) ? rasterIds.join(',') : rasterIds,
+        operation,
+        band_index: bandIndex,
+        dates,
+        moving_window_size: movingWindowSize,
+        savgol_window_length: savgolWindowLength,
+        savgol_polyorder: savgolPolyorder,
+        phenology_threshold_ratio: phenologyThresholdRatio,
+        new_name: newName,
+      },
+      'Time-series analysis failed'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

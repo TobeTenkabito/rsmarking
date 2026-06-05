@@ -13,6 +13,7 @@ import { preprocessingModal }     from './modals/preprocessingModal.js';
 import { demModal }               from './modals/demModal.js';
 import { transformModal }         from './modals/transformModal.js';
 import { textureModal }           from './modals/textureModal.js';
+import { timeSeriesModal }        from './modals/timeSeriesModal.js';
 import { classificationModal }    from './modals/classificationModal.js';
 import { calculatorModal }        from './modals/calculatorModal.js';
 import { scriptModal }            from './modals/scriptModal.js';
@@ -35,6 +36,7 @@ export const ModalTemplates = {
     demModal,
     transformModal,
     textureModal,
+    timeSeriesModal,
     classificationModal,
     calculatorModal,
     scriptModal,

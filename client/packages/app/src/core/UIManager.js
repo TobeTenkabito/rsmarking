@@ -23,6 +23,7 @@ export class UIManager {
                 ModalTemplates.demModal +
                 ModalTemplates.transformModal +
                 ModalTemplates.textureModal +
+                ModalTemplates.timeSeriesModal +
                 ModalTemplates.classificationModal +
                 ModalTemplates.calculatorModal +
                 ModalTemplates.scriptModal +

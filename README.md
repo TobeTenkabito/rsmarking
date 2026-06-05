@@ -11,7 +11,7 @@ The repository is currently most useful as a local development stack for GeoTIFF
 - On-the-fly raster tile rendering from stored raster records.
 - Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.
 - Vector tile service using PostGIS `ST_AsMVT`.
-- Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, rasterization, clipping, and change detection.
+- Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, rasterization, clipping, and change detection.
 - Extraction algorithms for vegetation, water, buildings, and clouds.
 - AI gateway built around LiteLLM with analyze/modify modes and a callable function registry for analysis tools.
 - Docker-isolated Python script executor with shared access to `storage/raw`.
@@ -30,6 +30,7 @@ Current Processing Center groups:
 | DEM Analysis | Elevation, slope, aspect, hillshade/shading, curvature, topographic relief, topographic humidity index, flow direction, flow accumulation, watershed delineation |
 | Transform Analysis | Fourier analysis, wavelet analysis, PCA |
 | Texture Features | GLCM, local statistics window, Gabor filtering, LBP |
+| Time-Series Analysis | Monthly compositing, annual compositing, maximum value compositing, median compositing, moving window smoothing, Savitzky-Golay filtering, trend analysis, seasonality analysis, phenological parameter extraction |
 | Band Processing | Band merge, band extraction, resampling |
 | Preprocessing | Radiometric calibration, geometric correction |
 | Index Calculation | NDVI, NDWI, NDBI, MNDWI |
@@ -310,6 +311,7 @@ Data service (`:8002`):
 - `POST /dem-analysis`
 - `POST /raster-transform-analysis`
 - `POST /texture-feature-analysis`
+- `POST /time-series-analysis`
 - `POST /classify-supervised`, `/classify-unsupervised`, `/segment-deep-learning`
 - `POST /clip-raster-by-vector`
 - `POST /raster-calculator`
