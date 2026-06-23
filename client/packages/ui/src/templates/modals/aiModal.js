@@ -91,9 +91,10 @@ export const aiModal =`
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Output Language</label>
                     <select id="ai-language-select"
                         class="w-full text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400 transition-all">
+                        <option value="zh">中文</option>
                         <option value="en">English</option>
-                        <option value="en">English</option>
-                        <option value="ja">English</option>
+                        <option value="ja">日本語</option>
+                        <option value="es">Español</option>
                     </select>
                 </div>
             </div>

@@ -12,6 +12,7 @@ class AILanguage(str, Enum):
     ZH = "zh"
     EN = "en"
     JA = "ja"
+    ES = "es"
 
 
 class TaskMode(str, Enum):

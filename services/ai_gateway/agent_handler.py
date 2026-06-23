@@ -147,9 +147,10 @@ class AgentStep(BaseModel):
 
 
 LANGUAGE_INSTRUCTIONS = {
-    AILanguage.ZH: "Respond in English.",
+    AILanguage.ZH: "Respond in Simplified Chinese.",
     AILanguage.EN: "Respond in English.",
     AILanguage.JA: "Respond in Japanese.",
+    AILanguage.ES: "Respond in Spanish.",
 }
 
 

@@ -7,6 +7,7 @@ The repository is currently most useful as a local development stack for GeoTIFF
 ## Features
 
 - Browser map client with Leaflet and Cesium-based 2D/3D viewing.
+- Chinese, English, Japanese, and Spanish interface and AI response languages.
 - GeoTIFF metadata ingestion with raw and COG storage directories.
 - On-the-fly raster tile rendering from stored raster records.
 - Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.

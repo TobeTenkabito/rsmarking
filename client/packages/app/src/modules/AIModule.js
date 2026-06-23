@@ -2,7 +2,7 @@ import { AIAPI } from '../api/ai.js';
 import { Store } from '../store/index.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
-import { t } from '../i18n/index.js';
+import { getLanguage, t } from '../i18n/index.js';
 
 const AGENT_ATTACHMENT_LIMIT = 6;
 const AGENT_TEXT_EXCERPT_CHARS = 12000;
@@ -42,6 +42,8 @@ export class AIModule {
         const Layers = Store.getVectorLayers();
         document.getElementById('ai-target-select').innerHTML =
             ModalComponent.renderAITargetOptions(rasters, Layers);
+        const languageSelect = document.getElementById('ai-language-select');
+        if (languageSelect) languageSelect.value = getLanguage();
 
         this._bindModalEvents();
         this._syncDataTypeWithTarget();
@@ -62,7 +64,7 @@ export class AIModule {
         const targetId  = document.getElementById('ai-target-select')?.value;
         const dataType  = document.getElementById('ai-datatype-select')?.value;   // 'raster' | 'vector'
         const mode      = document.getElementById('ai-mode-select')?.value;       // 'analyze' | 'modify' | 'agent'
-        const language  = document.getElementById('ai-language-select')?.value;   // 'zh' | 'en' | 'ja'
+        const language  = document.getElementById('ai-language-select')?.value;   // 'zh' | 'en' | 'ja' | 'es'
         let prompt      = document.getElementById('ai-prompt-input')?.value?.trim();
 
         if (mode === 'agent' && !prompt && this._agentAttachments.length) {

@@ -16,9 +16,10 @@ logger = logging.getLogger("ai_gateway.llm_engine")
 
 def _build_system_prompt(mode: TaskMode, data_type: DataType, language: AILanguage, modifiable_schema_json: str) -> str:
     LANGUAGE_MAP = {
-        AILanguage.ZH: "Respond in English regardless of the user's input language.",
-        AILanguage.EN: "Respond in English,regardless of the user's input language.",
+        AILanguage.ZH: "Respond in Simplified Chinese regardless of the user's input language.",
+        AILanguage.EN: "Respond in English regardless of the user's input language.",
         AILanguage.JA: "Respond in Japanese regardless of the user's input language.",
+        AILanguage.ES: "Respond in Spanish regardless of the user's input language.",
     }
     base_prompt = f"{LANGUAGE_MAP[language]} You are a GIS spatial data analysis assistant.\n"
     if mode == TaskMode.ANALYZE:
