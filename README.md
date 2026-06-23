@@ -302,7 +302,7 @@ Core endpoints:
 
 In modify mode, the Pydantic layer only accepts currently modifiable fields such as raster/vector `name`; read-only spatial statistics and metadata are not written back from model output.
 
-Registered AI-callable functions include downloadable document/table generation, optional AI image generation, spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
+Registered AI-callable functions include downloadable document/table generation, optional AI image generation, raster discovery/metadata/statistics/spectrum and field management, processing-status lookup, spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
 
 `/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, and `max_steps`. It also supports conversational agent sessions with `history_limit` and `reset_session`. By default it injects a compact workspace overview of current rasters, vector projects, and layers; set `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, a compact `steps` trace, and an `artifacts` array containing safe preview/export URLs for generated files.
 

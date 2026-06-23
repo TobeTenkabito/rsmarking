@@ -6,6 +6,9 @@ import { esc } from '../utils.js';
 
 const CATEGORY_LABELS = {
     artifact_generation: 'Generated Files & Images',
+    raster_catalog: 'Raster Data & Inspection',
+    raster_fields: 'Raster Fields',
+    task_monitoring: 'Processing Status',
     spectral_indices: 'Spectral Indices',
     raster_manipulation: 'Raster Tools',
     script_sandbox: 'Script Sandbox',

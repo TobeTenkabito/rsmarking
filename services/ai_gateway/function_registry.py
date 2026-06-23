@@ -477,6 +477,91 @@ class ClipVectorByGeometryArgs(BaseModel):
     )
 
 
+class RasterListArgs(BaseModel):
+    limit: int = Field(
+        default=50,
+        ge=1,
+        le=100,
+        description="Maximum number of newest raster records to return.",
+    )
+
+
+class RasterGetArgs(BaseModel):
+    raster_id: int = Field(..., description="Raster index_id to retrieve.")
+
+
+class RasterStatisticsArgs(RasterGetArgs):
+    bins: int = Field(default=32, ge=4, le=128, description="Histogram bin count.")
+    max_size: int = Field(
+        default=768,
+        ge=128,
+        le=2048,
+        description="Maximum sampled width or height used to compute statistics.",
+    )
+    band_indices: list[int] | None = Field(
+        default=None,
+        description="Optional one-based bands to inspect. Defaults to every band.",
+    )
+
+
+class RasterSpectrumArgs(RasterGetArgs):
+    lng: float = Field(..., ge=-180, le=180, description="WGS84 longitude.")
+    lat: float = Field(..., ge=-90, le=90, description="WGS84 latitude.")
+
+
+class RasterDeleteArgs(RasterGetArgs):
+    pass
+
+
+class RasterFieldListArgs(RasterGetArgs):
+    pass
+
+
+class RasterFieldCreateArgs(RasterGetArgs):
+    field_name: str = Field(..., min_length=1, max_length=255, description="Field key.")
+    field_alias: str | None = Field(default=None, max_length=255, description="Display label.")
+    field_type: Literal["string", "number", "boolean", "date"] = Field(
+        default="string",
+        description="Stored field value type.",
+    )
+    field_order: int = Field(default=0, ge=0, description="Display order.")
+    is_required: bool = Field(default=False, description="Whether the field is required by convention.")
+    default_val: str | None = Field(default=None, description="Optional default value stored as text.")
+
+
+class RasterFieldUpdateArgs(BaseModel):
+    raster_id: int = Field(..., description="Raster index_id that owns the field.")
+    field_id: int = Field(..., description="Raster field database id.")
+    field_alias: str | None = Field(default=None, max_length=255, description="Updated display label.")
+    field_type: Literal["string", "number", "boolean", "date"] | None = Field(
+        default=None,
+        description="Updated field value type.",
+    )
+    field_order: int | None = Field(default=None, ge=0, description="Updated display order.")
+    is_required: bool | None = Field(default=None, description="Updated required flag.")
+    default_val: str | None = Field(default=None, description="Updated default value stored as text.")
+
+
+class RasterFieldDeleteArgs(BaseModel):
+    raster_id: int = Field(..., description="Raster index_id that owns the field.")
+    field_id: int = Field(..., description="Raster field database id to delete.")
+
+
+class ProcessingTaskStatusArgs(BaseModel):
+    task_id: str = Field(..., min_length=1, max_length=255, description="Celery task id.")
+
+
+class ProcessingJobStatusArgs(BaseModel):
+    job_id: str = Field(..., min_length=1, max_length=255, description="Persistent processing job id.")
+
+
+class ScriptTemplateListArgs(BaseModel):
+    include_code: bool = Field(
+        default=False,
+        description="Include full template source code instead of names and descriptions only.",
+    )
+
+
 class AIFunctionInvokeRequest(BaseModel):
     name: str = Field(..., description="Registered tool name.")
     arguments: dict[str, Any] = Field(
@@ -777,6 +862,41 @@ def _serialize_field(field: Any) -> dict[str, Any]:
     })
 
 
+def _serialize_raster(raster: Any) -> dict[str, Any]:
+    return _json_safe({
+        "record_id": getattr(raster, "id", None),
+        "index_id": getattr(raster, "index_id", None),
+        "file_name": getattr(raster, "file_name", None),
+        "bundle_id": getattr(raster, "bundle_id", None),
+        "crs": getattr(raster, "crs", None),
+        "bounds": getattr(raster, "bounds", None),
+        "bounds_wgs84": getattr(raster, "bounds_wgs84", None),
+        "center": getattr(raster, "center", None),
+        "width": getattr(raster, "width", None),
+        "height": getattr(raster, "height", None),
+        "bands": getattr(raster, "bands", None),
+        "data_type": getattr(raster, "data_type", None),
+        "resolution_x": getattr(raster, "resolution_x", None),
+        "resolution_y": getattr(raster, "resolution_y", None),
+        "created_at": getattr(raster, "created_at", None),
+    })
+
+
+def _serialize_raster_field(field: Any) -> dict[str, Any]:
+    return _json_safe({
+        "id": getattr(field, "id", None),
+        "raster_index_id": getattr(field, "raster_index_id", None),
+        "field_name": getattr(field, "field_name", None),
+        "field_alias": getattr(field, "field_alias", None),
+        "field_type": getattr(field, "field_type", None),
+        "field_order": getattr(field, "field_order", None),
+        "is_required": getattr(field, "is_required", None),
+        "is_system": getattr(field, "is_system", None),
+        "default_val": getattr(field, "default_val", None),
+        "created_at": getattr(field, "created_at", None),
+    })
+
+
 def _feature_create_from_input(feature: VectorFeatureInputArgs) -> FeatureCreate:
     return FeatureCreate(**feature.model_dump())
 
@@ -803,6 +923,36 @@ def _get_raster_processor():
     from services.data_service.processor import RasterProcessor
 
     return RasterProcessor
+
+
+def _get_raster_crud_class():
+    from services.data_service.crud.raster_crud import RasterCRUD
+
+    return RasterCRUD
+
+
+def _get_raster_field_crud_class():
+    from services.data_service.crud.raster_field_crud import RasterFieldCRUD
+
+    return RasterFieldCRUD
+
+
+def _get_compute_raster_statistics():
+    from services.data_service.raster_statistics import compute_raster_statistics
+
+    return compute_raster_statistics
+
+
+def _get_cluster_task_status(task_id: str) -> dict[str, Any] | None:
+    from services.data_service.bridges.worker_bridge import get_cluster_task_status
+
+    return get_cluster_task_status(task_id)
+
+
+def _get_script_templates_func():
+    from services.data_service.routers.script_router import get_script_templates
+
+    return get_script_templates
 
 
 def _get_layer_crud_class():
@@ -1211,6 +1361,219 @@ async def _run_script_sandbox(
         raster_ids=args.raster_ids,
         output_name=args.output_name,
     )
+
+
+async def _require_raster(db: AsyncSession, raster_id: int) -> Any:
+    raster = await _get_raster_crud_class().get_raster_by_index_id(db, raster_id)
+    if not raster:
+        raise ValueError(f"Raster not found: {raster_id}")
+    return raster
+
+
+def _raster_source_path(raster: Any) -> str:
+    path = _get_data_service_ops().resolve_raster_record_path(raster)
+    if not path:
+        raise ValueError(f"Raster file not found for index_id={raster.index_id}")
+    return path
+
+
+async def _list_rasters(
+    args: RasterListArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    rasters = await _get_raster_crud_class().get_all_rasters(db)
+    selected = rasters[: args.limit]
+    return {
+        "status": "success",
+        "rasters": [_serialize_raster(raster) for raster in selected],
+        "count": len(selected),
+        "total": len(rasters),
+        "truncated": len(rasters) > len(selected),
+    }
+
+
+async def _get_raster_metadata(
+    args: RasterGetArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    raster = await _require_raster(db, args.raster_id)
+    return {"status": "success", "raster": _serialize_raster(raster)}
+
+
+async def _get_raster_statistics(
+    args: RasterStatisticsArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    raster = await _require_raster(db, args.raster_id)
+    stats = _get_compute_raster_statistics()(
+        _raster_source_path(raster),
+        bins=args.bins,
+        max_size=args.max_size,
+        band_indices=args.band_indices,
+    )
+    return {
+        "status": "success",
+        "raster": _serialize_raster(raster),
+        "statistics": _json_safe(stats),
+    }
+
+
+async def _query_raster_spectrum(
+    args: RasterSpectrumArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    raster = await _require_raster(db, args.raster_id)
+    spectrum = _get_raster_processor().query_spectrum(
+        _raster_source_path(raster),
+        args.lng,
+        args.lat,
+    )
+    return {
+        "status": "success",
+        "raster": _serialize_raster(raster),
+        "spectrum": _json_safe(spectrum),
+    }
+
+
+async def _delete_raster(
+    args: RasterDeleteArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    raster = await _require_raster(db, args.raster_id)
+    deleted = await _get_raster_crud_class().delete_raster(db, raster.id)
+    if not deleted:
+        raise ValueError(f"Raster not found: {args.raster_id}")
+    return {"status": "success", "deleted": True, "raster_id": args.raster_id}
+
+
+async def _list_raster_fields(
+    args: RasterFieldListArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    await _require_raster(db, args.raster_id)
+    fields = await _get_raster_field_crud_class()(db).get_by_raster(args.raster_id)
+    return {
+        "status": "success",
+        "raster_id": args.raster_id,
+        "fields": [_serialize_raster_field(field) for field in fields],
+        "count": len(fields),
+    }
+
+
+async def _create_raster_field(
+    args: RasterFieldCreateArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    await _require_raster(db, args.raster_id)
+    from services.data_service.raster_field import RasterFieldCreate
+
+    payload = RasterFieldCreate(**args.model_dump(exclude={"raster_id"}))
+    field = await _get_raster_field_crud_class()(db).create(args.raster_id, payload)
+    return {"status": "success", "field": _serialize_raster_field(field)}
+
+
+async def _update_raster_field(
+    args: RasterFieldUpdateArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    from services.data_service.raster_field import RasterFieldUpdate
+
+    crud = _get_raster_field_crud_class()(db)
+    current = await crud.get_by_id(args.field_id)
+    if not current or current.raster_index_id != args.raster_id:
+        raise ValueError(f"Raster field not found in raster {args.raster_id}: {args.field_id}")
+    updates = args.model_dump(exclude={"raster_id", "field_id"}, exclude_unset=True)
+    if not updates:
+        raise ValueError("At least one raster field value must be provided for update.")
+    field = await crud.update(args.field_id, RasterFieldUpdate(**updates))
+    return {"status": "success", "field": _serialize_raster_field(field)}
+
+
+async def _delete_raster_field(
+    args: RasterFieldDeleteArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    crud = _get_raster_field_crud_class()(db)
+    current = await crud.get_by_id(args.field_id)
+    if not current or current.raster_index_id != args.raster_id:
+        raise ValueError(f"Raster field not found in raster {args.raster_id}: {args.field_id}")
+    deleted = await crud.delete(args.field_id)
+    if not deleted:
+        raise ValueError(f"Raster field not found: {args.field_id}")
+    return {"status": "success", "deleted": True, "field_id": args.field_id}
+
+
+async def _get_processing_task_status(
+    args: ProcessingTaskStatusArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del db, vector_db
+    task = _get_cluster_task_status(args.task_id)
+    if task is None:
+        raise ValueError(f"Processing task not found: {args.task_id}")
+    return {"status": "success", "task": _json_safe(task)}
+
+
+async def _get_processing_job_status(
+    args: ProcessingJobStatusArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    from sqlalchemy import text
+
+    result = await db.execute(
+        text(
+            """
+            SELECT job_id, celery_task_id, task_type, status, raster_index_id,
+                   params, result, error, retry_count, created_at, started_at, finished_at
+            FROM task_jobs
+            WHERE job_id = :job_id
+            """
+        ),
+        {"job_id": args.job_id},
+    )
+    row = result.mappings().first()
+    if row is None:
+        raise ValueError(f"Processing job not found: {args.job_id}")
+    job = _json_safe(dict(row))
+    if job.get("celery_task_id"):
+        job["task_status"] = _json_safe(_get_cluster_task_status(job["celery_task_id"]))
+    return {"status": "success", "job": job}
+
+
+async def _list_script_templates(
+    args: ScriptTemplateListArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del db, vector_db
+    templates = await _get_script_templates_func()()
+    if not args.include_code:
+        templates = [
+            {"name": item.get("name"), "description": item.get("description")}
+            for item in templates
+        ]
+    return {"status": "success", "templates": templates, "count": len(templates)}
 
 
 async def _create_vector_project(
@@ -1729,6 +2092,90 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
             category="artifact_generation",
             arguments_model=GeneratedImageArgs,
             handler=_generate_ai_image,
+        ),
+        RegisteredFunction(
+            name="list_rasters",
+            description="List the newest raster records and their public spatial metadata so the agent can discover index_id values.",
+            category="raster_catalog",
+            arguments_model=RasterListArgs,
+            handler=_list_rasters,
+        ),
+        RegisteredFunction(
+            name="get_raster_metadata",
+            description="Retrieve public metadata for one raster by index_id without exposing internal filesystem paths.",
+            category="raster_catalog",
+            arguments_model=RasterGetArgs,
+            handler=_get_raster_metadata,
+        ),
+        RegisteredFunction(
+            name="get_raster_statistics",
+            description="Compute sampled per-band statistics and histograms for a raster.",
+            category="raster_catalog",
+            arguments_model=RasterStatisticsArgs,
+            handler=_get_raster_statistics,
+        ),
+        RegisteredFunction(
+            name="query_raster_spectrum",
+            description="Query all raster-band values at one WGS84 longitude/latitude coordinate.",
+            category="raster_catalog",
+            arguments_model=RasterSpectrumArgs,
+            handler=_query_raster_spectrum,
+        ),
+        RegisteredFunction(
+            name="delete_raster",
+            description="Permanently delete one raster record and its files only when the user explicitly requests deletion.",
+            category="raster_catalog",
+            arguments_model=RasterDeleteArgs,
+            handler=_delete_raster,
+        ),
+        RegisteredFunction(
+            name="list_raster_fields",
+            description="List system and custom attribute-field definitions for a raster.",
+            category="raster_fields",
+            arguments_model=RasterFieldListArgs,
+            handler=_list_raster_fields,
+        ),
+        RegisteredFunction(
+            name="create_raster_field",
+            description="Create a custom attribute-field definition for a raster.",
+            category="raster_fields",
+            arguments_model=RasterFieldCreateArgs,
+            handler=_create_raster_field,
+        ),
+        RegisteredFunction(
+            name="update_raster_field",
+            description="Update a raster field label, type, order, required flag, or default value.",
+            category="raster_fields",
+            arguments_model=RasterFieldUpdateArgs,
+            handler=_update_raster_field,
+        ),
+        RegisteredFunction(
+            name="delete_raster_field",
+            description="Delete a non-system raster field only when the user explicitly requests deletion.",
+            category="raster_fields",
+            arguments_model=RasterFieldDeleteArgs,
+            handler=_delete_raster_field,
+        ),
+        RegisteredFunction(
+            name="get_processing_task_status",
+            description="Get live status and progress for a Celery processing task id returned by an analysis tool.",
+            category="task_monitoring",
+            arguments_model=ProcessingTaskStatusArgs,
+            handler=_get_processing_task_status,
+        ),
+        RegisteredFunction(
+            name="get_processing_job_status",
+            description="Get persistent processing-job status, result, errors, timestamps, and linked task status.",
+            category="task_monitoring",
+            arguments_model=ProcessingJobStatusArgs,
+            handler=_get_processing_job_status,
+        ),
+        RegisteredFunction(
+            name="list_script_templates",
+            description="List supported raster-processing sandbox templates, optionally including their complete source code.",
+            category="script_sandbox",
+            arguments_model=ScriptTemplateListArgs,
+            handler=_list_script_templates,
         ),
         RegisteredFunction(
             name="calculate_ndvi",
