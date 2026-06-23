@@ -70,8 +70,22 @@ async def handle_analyze(
         context_schema=valid_schema,
     )
 
-    return {
+    response = {
         "status": "success",
         "mode": "analyze",
         "report": result,
     }
+    try:
+        from services.ai_gateway.artifacts import create_document_artifact
+
+        artifact = create_document_artifact(
+            f"ai-analysis-{payload.data_type.value}-{payload.target_id}.md",
+            str(result),
+            "md",
+        )
+        response["artifact"] = artifact
+        response["artifacts"] = [artifact]
+        response["file_url"] = artifact["download_url"]
+    except Exception as exc:
+        logger.warning("[analyze] could not persist downloadable report: %s", exc)
+    return response

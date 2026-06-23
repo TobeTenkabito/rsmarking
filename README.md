@@ -277,6 +277,15 @@ DEEPSEEK_API_KEY=sk-...
 
 Use any LiteLLM-supported provider by changing `AI_MODEL`/`AI_NAME` and setting the provider-specific API key expected by LiteLLM.
 
+The agent can create persistent downloadable documents, SVG images, and CSV/XLSX/JSON tables. To enable provider-backed raster image generation as well, configure a LiteLLM-compatible image model separately:
+
+```env
+AI_IMAGE_MODEL=openai/gpt-image-1
+OPENAI_API_KEY=sk-...
+```
+
+Generated files are stored under `storage/ai_artifacts` by default; override that location with `AI_ARTIFACT_DIR`.
+
 Core endpoints:
 
 | Method | Path | Purpose |
@@ -286,14 +295,16 @@ Core endpoints:
 | `GET` | `/ai/functions?format=catalog` | Return a readable function catalog |
 | `POST` | `/ai/functions/invoke` | Invoke a registered algorithm function directly |
 | `POST` | `/ai/agent` | Run a minimal tool-using agent over the registered function catalog |
+| `GET` | `/ai/artifacts/{artifact_id}` | Preview an AI-generated image artifact |
+| `GET` | `/ai/artifacts/{artifact_id}/download` | Export an AI-generated artifact |
 
 `/ai/process` accepts `target_id`, `data_type` (`raster` or `vector`), `mode` (`analyze` or `modify`), `language`, `user_prompt`, optional `overwrite`, optional `session_id`, and optional `map_context`.
 
 In modify mode, the Pydantic layer only accepts currently modifiable fields such as raster/vector `name`; read-only spatial statistics and metadata are not written back from model output.
 
-Registered AI-callable functions include spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
+Registered AI-callable functions include downloadable document/table generation, optional AI image generation, spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
 
-`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, and `max_steps`. It also supports conversational agent sessions with `history_limit` and `reset_session`. By default it injects a compact workspace overview of current rasters, vector projects, and layers; set `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, and a compact `steps` trace.
+`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, and `max_steps`. It also supports conversational agent sessions with `history_limit` and `reset_session`. By default it injects a compact workspace overview of current rasters, vector projects, and layers; set `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, a compact `steps` trace, and an `artifacts` array containing safe preview/export URLs for generated files.
 
 ## API Quick Reference
 

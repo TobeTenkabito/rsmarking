@@ -2,6 +2,14 @@ import { API_CONFIG } from './config.js';
 
 const BASE_URL = API_CONFIG.aiGatewayUrl;
 
+function resolveAIURL(value) {
+    const url = String(value || '').trim();
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) return url;
+    if (url.startsWith('/')) return `${BASE_URL}${url}`;
+    return '';
+}
+
 async function requestAI(path, payload, fallbackMessage) {
     try {
         const response = await fetch(`${BASE_URL}${path}`, {
@@ -65,6 +73,10 @@ async function requestAIDelete(path, fallbackMessage) {
 }
 
 export const AIAPI = {
+    resolveURL(value) {
+        return resolveAIURL(value);
+    },
+
     async analyze(payload) {
         return requestAI('/ai/process', {
             ...payload,

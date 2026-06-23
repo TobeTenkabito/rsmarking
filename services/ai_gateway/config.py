@@ -66,6 +66,12 @@ def get_ai_model(model_name: str | None = None) -> str:
     return get_ai_settings(model_name).model
 
 
+def get_ai_image_model() -> str | None:
+    """Return the separately configured image model, if image generation is enabled."""
+    value = _clean_env_value(os.getenv("AI_IMAGE_MODEL") or "")
+    return value or None
+
+
 def build_litellm_kwargs(
     *,
     model_name: str | None = None,
@@ -87,6 +93,11 @@ def log_ai_settings() -> None:
         settings.api_base or "default",
         bool(settings.api_key),
         settings.reasoning_enabled,
+    )
+    logger.info(
+        "AI image generation configuration: model=%s enabled=%s",
+        get_ai_image_model() or "not configured",
+        bool(get_ai_image_model()),
     )
 
 

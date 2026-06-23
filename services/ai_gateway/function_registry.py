@@ -621,6 +621,81 @@ class VectorLayerToRasterArgs(BaseModel):
     new_name: str = Field(..., min_length=1, max_length=255, description="Name for the generated raster.")
 
 
+class GeneratedDocumentArgs(BaseModel):
+    filename: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Export filename. Its extension is normalized to match format.",
+    )
+    format: Literal["txt", "md", "html", "json", "svg"] = Field(
+        default="md",
+        description=(
+            "Generated file format. Use svg for AI-authored diagrams or simple vector images; "
+            "active scripts and external SVG resources are rejected."
+        ),
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=1_000_000,
+        description="Complete UTF-8 file content to persist and make downloadable.",
+    )
+
+
+class GeneratedTableArgs(BaseModel):
+    filename: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="Export filename. Its extension is normalized to match format.",
+    )
+    columns: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Ordered table column headings.",
+    )
+    rows: list[list[Any]] = Field(
+        default_factory=list,
+        max_length=10_000,
+        description="Table rows in the same order and width as columns.",
+    )
+    format: Literal["csv", "xlsx", "json"] = Field(
+        default="xlsx",
+        description="Download format for the generated table.",
+    )
+    sheet_name: str = Field(
+        default="AI Table",
+        min_length=1,
+        max_length=31,
+        description="Worksheet name used for XLSX exports.",
+    )
+
+
+class GeneratedImageArgs(BaseModel):
+    prompt: str = Field(
+        ...,
+        min_length=2,
+        max_length=4000,
+        description="Detailed prompt for the configured AI image-generation model.",
+    )
+    filename: str = Field(
+        default="ai-generated-image.png",
+        min_length=1,
+        max_length=255,
+        description="Filename offered when the user downloads the generated image.",
+    )
+    size: Literal["256x256", "512x512", "1024x1024", "1024x1536", "1536x1024"] = Field(
+        default="1024x1024",
+        description="Requested image dimensions; unsupported provider sizes may be rejected.",
+    )
+    quality: Literal["standard", "low", "medium", "high", "hd"] = Field(
+        default="standard",
+        description="Requested provider image quality.",
+    )
+
+
 ToolHandler = Callable[[BaseModel, AsyncSession, AsyncSession], Awaitable[Any]]
 
 
@@ -1578,9 +1653,83 @@ async def _run_index_diff(
     return _normalize_result(await detect_index_diff(args, db))
 
 
+async def _create_generated_document(
+    args: GeneratedDocumentArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del db, vector_db
+    from services.ai_gateway.artifacts import create_document_artifact
+
+    return create_document_artifact(args.filename, args.content, args.format)
+
+
+async def _create_generated_table(
+    args: GeneratedTableArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del db, vector_db
+    from services.ai_gateway.artifacts import create_table_artifact
+
+    return create_table_artifact(
+        args.filename,
+        args.columns,
+        args.rows,
+        args.format,
+        args.sheet_name,
+    )
+
+
+async def _generate_ai_image(
+    args: GeneratedImageArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del db, vector_db
+    from services.ai_gateway.image_generation import generate_ai_image
+
+    return await generate_ai_image(
+        prompt=args.prompt,
+        filename=args.filename,
+        size=args.size,
+        quality=args.quality,
+    )
+
+
 REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
     spec.name: spec
     for spec in [
+        RegisteredFunction(
+            name="create_generated_document",
+            description=(
+                "Create a persistent downloadable AI-authored text, Markdown, HTML, JSON, or safe SVG file. "
+                "Use safe SVG for diagrams or simple vector images that do not need a generative image model."
+            ),
+            category="artifact_generation",
+            arguments_model=GeneratedDocumentArgs,
+            handler=_create_generated_document,
+        ),
+        RegisteredFunction(
+            name="create_generated_table",
+            description=(
+                "Create a persistent downloadable table as CSV, formatted XLSX, or JSON. "
+                "Use whenever the user asks to generate, save, download, or export tabular results."
+            ),
+            category="artifact_generation",
+            arguments_model=GeneratedTableArgs,
+            handler=_create_generated_table,
+        ),
+        RegisteredFunction(
+            name="generate_ai_image",
+            description=(
+                "Generate a raster image with the configured AI image model and return preview/download links. "
+                "AI_IMAGE_MODEL must be configured; use create_generated_document with SVG for simple diagrams."
+            ),
+            category="artifact_generation",
+            arguments_model=GeneratedImageArgs,
+            handler=_generate_ai_image,
+        ),
         RegisteredFunction(
             name="calculate_ndvi",
             description="Generate an NDVI raster from red and near-infrared inputs.",

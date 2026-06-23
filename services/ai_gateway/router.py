@@ -2,6 +2,7 @@ import logging
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.annotation_service.database import get_db as get_vector_db
@@ -12,6 +13,7 @@ from .agent_handler import (
     handle_agent,
     restore_session_messages,
 )
+from .artifacts import ArtifactNotFoundError, get_artifact
 from .conversation_archive import (
     ConversationArchiveRequest,
     ConversationRestoreRequest,
@@ -97,6 +99,41 @@ async def run_ai_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="AI agent execution failed",
         )
+
+
+@router.get("/artifacts/{artifact_id}/download", summary="Download an AI-generated artifact")
+async def download_ai_artifact(artifact_id: str):
+    try:
+        metadata, path = get_artifact(artifact_id)
+    except ArtifactNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI artifact not found")
+    return FileResponse(
+        path,
+        media_type=metadata["mime_type"],
+        filename=metadata["name"],
+        content_disposition_type="attachment",
+        headers={"X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/artifacts/{artifact_id}", summary="Preview an AI-generated artifact")
+async def preview_ai_artifact(artifact_id: str):
+    try:
+        metadata, path = get_artifact(artifact_id)
+    except ArtifactNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI artifact not found")
+    is_image = str(metadata["mime_type"]).startswith("image/")
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+    }
+    return FileResponse(
+        path,
+        media_type=metadata["mime_type"],
+        filename=metadata["name"],
+        content_disposition_type="inline" if is_image else "attachment",
+        headers=headers,
+    )
 
 
 @router.get("/conversations", summary="List archived AI agent conversations")

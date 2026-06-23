@@ -133,6 +133,8 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             item["steps"] = message["steps"]
         if isinstance(message.get("attachments"), list):
             item["attachments"] = _normalize_attachments(message["attachments"])
+        if isinstance(message.get("artifacts"), list):
+            item["artifacts"] = _normalize_artifacts(message["artifacts"])
         if message.get("created_at"):
             item["created_at"] = str(message["created_at"])
         normalized.append(item)
@@ -159,6 +161,29 @@ def _normalize_attachments(attachments: list[dict[str, Any]]) -> list[dict[str, 
         image_data_url = str(attachment.get("image_data_url") or "")
         if image_data_url and len(image_data_url) <= 4_500_000:
             item["image_data_url"] = image_data_url
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_artifacts(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized = []
+    for artifact in artifacts[:20]:
+        if not isinstance(artifact, dict):
+            continue
+        artifact_id = str(artifact.get("artifact_id") or "")
+        if not re.fullmatch(r"[a-f0-9]{32}", artifact_id):
+            continue
+        item = {
+            "artifact_id": artifact_id,
+            "name": _compact_text(str(artifact.get("name") or "AI artifact"), 255),
+            "kind": str(artifact.get("kind") or "file"),
+            "mime_type": _compact_text(str(artifact.get("mime_type") or ""), 120),
+            "size": artifact.get("size"),
+            "row_count": artifact.get("row_count"),
+            "column_count": artifact.get("column_count"),
+            "preview_url": f"/ai/artifacts/{artifact_id}",
+            "download_url": f"/ai/artifacts/{artifact_id}/download",
+        }
         normalized.append(item)
     return normalized
 

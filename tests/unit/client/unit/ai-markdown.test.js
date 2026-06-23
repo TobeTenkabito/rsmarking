@@ -91,6 +91,55 @@ describe('AIModule markdown rendering', () => {
         expect(html).not.toContain('whitespace-pre-wrap');
     });
 
+    it('renders generated image previews and file export controls', () => {
+        const ai = new AIModule({});
+        const html = ai._renderAgentMessage({
+            role: 'assistant',
+            content: 'Generated both artifacts.',
+            artifacts: [
+                {
+                    artifact_id: 'a'.repeat(32),
+                    name: 'map.png',
+                    kind: 'image',
+                    mime_type: 'image/png',
+                    size: 128,
+                    preview_url: 'http://localhost:8006/ai/artifacts/image-id',
+                    download_url: 'http://localhost:8006/ai/artifacts/image-id/download',
+                },
+                {
+                    artifact_id: 'b'.repeat(32),
+                    name: 'results.xlsx',
+                    kind: 'table',
+                    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    size: 256,
+                    row_count: 12,
+                    column_count: 3,
+                    download_url: 'http://localhost:8006/ai/artifacts/table-id/download',
+                },
+            ],
+        });
+
+        expect(html).toContain('map.png');
+        expect(html).toContain('<img src="http://localhost:8006/ai/artifacts/image-id"');
+        expect(html).toContain('results.xlsx');
+        expect(html).toContain('12 rows');
+        expect(html).toContain('Export');
+    });
+
+    it('resolves gateway-relative artifact URLs for previews and exports', () => {
+        const ai = new AIModule({});
+        const [artifact] = ai._displayArtifacts([{
+            artifact_id: 'c'.repeat(32),
+            name: 'summary.csv',
+            kind: 'table',
+            preview_url: '/ai/artifacts/example',
+            download_url: '/ai/artifacts/example/download',
+        }]);
+
+        expect(artifact.preview_url).toBe('http://localhost:8006/ai/artifacts/example');
+        expect(artifact.download_url).toBe('http://localhost:8006/ai/artifacts/example/download');
+    });
+
     it('renders assistant errors even when visible content is empty', () => {
         const ai = new AIModule({});
         const html = ai._renderAgentMessage({

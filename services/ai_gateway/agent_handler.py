@@ -243,15 +243,16 @@ async def _handle_agent_locked(
             else:
                 observation = await _invoke_agent_tool(tool_name, arguments, db, vector_db)
                 status = "success" if observation.get("status") != "error" else "error"
+                trace_observation = _tool_observation_without_arguments(observation)
                 steps.append(
                     AgentStep(
                         step=step_number,
                         type="tool",
                         tool_call_id=tool_call_id,
                         name=tool_name,
-                        arguments=arguments,
+                        arguments=_trace_tool_arguments(tool_name, arguments),
                         status=status,
-                        result=_compact_json(observation) if status == "success" else None,
+                        result=_compact_json(trace_observation) if status == "success" else None,
                         error=observation.get("error") if status == "error" else None,
                     )
                 )
@@ -261,7 +262,12 @@ async def _handle_agent_locked(
                     "tool_call_id": tool_call_id,
                     "role": "tool",
                     "name": tool_name,
-                    "content": _json_dumps(_compact_json(observation, max_chars=12000)),
+                    "content": _json_dumps(
+                        _compact_json(
+                            _tool_observation_without_arguments(observation),
+                            max_chars=12000,
+                        )
+                    ),
                 }
             )
 
@@ -331,6 +337,10 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "You may call only the registered AI gateway tools provided in this request.",
             "Use tools when they materially advance the task; otherwise answer directly.",
             "Tool calls can create new raster/vector outputs or run analysis jobs.",
+            "When the user asks for a downloadable document or file, call create_generated_document.",
+            "When the user asks to create a table or tabular output, call create_generated_table so it can be exported; a concise Markdown preview is optional.",
+            "For requested generated pictures or artwork, call generate_ai_image; for simple diagrams, create a safe SVG with create_generated_document.",
+            "Do not claim that an export is available unless an artifact tool returns preview_url and download_url.",
             "Prefer dedicated geospatial tools when one fits the request.",
             "For atmospheric correction, use atmospheric_correction before generating sandbox code.",
             "For radiometric calibration or geometric correction, use radiometric_calibration or geometric_correction before generating sandbox code.",
@@ -712,6 +722,34 @@ def _get_agent_tools(tool_names: list[str] | None) -> list[dict[str, Any]]:
     return get_registered_openai_tools(tool_names)
 
 
+def _tool_observation_without_arguments(observation: dict[str, Any]) -> dict[str, Any]:
+    """Keep tool results visible even when generated-file arguments contain large content."""
+    if "arguments" not in observation:
+        return observation
+    return {key: value for key, value in observation.items() if key != "arguments"}
+
+
+def _trace_tool_arguments(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Avoid returning complete generated documents and tables in the public step trace."""
+    if name == "create_generated_document":
+        return {
+            "filename": arguments.get("filename"),
+            "format": arguments.get("format", "md"),
+            "content_chars": len(str(arguments.get("content") or "")),
+        }
+    if name == "create_generated_table":
+        columns = arguments.get("columns")
+        rows = arguments.get("rows")
+        return {
+            "filename": arguments.get("filename"),
+            "format": arguments.get("format", "xlsx"),
+            "sheet_name": arguments.get("sheet_name", "AI Table"),
+            "column_count": len(columns) if isinstance(columns, list) else 0,
+            "row_count": len(rows) if isinstance(rows, list) else 0,
+        }
+    return arguments
+
+
 def _get_allowed_tool_names(tool_names: list[str] | None) -> set[str]:
     from services.ai_gateway.function_registry import select_registered_functions
 
@@ -757,4 +795,49 @@ def _agent_response(
         "answer": answer or "",
         "steps": [step.model_dump(exclude_none=True) for step in steps],
         "used_tools": used_tools,
+        "artifacts": _collect_generated_artifacts(steps),
     }
+
+
+def _collect_generated_artifacts(steps: list[AgentStep]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            artifact_id = value.get("artifact_id")
+            if (
+                isinstance(artifact_id, str)
+                and artifact_id not in seen
+                and value.get("download_url")
+                and value.get("name")
+            ):
+                seen.add(artifact_id)
+                artifacts.append(
+                    {
+                        key: value[key]
+                        for key in (
+                            "artifact_id",
+                            "name",
+                            "kind",
+                            "mime_type",
+                            "size",
+                            "row_count",
+                            "column_count",
+                            "prompt",
+                            "preview_url",
+                            "download_url",
+                        )
+                        if key in value
+                    }
+                )
+            for nested in value.values():
+                visit(nested)
+        elif isinstance(value, list):
+            for nested in value:
+                visit(nested)
+
+    for step in steps:
+        if step.status == "success":
+            visit(step.result)
+    return artifacts

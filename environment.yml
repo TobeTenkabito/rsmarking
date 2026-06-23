@@ -248,6 +248,7 @@ dependencies:
       - multidict==6.7.1
       - onnxruntime==1.23.2
       - openai==2.28.0
+      - openpyxl==3.1.5
       - pillow==12.1.0
       - pluggy==1.6.0
       - propcache==0.4.1

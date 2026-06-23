@@ -114,7 +114,10 @@ export class AIModule {
         // English
         const downloadBtn = document.getElementById('ai-download-btn');
         if (downloadBtn && result.file_url) {
-            downloadBtn.href = result.file_url;
+            downloadBtn.href = AIAPI.resolveURL(result.file_url);
+            downloadBtn.download = result.artifact?.name || 'ai-analysis.md';
+            const label = downloadBtn.querySelector('span');
+            if (label) label.textContent = `Download ${result.artifact?.name || 'Analysis Report'}`;
             downloadBtn.classList.remove('hidden');
         }
 
@@ -183,6 +186,7 @@ export class AIModule {
                 if (result.session_id) this._sessionId = result.session_id;
                 assistantMessage.pending = false;
                 assistantMessage.steps = result.steps ?? [];
+                assistantMessage.artifacts = this._displayArtifacts(result.artifacts ?? []);
                 await this._revealAgentResponse(assistantMessage, result.answer ?? '');
                 if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
                     await this._refreshSidebar('raster');
@@ -346,6 +350,9 @@ export class AIModule {
                     steps: Array.isArray(message.steps) ? message.steps : [],
                     attachments: Array.isArray(message.attachments)
                         ? this._displayAttachments(message.attachments)
+                        : [],
+                    artifacts: Array.isArray(message.artifacts)
+                        ? this._displayArtifacts(message.artifacts)
                         : [],
                 }));
             this._archivePanelOpen = false;
@@ -797,6 +804,7 @@ export class AIModule {
                 content: message.content || '',
                 steps: Array.isArray(message.steps) ? message.steps : [],
                 attachments: this._archiveableAttachments(message.attachments ?? []),
+                artifacts: this._archiveableArtifacts(message.artifacts ?? []),
             }));
     }
 
@@ -812,6 +820,36 @@ export class AIModule {
             text_excerpt: attachment.text_excerpt || '',
             image_data_url: attachment.image_data_url || '',
         }));
+    }
+
+    _archiveableArtifacts(artifacts = []) {
+        return artifacts.map((artifact) => ({
+            artifact_id: artifact.artifact_id,
+            name: artifact.name,
+            kind: artifact.kind || 'file',
+            mime_type: artifact.mime_type || '',
+            size: artifact.size ?? 0,
+            row_count: artifact.row_count ?? null,
+            column_count: artifact.column_count ?? null,
+            preview_url: artifact.source_preview_url || artifact.preview_url || '',
+            download_url: artifact.source_download_url || artifact.download_url || '',
+        }));
+    }
+
+    _displayArtifacts(artifacts = []) {
+        return artifacts.map((artifact) => ({
+            artifact_id: artifact.artifact_id || '',
+            name: artifact.name || 'AI artifact',
+            kind: artifact.kind || 'file',
+            mime_type: artifact.mime_type || '',
+            size: artifact.size ?? 0,
+            row_count: artifact.row_count ?? null,
+            column_count: artifact.column_count ?? null,
+            source_preview_url: artifact.preview_url || '',
+            source_download_url: artifact.download_url || '',
+            preview_url: AIAPI.resolveURL(artifact.preview_url),
+            download_url: AIAPI.resolveURL(artifact.download_url),
+        })).filter(artifact => artifact.download_url);
     }
 
     _renderFunctionCatalog() {
@@ -1274,6 +1312,15 @@ export class AIModule {
     _showFunctionResult(result) {
         const reportEl = document.getElementById('ai-result-content');
         if (reportEl) reportEl.textContent = JSON.stringify(result, null, 2);
+        const artifact = result?.result?.artifact_id ? this._displayArtifacts([result.result])[0] : null;
+        const downloadBtn = document.getElementById('ai-download-btn');
+        if (downloadBtn && artifact) {
+            downloadBtn.href = artifact.download_url;
+            downloadBtn.download = artifact.name;
+            const label = downloadBtn.querySelector('span');
+            if (label) label.textContent = `Download ${artifact.name}`;
+            downloadBtn.classList.remove('hidden');
+        }
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
 
@@ -1352,6 +1399,7 @@ export class AIModule {
             : `<div class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-black text-violet-700">AI</div>`;
         const trace = this._renderAgentToolTrace(message.steps ?? []);
         const attachments = this._renderMessageAttachments(message.attachments ?? [], isUser);
+        const artifacts = this._renderGeneratedArtifacts(message.artifacts ?? []);
         const content = message.pending
             ? this._renderPendingAgentMessage(message)
             : isUser
@@ -1364,6 +1412,7 @@ export class AIModule {
                 <div class="max-w-[82%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${bubbleClass}">
                     ${content}
                     ${attachments}
+                    ${artifacts}
                     ${trace}
                 </div>
             </div>`;
@@ -1413,6 +1462,44 @@ export class AIModule {
                 ${images ? `<div class="grid grid-cols-2 gap-2">${images}</div>` : ''}
                 ${chips ? `<div class="flex flex-wrap gap-2">${chips}</div>` : ''}
             </div>`;
+    }
+
+    _renderGeneratedArtifacts(artifacts = []) {
+        if (!artifacts.length) return '';
+
+        const cards = artifacts.map((artifact) => {
+            const name = this._escapeHTML(artifact.name || 'AI artifact');
+            const downloadUrl = this._escapeHTML(artifact.download_url || '');
+            const meta = [
+                artifact.mime_type || artifact.kind || 'file',
+                this._formatBytes(artifact.size),
+                artifact.row_count != null ? `${artifact.row_count} rows` : '',
+                artifact.column_count != null ? `${artifact.column_count} columns` : '',
+            ].filter(Boolean).join(' · ');
+            const preview = artifact.kind === 'image' && artifact.preview_url
+                ? `<img src="${this._escapeHTML(artifact.preview_url)}" alt="${name}"
+                        class="max-h-56 w-full bg-slate-50 object-contain">`
+                : '';
+            return `
+                <div class="overflow-hidden rounded-xl border border-violet-100 bg-violet-50/60">
+                    ${preview}
+                    <div class="flex items-center gap-3 px-3 py-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-violet-600 shadow-sm">
+                            ${artifact.kind === 'image' ? this._imageIcon() : artifact.kind === 'table' ? this._textIcon() : this._fileIcon()}
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-[11px] font-black text-slate-700">${name}</span>
+                            <span class="block truncate text-[9px] text-slate-400">${this._escapeHTML(meta)}</span>
+                        </span>
+                        <a href="${downloadUrl}" download="${name}"
+                            class="shrink-0 rounded-lg bg-violet-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-violet-700">
+                            Export
+                        </a>
+                    </div>
+                </div>`;
+        }).join('');
+
+        return `<div class="mt-3 space-y-2">${cards}</div>`;
     }
 
     _renderAttachmentChip(attachment, { removable = false, compact = false } = {}) {
