@@ -22,6 +22,7 @@ export class AIModule {
         this._agentConversation = [];
         this._functionCatalog = [];
         this._selectedFunction = null;
+        this._selectedFunctionCategory = '';
         this._functionsLoading = false;
         this._functionCatalogError = '';
         this._conversationArchives = [];
@@ -465,6 +466,7 @@ export class AIModule {
             this._selectedFunction = this._selectedFunction
                 ? this._functionCatalog.find(fn => fn.name === this._selectedFunction.name) ?? this._functionCatalog[0] ?? null
                 : this._functionCatalog[0] ?? null;
+            this._selectedFunctionCategory = this._selectedFunction?.category || this._firstFunctionCategory();
             loaded = true;
         } catch (err) {
             this._functionCatalogError = err.message || 'Failed to load backend functions';
@@ -493,6 +495,21 @@ export class AIModule {
         if (!fn) return;
 
         this._selectedFunction = fn;
+        this._selectedFunctionCategory = fn.category || 'other';
+        this._renderFunctionCatalog();
+        this.resetFunctionArgs();
+    }
+
+    selectFunctionCategory(category) {
+        const normalizedCategory = category || 'other';
+        const items = this._functionCatalog
+            .filter(item => (item.category || 'other') === normalizedCategory);
+        if (!items.length) return;
+
+        this._selectedFunctionCategory = normalizedCategory;
+        if ((this._selectedFunction?.category || 'other') !== normalizedCategory) {
+            this._selectedFunction = items[0];
+        }
         this._renderFunctionCatalog();
         this.resetFunctionArgs();
     }
@@ -898,6 +915,7 @@ export class AIModule {
     _renderFunctionCatalog() {
         const statusEl = document.getElementById('ai-function-status');
         const buttonsEl = document.getElementById('ai-function-buttons');
+        this._syncSelectedFunctionCategory();
 
         if (statusEl) {
             const statusText = this._functionsLoading
@@ -915,6 +933,7 @@ export class AIModule {
             buttonsEl.innerHTML = ModalComponent.renderAIFunctionButtons(
                 this._functionCatalog,
                 this._selectedFunction?.name,
+                this._selectedFunctionCategory,
             );
         }
 
@@ -1505,6 +1524,34 @@ export class AIModule {
                 ${images ? `<div class="grid grid-cols-2 gap-2">${images}</div>` : ''}
                 ${chips ? `<div class="flex flex-wrap gap-2">${chips}</div>` : ''}
             </div>`;
+    }
+
+    _syncSelectedFunctionCategory() {
+        if (!this._functionCatalog.length) {
+            this._selectedFunctionCategory = '';
+            return;
+        }
+
+        if (this._selectedFunction) {
+            const stillAvailable = this._functionCatalog
+                .some(fn => fn.name === this._selectedFunction.name);
+            if (!stillAvailable) {
+                this._selectedFunction = this._functionCatalog[0] ?? null;
+            }
+        } else {
+            this._selectedFunction = this._functionCatalog[0] ?? null;
+        }
+
+        const selectedCategory = this._selectedFunction?.category || 'other';
+        const categoryAvailable = this._functionCatalog
+            .some(fn => (fn.category || 'other') === (this._selectedFunctionCategory || selectedCategory));
+        this._selectedFunctionCategory = categoryAvailable
+            ? (this._selectedFunctionCategory || selectedCategory)
+            : selectedCategory;
+    }
+
+    _firstFunctionCategory() {
+        return this._functionCatalog[0]?.category || (this._functionCatalog.length ? 'other' : '');
     }
 
     _renderGeneratedArtifacts(artifacts = []) {

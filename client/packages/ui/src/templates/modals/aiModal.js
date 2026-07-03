@@ -178,7 +178,7 @@ export const aiModal = `
                             Refresh
                         </button>
                     </div>
-                    <div id="ai-function-buttons" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"></div>
+                    <div id="ai-function-buttons"></div>
                     <div id="ai-function-detail" class="hidden space-y-3 rounded-lg border border-slate-200 bg-white p-4">
                         <div id="ai-function-summary"></div>
                         <div class="space-y-1.5">

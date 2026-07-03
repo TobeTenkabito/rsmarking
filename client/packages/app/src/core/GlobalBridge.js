@@ -158,6 +158,7 @@ export class GlobalBridge {
             aiSetMode:          (mode) => this.app.ai?.setMode(mode),
             aiReloadFunctions:  ()  => this.app.ai?.reloadFunctions(),
             aiSelectFunction:   (name) => this.app.ai?.selectFunction(name),
+            aiSelectFunctionCategory: (category) => this.app.ai?.selectFunctionCategory(category),
             aiResetFunctionArgs: () => this.app.ai?.resetFunctionArgs(),
             aiRunSelectedFunction: () => this.app.ai?.runSelectedFunction(),
             aiStartNewAgentChat: () => this.app.ai?.startNewAgentChat(),

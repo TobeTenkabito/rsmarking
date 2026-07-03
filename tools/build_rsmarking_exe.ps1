@@ -11,7 +11,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $LauncherSource = "tools\rsmarking_exe_launcher.py"
 $BuildWorkDir = "build\pyinstaller"
-$OutputExe = ".\rsmarking.exe"
+$LauncherOutputExe = ".\rsmarking.exe"
+$StopOutputExe = ".\rsmarking-stop.exe"
 
 function Write-Step($Message) {
     Write-Host "[*] $Message" -ForegroundColor Cyan
@@ -171,6 +172,46 @@ function Ensure-PyInstaller {
     Write-Ok "PyInstaller is available ($($test.Version))"
 }
 
+function Build-WrapperExecutable {
+    param(
+        [string]$Name,
+        [string]$OutputExe,
+        [string]$PythonExe
+    )
+
+    $pyinstallerArgs = @(
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--onefile",
+        "--console",
+        "--name",
+        $Name,
+        "--distpath",
+        ".",
+        "--workpath",
+        $BuildWorkDir,
+        "--specpath",
+        $BuildWorkDir
+    )
+
+    if ($Clean) {
+        $pyinstallerArgs += "--clean"
+    }
+
+    $pyinstallerArgs += $LauncherSource
+
+    Write-Step "Building $OutputExe"
+    Invoke-Native -FilePath $PythonExe -ArgumentList $pyinstallerArgs | Out-Null
+
+    if (-not (Test-Path $OutputExe)) {
+        Fail "Build completed without producing $OutputExe"
+    }
+
+    Write-Step "Verifying $OutputExe wrapper"
+    Invoke-Native -FilePath $OutputExe -ArgumentList @("--rsmarking-wrapper-check") | Out-Null
+}
+
 try {
     Set-Location $RepoRoot
 
@@ -189,40 +230,12 @@ try {
 
     New-Item -ItemType Directory -Path $BuildWorkDir -Force | Out-Null
 
-    $pyinstallerArgs = @(
-        "-m",
-        "PyInstaller",
-        "--noconfirm",
-        "--onefile",
-        "--console",
-        "--name",
-        "rsmarking",
-        "--distpath",
-        ".",
-        "--workpath",
-        $BuildWorkDir,
-        "--specpath",
-        $BuildWorkDir
-    )
+    Build-WrapperExecutable -Name "rsmarking" -OutputExe $LauncherOutputExe -PythonExe $python.FilePath
+    Build-WrapperExecutable -Name "rsmarking-stop" -OutputExe $StopOutputExe -PythonExe $python.FilePath
 
-    if ($Clean) {
-        $pyinstallerArgs += "--clean"
-    }
-
-    $pyinstallerArgs += $LauncherSource
-
-    Write-Step "Building rsmarking.exe"
-    Invoke-Native -FilePath $python.FilePath -ArgumentList $pyinstallerArgs | Out-Null
-
-    if (-not (Test-Path $OutputExe)) {
-        Fail "Build completed without producing $OutputExe"
-    }
-
-    Write-Step "Verifying executable wrapper"
-    Invoke-Native -FilePath $OutputExe -ArgumentList @("--rsmarking-wrapper-check") | Out-Null
-
-    Write-Ok "Built $OutputExe"
+    Write-Ok "Built $LauncherOutputExe and $StopOutputExe"
     Write-Host "Double-click rsmarking.exe to launch the full RSMarking workflow."
+    Write-Host "Double-click rsmarking-stop.exe to stop tracked RSMarking processes."
 }
 catch {
     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red

@@ -164,6 +164,13 @@ Stop the launched processes with:
 .\stop_rsmarking.ps1
 ```
 
+If the executable wrapper has been rebuilt, you can also stop without an
+interactive pause by double-clicking `rsmarking-stop.exe` or running:
+
+```powershell
+.\rsmarking.exe --stop
+```
+
 Useful options:
 
 ```powershell
@@ -174,9 +181,9 @@ Useful options:
 .\stop_rsmarking.ps1 -StopDocker
 ```
 
-The executable is intentionally a thin wrapper over `launch_rsmarking.ps1`, so
-the PowerShell launcher remains the single startup source of truth. It forwards
-arguments to the script, for example:
+The executable is intentionally a thin wrapper over the PowerShell scripts, so
+the PowerShell launch/stop scripts remain the source of truth. It forwards
+startup arguments to `launch_rsmarking.ps1`, for example:
 
 Keep `rsmarking.exe` in the repository root. At runtime it enters that folder
 and starts `.\launch_rsmarking.bat` with relative paths.
@@ -192,8 +199,8 @@ Build or rebuild the executable from the repository root with:
 ```
 
 The build script uses the `rsmarking` Conda environment when available and
-installs PyInstaller into that environment if it is missing. The output is
-written to `.\rsmarking.exe`.
+installs PyInstaller into that environment if it is missing. The outputs are
+written to `.\rsmarking.exe` and `.\rsmarking-stop.exe`.
 
 The script uses the active `python` when it has the required packages; if not,
 it tries `conda run -n rsmarking python`.

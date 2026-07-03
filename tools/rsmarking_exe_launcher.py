@@ -11,7 +11,14 @@ from pathlib import Path
 APP_TITLE = "RSMarking Launcher"
 LAUNCH_BATCH = "launch_rsmarking.bat"
 LAUNCH_SCRIPT = "launch_rsmarking.ps1"
+STOP_BATCH = "stop_rsmarking.bat"
+STOP_SCRIPT = "stop_rsmarking.ps1"
 WRAPPER_CHECK_ARG = "--rsmarking-wrapper-check"
+
+STOP_ACTION_ARGS = {"stop", "shutdown", "--stop", "--shutdown", "/stop", "/shutdown", "-stop", "-shutdown"}
+STOP_DOCKER_ARGS = {"--stop-docker", "/stop-docker", "-stopdocker", "-stop-docker", "-stopdocker"}
+NO_PAUSE_ARGS = {"--no-pause", "/no-pause", "-nopause", "-no-pause", "-NoPause"}
+PAUSE_ARGS = {"--pause", "/pause", "-pause", "-Pause"}
 
 
 def show_error(message: str) -> None:
@@ -83,26 +90,84 @@ def find_cmd() -> str:
     return shutil.which("cmd.exe") or "cmd.exe"
 
 
-def launch_command() -> list[str] | None:
+def executable_requests_stop() -> bool:
+    stem = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).stem.lower()
+    return stem in {"rsmarking-stop", "stop-rsmarking", "stop_rsmarking", "rsmarking_shutdown"}
+
+
+def parse_action() -> tuple[str, list[str]]:
+    action = "stop" if executable_requests_stop() else "launch"
+    args: list[str] = []
+    pause_requested = False
+
+    for arg in sys.argv[1:]:
+        lowered = arg.lower()
+
+        if lowered in STOP_ACTION_ARGS:
+            action = "stop"
+            continue
+
+        if lowered in STOP_DOCKER_ARGS:
+            args.append("-StopDocker")
+            continue
+
+        if lowered in NO_PAUSE_ARGS:
+            args.append("-NoPause")
+            continue
+
+        if lowered in PAUSE_ARGS:
+            pause_requested = True
+            continue
+
+        args.append(arg)
+
+    if action == "stop" and "-NoPause" not in args and not pause_requested:
+        args.append("-NoPause")
+
+    return action, args
+
+
+def powershell_script_command(script_name: str, args: list[str]) -> list[str] | None:
+    powershell = find_powershell()
+    if powershell is None:
+        return None
+
+    return [
+        powershell,
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        f".\\{script_name}",
+        *args,
+    ]
+
+
+def launch_command(args: list[str]) -> list[str] | None:
     if Path(LAUNCH_BATCH).is_file():
-        return [find_cmd(), "/d", "/c", f".\\{LAUNCH_BATCH}", *sys.argv[1:]]
+        return [find_cmd(), "/d", "/c", f".\\{LAUNCH_BATCH}", *args]
 
     if Path(LAUNCH_SCRIPT).is_file():
-        powershell = find_powershell()
-        if powershell is None:
-            return None
-
-        return [
-            powershell,
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            f".\\{LAUNCH_SCRIPT}",
-            *sys.argv[1:],
-        ]
+        return powershell_script_command(LAUNCH_SCRIPT, args)
 
     return None
+
+
+def stop_command(args: list[str]) -> list[str] | None:
+    if Path(STOP_SCRIPT).is_file():
+        return powershell_script_command(STOP_SCRIPT, args)
+
+    if Path(STOP_BATCH).is_file():
+        return [find_cmd(), "/d", "/c", f".\\{STOP_BATCH}", *args]
+
+    return None
+
+
+def command_for_action(action: str, args: list[str]) -> list[str] | None:
+    if action == "stop":
+        return stop_command(args)
+
+    return launch_command(args)
 
 
 def main() -> int:
@@ -120,16 +185,24 @@ def main() -> int:
         show_error(f"Failed to enter the RSMarking directory: {exc}")
         return 1
 
-    command = launch_command()
+    action, args = parse_action()
+    command = command_for_action(action, args)
     if command is None:
-        show_error("Could not find launch_rsmarking.bat or launch_rsmarking.ps1.")
+        script_names = (
+            f"{STOP_SCRIPT} or {STOP_BATCH}"
+            if action == "stop"
+            else f"{LAUNCH_BATCH} or {LAUNCH_SCRIPT}"
+        )
+        show_error(f"Could not find {script_names}.")
         return 1
 
     if WRAPPER_CHECK_ARG in sys.argv[1:]:
         print("working_directory=.")
         print(f"repo_name={repo_root.name}")
-        print(f"launcher_arg={command[3] if command[0].lower().endswith('cmd.exe') else command[5]}")
-        print(f"launcher_exists={Path(command[3] if command[0].lower().endswith('cmd.exe') else command[5]).is_file()}")
+        print(f"action={action}")
+        script_arg = command[3] if command[0].lower().endswith("cmd.exe") else command[5]
+        print(f"launcher_arg={script_arg}")
+        print(f"launcher_exists={Path(script_arg).is_file()}")
         return 0
 
     try:
