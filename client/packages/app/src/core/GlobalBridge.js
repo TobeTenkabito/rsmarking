@@ -155,6 +155,7 @@ export class GlobalBridge {
             aiExecute:          ()  => this.app.ai?.execute(),
             aiConfirmCreate:    ()  => this.app.ai?.confirmCreate(),
             aiConfirmOverwrite: ()  => this.app.ai?.confirmOverwrite(),
+            aiSetMode:          (mode) => this.app.ai?.setMode(mode),
             aiReloadFunctions:  ()  => this.app.ai?.reloadFunctions(),
             aiSelectFunction:   (name) => this.app.ai?.selectFunction(name),
             aiResetFunctionArgs: () => this.app.ai?.resetFunctionArgs(),

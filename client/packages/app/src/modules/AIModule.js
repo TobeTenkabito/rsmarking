@@ -42,6 +42,8 @@ export class AIModule {
         const Layers = Store.getVectorLayers();
         document.getElementById('ai-target-select').innerHTML =
             ModalComponent.renderAITargetOptions(rasters, Layers);
+        const modeSelect = document.getElementById('ai-mode-select');
+        if (modeSelect) modeSelect.value = 'agent';
         const languageSelect = document.getElementById('ai-language-select');
         if (languageSelect) languageSelect.value = getLanguage();
 
@@ -477,6 +479,15 @@ export class AIModule {
         await this.loadFunctionCatalog({ force: true });
     }
 
+    setMode(mode) {
+        const normalizedMode = ['agent', 'analyze', 'modify'].includes(mode) ? mode : 'agent';
+        const modeSelect = document.getElementById('ai-mode-select');
+        if (!modeSelect) return;
+
+        modeSelect.value = normalizedMode;
+        this._syncModeUI();
+    }
+
     selectFunction(name) {
         const fn = this._functionCatalog.find(item => item.name === name);
         if (!fn) return;
@@ -580,20 +591,34 @@ export class AIModule {
     }
 
     _syncModeUI() {
-        const mode = document.getElementById('ai-mode-select')?.value ?? 'analyze';
+        const mode = document.getElementById('ai-mode-select')?.value ?? 'agent';
         const isAgent = mode === 'agent';
         const promptInput = document.getElementById('ai-prompt-input');
         const promptBlock = promptInput?.closest('.space-y-1\\.5');
         const agentPanel = document.getElementById('ai-agent-panel');
         const attachmentControls = document.getElementById('ai-agent-attachment-controls');
+        const contextPanel = document.getElementById('ai-context-panel');
+        const contextSummary = document.getElementById('ai-context-summary');
+        const modeCaption = document.getElementById('ai-mode-caption');
+        const promptLabel = document.getElementById('ai-prompt-label');
+        const functionPanel = document.getElementById('ai-function-panel');
         const executeLabel = document.getElementById('ai-execute-label')
             ?? document.querySelector('#ai-execute-btn span:last-child');
 
         agentPanel?.classList.toggle('hidden', !isAgent);
         attachmentControls?.classList.toggle('hidden', !isAgent);
-        document.getElementById('ai-function-panel')?.classList.toggle('hidden', isAgent);
+        functionPanel?.classList.toggle('hidden', isAgent);
+        if (functionPanel && (isAgent || !['analyze', 'modify'].includes(mode))) {
+            functionPanel.open = false;
+        }
+
+        this._syncModeButtons(mode);
 
         if (isAgent) {
+            if (contextPanel) contextPanel.open = false;
+            if (contextSummary) contextSummary.textContent = 'Optional in agent mode';
+            if (modeCaption) modeCaption.textContent = 'Agent mode';
+            if (promptLabel) promptLabel.textContent = 'Message';
             if (agentPanel && promptBlock?.parentElement && agentPanel.nextElementSibling !== promptBlock) {
                 promptBlock.parentElement.insertBefore(agentPanel, promptBlock);
             }
@@ -605,11 +630,27 @@ export class AIModule {
             this._renderArchivePanel();
             this._renderAgentAttachments();
         } else {
+            if (contextPanel) contextPanel.open = true;
+            if (contextSummary) contextSummary.textContent = 'Required for analysis and modify modes';
+            if (modeCaption) modeCaption.textContent = mode === 'modify' ? 'Modify mode' : 'Analysis mode';
+            if (promptLabel) promptLabel.textContent = 'Prompt';
             document.getElementById('ai-agent-panel')?.classList.add('hidden');
             document.getElementById('ai-agent-attachment-controls')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 3;
             if (executeLabel) executeLabel.textContent = 'Run AI Task';
         }
+    }
+
+    _syncModeButtons(mode) {
+        document.querySelectorAll('[data-ai-mode-option]').forEach((button) => {
+            const isActive = button.dataset.aiModeOption === mode;
+            button.setAttribute('aria-pressed', String(isActive));
+            button.classList.toggle('bg-white', isActive);
+            button.classList.toggle('text-slate-900', isActive);
+            button.classList.toggle('shadow-sm', isActive);
+            button.classList.toggle('text-slate-500', !isActive);
+            button.classList.toggle('hover:text-slate-800', !isActive);
+        });
     }
 
     _bindAgentAttachmentEvents() {

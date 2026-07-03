@@ -56,7 +56,7 @@ export const AITemplate = {
     renderAIFunctionButtons(functions = [], selectedName = '') {
         if (!functions.length) {
             return `
-                <div class="col-span-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
+                <div class="col-span-full rounded-lg border border-dashed border-slate-200 bg-white px-4 py-5 text-center">
                     <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">No backend functions loaded</p>
                 </div>`;
         }
@@ -69,19 +69,19 @@ export const AITemplate = {
         }, {});
 
         return Object.entries(grouped).map(([category, items]) => `
-            <div class="col-span-full pt-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            <div class="col-span-full pt-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
                 ${esc(CATEGORY_LABELS[category] ?? prettyName(category))}
             </div>
             ${items.map((fn) => {
                 const isSelected = fn.name === selectedName;
                 const selectedClass = isSelected
                     ? 'border-sky-400 bg-sky-50 text-sky-700 shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50/60';
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-sky-200 hover:bg-sky-50';
                 return `
                     <button type="button"
                         onclick="RS.aiSelectFunction('${esc(fn.name)}')"
                         title="${esc(fn.description ?? '')}"
-                        class="text-left rounded-2xl border px-3 py-2.5 transition-all ${selectedClass}">
+                        class="min-w-0 text-left rounded-lg border px-3 py-2.5 transition-all ${selectedClass}">
                         <span class="block text-[11px] font-bold leading-tight">${esc(prettyName(fn.name))}</span>
                         <span class="mt-1 block truncate text-[9px] font-medium opacity-70">${esc(fn.name)}</span>
                     </button>`;
@@ -98,7 +98,7 @@ export const AITemplate = {
         return `
             <div class="space-y-1">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="rounded-full bg-sky-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-sky-700">
+                    <span class="rounded-md bg-sky-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-sky-700">
                         ${esc(CATEGORY_LABELS[fn.category] ?? fn.category ?? 'Function')}
                     </span>
                     <span class="font-mono text-[10px] font-bold text-slate-500">${esc(fn.name)}</span>
