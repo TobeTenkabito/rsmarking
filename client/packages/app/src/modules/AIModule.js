@@ -611,7 +611,6 @@ export class AIModule {
         const mode = document.getElementById('ai-mode-select')?.value ?? 'agent';
         const isAgent = mode === 'agent';
         const promptInput = document.getElementById('ai-prompt-input');
-        const promptBlock = promptInput?.closest('.space-y-1\\.5');
         const agentPanel = document.getElementById('ai-agent-panel');
         const attachmentControls = document.getElementById('ai-agent-attachment-controls');
         const contextPanel = document.getElementById('ai-context-panel');
@@ -625,36 +624,30 @@ export class AIModule {
         agentPanel?.classList.toggle('hidden', !isAgent);
         attachmentControls?.classList.toggle('hidden', !isAgent);
         functionPanel?.classList.toggle('hidden', isAgent);
-        if (functionPanel && (isAgent || !['analyze', 'modify'].includes(mode))) {
-            functionPanel.open = false;
-        }
+        if (functionPanel) functionPanel.open = false;
+        if (contextPanel) contextPanel.open = false;
 
         this._syncModeButtons(mode);
 
         if (isAgent) {
-            if (contextPanel) contextPanel.open = false;
             if (contextSummary) contextSummary.textContent = 'Optional in agent mode';
             if (modeCaption) modeCaption.textContent = 'Agent mode';
             if (promptLabel) promptLabel.textContent = 'Message';
-            if (agentPanel && promptBlock?.parentElement && agentPanel.nextElementSibling !== promptBlock) {
-                promptBlock.parentElement.insertBefore(agentPanel, promptBlock);
-            }
             document.getElementById('ai-result-section')?.classList.add('hidden');
             document.getElementById('ai-confirm-section')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 2;
-            if (executeLabel) executeLabel.textContent = 'Send Message';
+            if (executeLabel) executeLabel.textContent = 'Send';
             this._renderAgentConversation();
             this._renderArchivePanel();
             this._renderAgentAttachments();
         } else {
-            if (contextPanel) contextPanel.open = true;
             if (contextSummary) contextSummary.textContent = 'Required for analysis and modify modes';
             if (modeCaption) modeCaption.textContent = mode === 'modify' ? 'Modify mode' : 'Analysis mode';
             if (promptLabel) promptLabel.textContent = 'Prompt';
             document.getElementById('ai-agent-panel')?.classList.add('hidden');
             document.getElementById('ai-agent-attachment-controls')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 3;
-            if (executeLabel) executeLabel.textContent = 'Run AI Task';
+            if (executeLabel) executeLabel.textContent = 'Run';
         }
     }
 
