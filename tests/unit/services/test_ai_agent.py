@@ -417,6 +417,9 @@ def test_agent_sandbox_tool_schema_mentions_exact_input_map():
     assert "raster_<index_id>" in properties["raster_ids"]["description"]
     assert "Sandbox Input Map" in properties["raster_ids"]["description"]
     assert 'inputs["actual_filename.tif"]' in properties["script"]["description"]
+    assert "feature_0" in properties["feature_ids"]["description"]
+    assert "feature_shape()" in properties["feature_ids"]["description"]
+    assert "layer_features" in properties["vector_layer_ids"]["description"]
 
 
 def test_agent_sandbox_error_mentions_exact_input_map(monkeypatch):
@@ -451,6 +454,79 @@ def test_agent_system_prompt_mentions_sandbox_fallback():
     assert "raster_<index_id>" in prompt
     assert "input_0" in prompt
     assert "Do not invent filenames" in prompt
+    assert "exact UUID in feature_ids" in prompt
+    assert "feature_geometry()" in prompt
+
+
+def test_agent_extracts_selected_feature_ids_for_first_sandbox_turn():
+    ids = agent_handler._selected_feature_ids_from_map_context(
+        {
+            "selected_features": [
+                {"feature_id": "first"},
+                {"feature_id": "first"},
+                {"feature_id": "second"},
+            ]
+        }
+    )
+
+    assert ids == ["first", "second"]
+
+
+def test_llm_sandbox_handler_injects_requested_real_feature(monkeypatch):
+    from services.ai_gateway import function_registry
+    from services.data_service.bridges import executor_bridge
+
+    feature_id = "76467ec3-bcef-43d5-9428-f66883b6b151"
+    layer_id = "9fbc64e1-6123-4701-8cf0-ab18f13690e8"
+    captured = {}
+
+    class FakeFeatureCRUD:
+        def __init__(self, db):
+            assert db == "vector-db"
+
+        async def get_by_id(self, requested_id):
+            assert str(requested_id) == feature_id
+            return {
+                "id": requested_id,
+                "layer_id": layer_id,
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [116.3, 39.9]},
+                "properties": {"name": "real feature"},
+            }
+
+    async def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        return {"status": "success"}
+
+    monkeypatch.setattr(
+        function_registry,
+        "_get_feature_crud_class",
+        lambda: FakeFeatureCRUD,
+    )
+    monkeypatch.setattr(executor_bridge, "dispatch_user_script", fake_dispatch)
+
+    result = _run(
+        function_registry._run_script_sandbox(
+            function_registry.ScriptSandboxArgs(
+                raster_ids=[],
+                feature_ids=[feature_id],
+                output_name="selected-mask.tif",
+                require_raster_output=False,
+                script=(
+                    "print(feature_0['properties']['name'])\n"
+                    "print(feature_shape(feature_0).area)\n"
+                ),
+            ),
+            db="raster-db",
+            vector_db="vector-db",
+        )
+    )
+
+    assert result["status"] == "success"
+    assert captured["raster_ids"] == []
+    assert captured["output_required"] is False
+    assert captured["vector_inputs"][0]["feature_id"] == feature_id
+    assert captured["vector_inputs"][0]["geojson"]["properties"]["name"] == "real feature"
 
 
 def test_agent_formats_exact_sandbox_input_map(tmp_path):

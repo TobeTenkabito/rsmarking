@@ -2,6 +2,7 @@
 context_builder.py
 Build map context by formatting the current viewport, selected features, and related frontend state for the LLM prompt.
 """
+import json
 import logging
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
@@ -25,6 +26,10 @@ class SelectedFeature(BaseModel):
     feature_id: Optional[str]  = Field(None, description="Feature ID")
     layer_id:   Optional[str]  = Field(None, description="Owning layer ID")
     geometry_type: Optional[str] = Field(None, description="Geometry type")
+    geometry: Optional[Dict[str, Any]] = Field(
+        None,
+        description="The selected feature's concrete GeoJSON geometry.",
+    )
     properties: Optional[Dict[str, Any]] = Field(None, description="Feature properties")
 
 
@@ -68,6 +73,19 @@ def build_map_context_prompt(ctx: Optional[MapContext]) -> str:
             desc = f"  · Feature ID={feat.feature_id or 'Unknown'}"
             if feat.geometry_type:
                 desc += f", Geometry type={feat.geometry_type}"
+            if feat.geometry:
+                geometry_json = json.dumps(
+                    feat.geometry,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                if len(geometry_json) <= 12000:
+                    desc += f", geometry={geometry_json}"
+                else:
+                    desc += (
+                        f", geometry=<omitted {len(geometry_json)} chars; "
+                        "load the exact feature by feature_id>"
+                    )
             if feat.properties:
                 # Only include the first 5 properties
                 props_preview = dict(list(feat.properties.items())[:5])

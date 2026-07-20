@@ -26,6 +26,7 @@ _RASTER_INPUT_SUFFIXES = (
     ".vrt",
     ".jp2",
 )
+_VECTOR_INPUT_SUFFIXES = (".geojson", ".json")
 _ALLOWED_MODULE_ROOTS = {
     "__future__",
     "affine",
@@ -163,6 +164,8 @@ SAFE_BUILTINS = {
     "ZeroDivisionError": ZeroDivisionError,
     "OverflowError": OverflowError,
     "MemoryError": MemoryError,
+    "FileNotFoundError": FileNotFoundError,
+    "PermissionError": PermissionError,
     "Warning": Warning,
     "UserWarning": UserWarning,
     "True": True,
@@ -230,6 +233,8 @@ def main():
     output_filename = os.environ.get("OUTPUT_FILENAME", "result.tif")
     input_metadata_by_name = {}
     input_metadata_records = []
+    vector_metadata_by_name = {}
+    vector_metadata_records = []
 
     try:
         try:
@@ -250,11 +255,31 @@ def main():
                 if isinstance(item, dict)
             ]
 
+        try:
+            raw_vector_map = os.environ.get("SANDBOX_VECTOR_MAP", "[]")
+            vector_metadata = json.loads(raw_vector_map)
+        except Exception as metadata_error:
+            print(f"WARNING: failed to parse sandbox vector map: {metadata_error}")
+            vector_metadata = []
+        if not isinstance(vector_metadata, list):
+            vector_metadata = []
+        vector_metadata_by_name = {
+            str(item.get("name")): item
+            for item in vector_metadata
+            if isinstance(item, dict) and item.get("name")
+        }
+
         discovered_inputs = {}
+        discovered_vectors = {}
         if os.path.exists(input_dir):
             for file_name in sorted(os.listdir(input_dir)):
                 if file_name.lower().endswith(_RASTER_INPUT_SUFFIXES):
                     discovered_inputs[file_name] = os.path.join(input_dir, file_name)
+                elif (
+                    file_name in vector_metadata_by_name
+                    and file_name.lower().endswith(_VECTOR_INPUT_SUFFIXES)
+                ):
+                    discovered_vectors[file_name] = os.path.join(input_dir, file_name)
 
         input_files = []
         if isinstance(input_metadata, list) and input_metadata:
@@ -267,6 +292,16 @@ def main():
                     input_files.append(file_path)
         input_files.extend(discovered_inputs[name] for name in sorted(discovered_inputs))
 
+        vector_files = []
+        for item in vector_metadata:
+            if not isinstance(item, dict):
+                continue
+            file_name = str(item.get("name") or "")
+            file_path = discovered_vectors.pop(file_name, None)
+            if file_path:
+                vector_files.append(file_path)
+        vector_files.extend(discovered_vectors[name] for name in sorted(discovered_vectors))
+
         input_metadata_records = []
         for idx, file_path in enumerate(input_files):
             basename = os.path.basename(file_path)
@@ -274,7 +309,17 @@ def main():
             metadata.update({"index": idx, "name": basename, "path": file_path})
             input_metadata_records.append(metadata)
 
-        print(f"Found {len(input_files)} input file(s)")
+        vector_metadata_records = []
+        for idx, file_path in enumerate(vector_files):
+            basename = os.path.basename(file_path)
+            metadata = dict(vector_metadata_by_name.get(basename, {}))
+            metadata.update({"index": idx, "name": basename, "path": file_path})
+            vector_metadata_records.append(metadata)
+
+        print(
+            f"Found {len(input_files)} raster input(s) and "
+            f"{len(vector_files)} vector input(s)"
+        )
         for idx, file_path in enumerate(input_files):
             basename = os.path.basename(file_path)
             metadata = input_metadata_by_name.get(basename, {})
@@ -282,6 +327,23 @@ def main():
             raster_id = metadata.get("raster_id")
             alias_note = f", alias={alias}, raster_id={raster_id}" if alias or raster_id is not None else ""
             print(f"  input_{idx} -> {basename}{alias_note}")
+        for idx, file_path in enumerate(vector_files):
+            basename = os.path.basename(file_path)
+            metadata = vector_metadata_by_name.get(basename, {})
+            alias = metadata.get("alias")
+            feature_id = metadata.get("feature_id")
+            layer_id = metadata.get("layer_id")
+            notes = [
+                note
+                for note in (
+                    f"alias={alias}" if alias else "",
+                    f"feature_id={feature_id}" if feature_id else "",
+                    f"layer_id={layer_id}" if layer_id else "",
+                )
+                if note
+            ]
+            suffix = f", {', '.join(notes)}" if notes else ""
+            print(f"  vector_{idx} -> {basename}{suffix}")
     except Exception as e:
         print(f"ERROR: failed to read input directory: {e}", file=sys.stderr)
         sys.exit(1)
@@ -300,6 +362,56 @@ def main():
         input_mapping[f"input{idx}"] = file_path
         input_mapping[f"input_{idx}"] = file_path
         input_mapping[idx] = file_path
+
+    vector_path_mapping = {}
+    vector_documents = []
+    for idx, file_path in enumerate(vector_files):
+        basename = os.path.basename(file_path)
+        metadata = vector_metadata_by_name.get(basename, {})
+        with _REAL_OPEN(file_path, "r", encoding="utf-8") as handle:
+            document = json.load(handle)
+        if not isinstance(document, dict) or document.get("type") not in {
+            "Feature",
+            "FeatureCollection",
+        }:
+            raise ValueError(
+                f"Vector input {basename!r} is not a GeoJSON Feature or FeatureCollection"
+            )
+
+        vector_documents.append(document)
+        for key in (basename, f"vector{idx}", f"vector_{idx}", idx):
+            vector_path_mapping[key] = file_path
+        for key in (
+            metadata.get("alias"),
+            metadata.get("feature_id"),
+            metadata.get("layer_id"),
+        ):
+            if key is not None and str(key):
+                vector_path_mapping[str(key)] = file_path
+
+    features = []
+    feature_by_id = {}
+    layer_features = {}
+    for idx, document in enumerate(vector_documents):
+        metadata = vector_metadata_records[idx] if idx < len(vector_metadata_records) else {}
+        document_features = (
+            [document]
+            if document.get("type") == "Feature"
+            else document.get("features", [])
+        )
+        if not isinstance(document_features, list):
+            raise ValueError("GeoJSON FeatureCollection.features must be a list")
+
+        for feature in document_features:
+            if not isinstance(feature, dict) or feature.get("type") != "Feature":
+                raise ValueError("Vector inputs may contain only GeoJSON Feature objects")
+            features.append(feature)
+            feature_id = feature.get("id") or metadata.get("feature_id")
+            if feature_id is not None:
+                feature_by_id[str(feature_id)] = feature
+            layer_id = feature.get("layer_id") or metadata.get("layer_id")
+            if layer_id is not None:
+                layer_features.setdefault(str(layer_id), []).append(feature)
 
     output_file = os.path.join(output_dir, output_filename)
     raster_files = {}
@@ -332,6 +444,45 @@ def main():
         with read_raster_helper(path_or_key) as src:
             return src.read(band, masked=masked)
 
+    def resolve_vector_path(value=0):
+        try:
+            if value in vector_path_mapping:
+                return vector_path_mapping[value]
+        except TypeError:
+            pass
+
+        text_value = str(value)
+        if text_value in vector_path_mapping:
+            return vector_path_mapping[text_value]
+
+        candidate = text_value if os.path.isabs(text_value) else os.path.join(input_dir, text_value)
+        safe_path = _safe_container_path(candidate, for_write=False)
+        if not safe_path.lower().endswith(_VECTOR_INPUT_SUFFIXES):
+            raise ValueError(f"Not a GeoJSON input path: {value!r}")
+        return safe_path
+
+    def read_vector_helper(path_or_key=0):
+        with _REAL_OPEN(resolve_vector_path(path_or_key), "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def feature_geometry_helper(feature_or_key=0):
+        if isinstance(feature_or_key, dict):
+            feature = feature_or_key
+        elif isinstance(feature_or_key, int):
+            feature = features[feature_or_key]
+        else:
+            feature = feature_by_id.get(str(feature_or_key))
+            if feature is None:
+                raise KeyError(f"Unknown feature: {feature_or_key}")
+        geometry = feature.get("geometry")
+        if not isinstance(geometry, dict):
+            raise ValueError("Feature has no valid GeoJSON geometry")
+        return geometry
+
+    def feature_shape_helper(feature_or_key=0):
+        geometry_module = _REAL_IMPORT("shapely.geometry", fromlist=("shape",))
+        return geometry_module.shape(feature_geometry_helper(feature_or_key))
+
     def write_raster_helper(data, profile, path=None, **profile_updates):
         output = path or output_file
         next_profile = dict(profile)
@@ -351,8 +502,21 @@ def main():
         "OUTPUT_DIR": output_dir,
         "INPUT_FILES": input_files,
         "INPUT_METADATA": input_metadata_records,
+        "VECTOR_FILES": vector_files,
+        "VECTOR_METADATA": vector_metadata_records,
+        "VECTOR_INPUTS": vector_documents,
+        "FEATURES": features,
+        "FEATURE_COLLECTION": {
+            "type": "FeatureCollection",
+            "features": features,
+        },
         "OUTPUT_FILE": output_file,
         "inputs": input_mapping,
+        "vector_inputs": vector_documents,
+        "vector_files": vector_path_mapping,
+        "features": features,
+        "feature_by_id": feature_by_id,
+        "layer_features": layer_features,
         "raster_files": raster_files,
         "raster_filenames": raster_filenames,
         "os": os,
@@ -365,6 +529,13 @@ def main():
         "output_path": output_path,
         "input_path": resolve_input_path,
         "list_inputs": lambda: list(input_metadata_records),
+        "vector_path": resolve_vector_path,
+        "read_vector": read_vector_helper,
+        "read_geojson": read_vector_helper,
+        "list_vectors": lambda: list(vector_metadata_records),
+        "list_features": lambda: list(features),
+        "feature_geometry": feature_geometry_helper,
+        "feature_shape": feature_shape_helper,
         "read_raster": read_raster_helper,
         "read_array": read_array_helper,
         "write_raster": write_raster_helper,
@@ -391,8 +562,20 @@ def main():
             raster_files[str(raster_id)] = file_path
             raster_filenames[str(raster_id)] = basename
 
+    for idx, document in enumerate(vector_documents):
+        exec_globals[f"vector_{idx}"] = document
+        metadata = vector_metadata_records[idx] if idx < len(vector_metadata_records) else {}
+        alias = str(metadata.get("alias") or "")
+        if alias.isidentifier():
+            exec_globals[alias] = document
+
+    for idx, feature in enumerate(features):
+        exec_globals[f"feature_{idx}"] = feature
+
     if len(input_files) == 1:
         exec_globals["input_file"] = input_files[0]
+    if len(features) == 1:
+        exec_globals["feature"] = features[0]
 
     print("=" * 50)
     print("Starting sandboxed user script")

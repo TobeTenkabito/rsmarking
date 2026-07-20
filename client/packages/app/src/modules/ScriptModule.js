@@ -8,6 +8,7 @@ export class ScriptModule {
         this.app = app;
         this.currentScript = '';
         this.selectedRasterIds = [];
+        this.selectedFeatureIds = [];
         this.outputName = '';
         this.isExecuting = false;
         this.scriptHistory = this.loadScriptHistory();
@@ -26,12 +27,16 @@ export class ScriptModule {
             return;
         }
 
+        // Capture the concrete map feature selected when the sandbox is opened.
+        this.selectedFeatureIds = this._currentSelectedFeatureIds();
+
         // Render content
         const content = document.getElementById('script-content');
         content.innerHTML = ModalComponent.renderScriptEditor(
             Store.getRasters(),
             this.selectedRasterIds,
-            this.currentScript
+            this.currentScript,
+            this._selectedFeatureSummary()
         );
         applyTranslations(content);
 
@@ -169,7 +174,7 @@ export class ScriptModule {
             return;
         }
 
-        if (this.selectedRasterIds.length === 0) {
+        if (this.selectedRasterIds.length === 0 && this.selectedFeatureIds.length === 0) {
             alert(t('script.alert.selectRaster'));
             return;
         }
@@ -187,18 +192,28 @@ export class ScriptModule {
             this.app.ui.showGlobalLoading(t('script.validation.running'));
 
             // Call API
-            const result = await RasterAPI.executeScript(
+            const executeArgs = [
                 this.currentScript,
                 this.selectedRasterIds,
-                this.outputName
-            );
+                this.outputName,
+            ];
+            if (this.selectedFeatureIds.length) {
+                executeArgs.push(this.selectedFeatureIds);
+            }
+            const result = await RasterAPI.executeScript(...executeArgs);
 
             if (result?.status === 'success') {
                 this.app.ui.showToast(t('script.toast.success'), 'success');
 
                 // Show execution logs（if available）
                 // Save to history
+                const execution = result.result ?? {};
+                this.showExecutionLogs(execution.logs ?? '');
                 this.saveToHistory();
+
+                if (execution.output_created === false) {
+                    return;
+                }
 
                 // Refresh data
                 await this.app.raster.refreshData();
@@ -235,6 +250,15 @@ export class ScriptModule {
         }
     }
 
+    showExecutionLogs(logs) {
+        const logsElement = document.getElementById('script-execution-logs');
+        if (!logsElement) return;
+
+        const value = String(logs || '').trim();
+        logsElement.textContent = value || 'Script completed without log output.';
+        logsElement.classList.remove('hidden');
+    }
+
     scheduleScriptValidation() {
         if (this._validationFrame) return;
         this._validationFrame = requestAnimationFrame(() => {
@@ -269,7 +293,11 @@ export class ScriptModule {
         });
 
         // Check required imports
-        if (!script.includes('import rasterio') && !script.includes('from rasterio')) {
+        if (
+            this.selectedRasterIds.length > 0
+            && !script.includes('import rasterio')
+            && !script.includes('from rasterio')
+        ) {
             issues.push('Consider importing rasterio for raster processing');
         }
 
@@ -292,7 +320,10 @@ export class ScriptModule {
     updateSelectedCount() {
         const countDiv = document.getElementById('script-selected-count');
         if (countDiv) {
-            countDiv.textContent = `Selected ${this.selectedRasterIds.length} imagery items`;
+            countDiv.textContent = (
+                `Selected ${this.selectedRasterIds.length} imagery item(s), `
+                + `${this.selectedFeatureIds.length} vector feature(s)`
+            );
         }
     }
 
@@ -304,6 +335,7 @@ export class ScriptModule {
             localStorage.setItem('rsmarking_script_draft', JSON.stringify({
                 script: this.currentScript,
                 rasterIds: this.selectedRasterIds,
+                featureIds: this.selectedFeatureIds,
                 outputName: this.outputName,
                 timestamp: Date.now()
             }));
@@ -322,6 +354,7 @@ export class ScriptModule {
                 if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
                     this.currentScript = data.script || '';
                     this.selectedRasterIds = data.rasterIds || [];
+                    this.selectedFeatureIds = data.featureIds || [];
                     this.outputName = data.outputName || '';
                     return true;
                 }
@@ -339,6 +372,7 @@ export class ScriptModule {
         const history = {
             script: this.currentScript,
             rasterIds: this.selectedRasterIds,
+            featureIds: this.selectedFeatureIds,
             outputName: this.outputName,
             timestamp: Date.now(),
             id: Date.now().toString()
@@ -406,6 +440,7 @@ export class ScriptModule {
         if (history) {
             this.currentScript = history.script;
             this.selectedRasterIds = history.rasterIds;
+            this.selectedFeatureIds = history.featureIds || [];
             this.outputName = history.outputName;
 
             // Update UI
@@ -436,6 +471,7 @@ export class ScriptModule {
     clearEditor() {
         this.currentScript = '';
         this.selectedRasterIds = [];
+        this.selectedFeatureIds = [];
         this.outputName = '';
 
         const editor = document.getElementById('script-editor-textarea');
@@ -449,5 +485,31 @@ export class ScriptModule {
 
         this.updateScriptValidation();
         this.updateSelectedCount();
+    }
+
+    _currentSelectedFeatureIds() {
+        const selectedId = Store.state.selectedFeatureId;
+        return selectedId ? [String(selectedId)] : [];
+    }
+
+    _selectedFeatureSummary() {
+        const selectedIds = new Set(this.selectedFeatureIds.map(String));
+        const features = Store.state.currentFeatures?.features ?? [];
+        return features
+            .filter((feature) => {
+                const id = feature?.id
+                    ?? feature?.properties?.id
+                    ?? feature?.properties?.feature_id;
+                return id != null && selectedIds.has(String(id));
+            })
+            .map((feature) => ({
+                id: String(
+                    feature.id
+                    ?? feature.properties?.id
+                    ?? feature.properties?.feature_id
+                ),
+                layerId: Store.state.activeVectorLayerId ?? null,
+                geometryType: feature.geometry?.type ?? 'Unknown',
+            }));
     }
 }

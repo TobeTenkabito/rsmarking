@@ -361,8 +361,8 @@ class TimeSeriesAnalysisArgs(BaseModel):
 
 class ScriptSandboxArgs(BaseModel):
     raster_ids: list[int] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
+        max_length=100,
         description=(
             "Raster index_id inputs exposed inside the sandbox in this exact order. The gateway "
             "also injects stable aliases raster_<index_id>, raster_files[<index_id>], and "
@@ -370,9 +370,37 @@ class ScriptSandboxArgs(BaseModel):
             "match each id to its actual sandbox filename/open_expr."
         ),
     )
+    feature_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=100,
+        description=(
+            "Concrete vector feature UUIDs to inject as GeoJSON. They are available as "
+            "feature_0/feature_1, features, feature_by_id, feature_geometry(), and feature_shape(). "
+            "Use selected feature ids from Current Map Context exactly; do not invent ids."
+        ),
+    )
+    vector_layer_ids: list[UUID] = Field(
+        default_factory=list,
+        max_length=10,
+        description=(
+            "Vector layer UUIDs whose real GeoJSON features should be copied into the sandbox. "
+            "Each layer is exposed in VECTOR_INPUTS and its flattened features are also available "
+            "through features and layer_features[str(layer_id)]."
+        ),
+    )
     output_name: str = Field(
         ...,
-        description="Name for the generated raster output. The script must write OUTPUT_FILE.",
+        description=(
+            "Name for a generated raster output. Write OUTPUT_FILE when a raster is expected; "
+            "for vector-only analysis this is only a placeholder."
+        ),
+    )
+    require_raster_output: bool = Field(
+        default=True,
+        description=(
+            "Require the script to create OUTPUT_FILE. Set false for vector-only inspection or "
+            "calculation scripts that return bounded results through print/logs."
+        ),
     )
     script: str = Field(
         ...,
@@ -383,6 +411,8 @@ class ScriptSandboxArgs(BaseModel):
             "rasterio/numpy/scipy/skimage/shapely/pyproj/cv2/sklearn; "
             "read rasters through exact Sandbox Input Map expressions such as raster_<index_id>, "
             "raster_files[<index_id>], inputs[\"actual_filename.tif\"], or ordered input_0/input_1; "
+            "read injected GeoJSON through feature_0, features, feature_by_id, layer_features, "
+            "feature_geometry(), feature_shape(), or read_geojson(); "
             "helpers include input_path(), read_raster(), read_array(), write_raster(), "
             "sandbox_open(), output_path(), and list_inputs(); write the final GeoTIFF to OUTPUT_FILE."
         ),
@@ -1348,18 +1378,79 @@ async def _run_script_sandbox(
     db: AsyncSession,
     vector_db: AsyncSession,
 ) -> dict[str, Any]:
-    del vector_db
     is_valid, blocked_label = validate_script_content(args.script)
     if not is_valid:
         raise ValueError(f"Script contains a blocked operation: {blocked_label}")
 
-    from services.data_service.bridges.executor_bridge import dispatch_user_script
+    from services.data_service.bridges.executor_bridge import (
+        _sandbox_feature_alias,
+        _sandbox_layer_alias,
+        dispatch_user_script,
+    )
+
+    feature_crud = _get_feature_crud_class()(vector_db)
+    vector_inputs: list[dict[str, Any]] = []
+    seen_feature_ids: set[str] = set()
+
+    for feature_id in args.feature_ids:
+        feature = await feature_crud.get_by_id(feature_id)
+        if not feature:
+            raise ValueError(f"Vector feature not found: {feature_id}")
+        serialized = _json_safe(feature)
+        feature_key = str(serialized.get("id") or feature_id)
+        seen_feature_ids.add(feature_key)
+        layer_id = serialized.get("layer_id")
+        vector_inputs.append(
+            {
+                "name": f"feature_{feature_id}.geojson",
+                "alias": _sandbox_feature_alias(str(feature_id)),
+                "feature_id": str(feature_id),
+                "layer_id": str(layer_id) if layer_id is not None else None,
+                "geojson": serialized,
+            }
+        )
+
+    max_layer_features = 2000
+    for layer_id in args.vector_layer_ids:
+        layer = await _get_layer_crud_class()(vector_db).get_layer(layer_id)
+        if not layer:
+            raise ValueError(f"Vector layer not found: {layer_id}")
+        layer_items = await feature_crud.export_by_layer(
+            layer_id,
+            limit=max_layer_features + 1,
+        )
+        if len(layer_items) > max_layer_features:
+            raise ValueError(
+                f"Vector layer {layer_id} exceeds the sandbox limit of "
+                f"{max_layer_features} features; select concrete feature_ids instead"
+            )
+        serialized_items = []
+        for feature in _json_safe(layer_items):
+            feature_key = str(feature.get("id") or "")
+            if feature_key and feature_key in seen_feature_ids:
+                continue
+            if feature_key:
+                seen_feature_ids.add(feature_key)
+            serialized_items.append(feature)
+        vector_inputs.append(
+            {
+                "name": f"layer_{layer_id}.geojson",
+                "alias": _sandbox_layer_alias(str(layer_id)),
+                "layer_id": str(layer_id),
+                "geojson": {
+                    "type": "FeatureCollection",
+                    "features": serialized_items,
+                },
+            }
+        )
 
     return await dispatch_user_script(
         db=db,
         script=args.script,
         raster_ids=args.raster_ids,
         output_name=args.output_name,
+        vector_inputs=vector_inputs,
+        output_required=args.require_raster_output,
     )
 
 
@@ -2337,9 +2428,10 @@ REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
         RegisteredFunction(
             name="run_script_sandbox",
             description=(
-                "Generate and run a safe Python raster-processing script in the isolated sandbox when "
+                "Generate and run safe Python raster/vector processing in the isolated sandbox when "
                 "no dedicated gateway function can satisfy the request. Scripts should read raster "
-                "inputs from the Sandbox Input Map aliases/filenames and write OUTPUT_FILE."
+                "inputs from the Sandbox Input Map and pass concrete feature_ids/vector_layer_ids "
+                "for real GeoJSON inputs, then write the resulting raster to OUTPUT_FILE."
             ),
             category="script_sandbox",
             arguments_model=ScriptSandboxArgs,

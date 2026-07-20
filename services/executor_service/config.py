@@ -23,6 +23,15 @@ SANDBOX_PIDS_LIMIT = int(os.getenv("SANDBOX_PIDS_LIMIT", "128"))
 SANDBOX_SHM_SIZE = os.getenv("SANDBOX_SHM_SIZE", "512m")
 SANDBOX_TMPFS_SIZE = os.getenv("SANDBOX_TMPFS_SIZE", "512m")
 SANDBOX_FORCE_REBUILD = os.getenv("SANDBOX_FORCE_REBUILD", "").lower() in {"1", "true", "yes"}
+_allowed_input_roots = os.getenv(
+    "SANDBOX_ALLOWED_INPUT_ROOTS",
+    os.path.join(BASE_DIR, "storage"),
+)
+SANDBOX_ALLOWED_INPUT_ROOTS = tuple(
+    os.path.realpath(os.path.abspath(root.strip()))
+    for root in _allowed_input_roots.split(os.pathsep)
+    if root.strip()
+)
 
 DOCKER_IMAGE_NAME = os.getenv("SANDBOX_DOCKER_IMAGE", "rs-worker-python:latest")
 SANDBOX_IMAGE_CONTEXT_DIR = os.path.join(CURRENT_DIR, "runtime")

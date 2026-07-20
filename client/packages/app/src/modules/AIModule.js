@@ -1913,6 +1913,7 @@ export class AIModule {
             ),
             layer_id: Store.state.activeVectorLayerId ?? null,
             geometry_type: selectedFeature.geometry?.type ?? null,
+            geometry: selectedFeature.geometry ?? null,
             properties: this._trimFeatureProperties(selectedFeature.properties),
         }];
     }

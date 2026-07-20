@@ -159,7 +159,7 @@ const messageCatalog = {
         'script.history.empty': 'No history yet',
         'script.execute.idle': 'Run Script',
         'script.execute.running': 'Running...',
-        'script.alert.selectRaster': 'Please select at least one input raster',
+        'script.alert.selectRaster': 'Please select at least one raster or map feature',
         'script.toast.success': 'Script executed successfully',
         'script.toast.failed': 'Execution failed: {message}',
     },

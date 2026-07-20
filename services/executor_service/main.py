@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -26,11 +26,24 @@ class InputFilePayload(BaseModel):
     alias: Optional[str] = Field(default=None, description="Python variable alias exposed inside the sandbox.")
 
 
+class VectorInputPayload(BaseModel):
+    name: Optional[str] = Field(default=None, description="GeoJSON filename exposed inside the sandbox.")
+    alias: Optional[str] = Field(default=None, description="Python variable alias exposed inside the sandbox.")
+    feature_id: Optional[str] = Field(default=None, description="Source vector feature UUID.")
+    layer_id: Optional[str] = Field(default=None, description="Source vector layer UUID.")
+    geojson: dict[str, Any] = Field(
+        ...,
+        description="A GeoJSON Feature or FeatureCollection copied into the isolated sandbox.",
+    )
+
+
 class ScriptExecutionRequest(BaseModel):
     script_id: str
     script: str
-    input_files: list[InputFilePayload]
+    input_files: list[InputFilePayload] = Field(default_factory=list)
+    vector_inputs: list[VectorInputPayload] = Field(default_factory=list)
     output_name: str
+    output_required: bool = True
 
 
 class ExecutionResponse(BaseModel):
@@ -46,14 +59,16 @@ async def execute_script_api(request: ScriptExecutionRequest):
         if not request.script.strip():
             raise HTTPException(status_code=400, detail="Script content cannot be empty")
 
-        if not request.input_files:
-            raise HTTPException(status_code=400, detail="At least one input file is required")
-
         input_file_names = [
             os.path.basename(item.name or item.path)
             for item in request.input_files
         ]
-        logger.info("Executing script %s with inputs %s", request.script_id, input_file_names)
+        logger.info(
+            "Executing script %s with raster inputs %s and %s vector input(s)",
+            request.script_id,
+            input_file_names,
+            len(request.vector_inputs),
+        )
 
         result = await asyncio.to_thread(
             run_in_sandbox,
@@ -62,6 +77,8 @@ async def execute_script_api(request: ScriptExecutionRequest):
             output_filename=request.output_name,
             script_id=request.script_id,
             input_files=[item.model_dump() for item in request.input_files],
+            vector_inputs=[item.model_dump() for item in request.vector_inputs],
+            output_required=request.output_required,
         )
 
         if result.get("status") != "success":
@@ -71,7 +88,9 @@ async def execute_script_api(request: ScriptExecutionRequest):
                 logs=result.get("logs", ""),
             )
 
-        output_path = result.get("output_path") or os.path.join(HOST_RAW_DIR, request.output_name)
+        output_path = result.get("output_path")
+        if not output_path and request.output_required:
+            output_path = os.path.join(HOST_RAW_DIR, request.output_name)
         return ExecutionResponse(
             status="success",
             output_path=output_path,

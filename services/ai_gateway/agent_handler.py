@@ -357,6 +357,9 @@ def _build_agent_system_prompt(language: AILanguage) -> str:
             "If you use ordered variables, map them from the raster_ids order: raster_ids[0] is input_0, raster_ids[1] is input_1, and so on.",
             "Do not invent filenames. If using the actual filename, call rasterio.open(inputs[\"actual_filename.tif\"]) exactly as shown in open_expr.",
             "For larger sandbox scripts, prefer helpers like input_path(), read_raster(), read_array(), write_raster(), sandbox_open(), output_path(), and list_inputs().",
+            "For a concrete selected vector feature, pass its exact UUID in feature_ids; the sandbox exposes real GeoJSON as feature_0, features, feature_by_id, feature_geometry(), and feature_shape().",
+            "For a vector layer target, pass its exact UUID in vector_layer_ids; do not reconstruct or invent feature geometry from summaries.",
+            "For vector-only sandbox calculations, set require_raster_output=false and print a concise JSON result; use dedicated vector tools for any requested database update.",
             "Never pass the literal string 'input_file' or an unqualified guessed filename to rasterio.open().",
             "Do not claim that data was changed or created unless a tool observation confirms it.",
             "Call delete tools only when the user explicitly requests deletion of the specific raster, layer, field, or feature.",
@@ -392,7 +395,7 @@ async def _build_agent_user_prompt(
     if target_context:
         sections.append(target_context)
 
-    sandbox_context = await _build_target_sandbox_context(payload, db)
+    sandbox_context = await _build_target_sandbox_context(payload, db, vector_db)
     if sandbox_context:
         sections.append(sandbox_context)
 
@@ -474,29 +477,92 @@ async def _build_target_context(
 async def _build_target_sandbox_context(
     payload: AgentRequestPayload,
     db: AsyncSession,
+    vector_db: AsyncSession,
 ) -> str:
-    if payload.target_id is None or payload.data_type != DataType.RASTER:
-        return ""
+    sections = []
+    selected_feature_ids = _selected_feature_ids_from_map_context(payload.map_context)
+    if selected_feature_ids:
+        sections.append(
+            "\n".join(
+                [
+                    "[Sandbox Vector Input Map]",
+                    "Pass these exact UUIDs in run_script_sandbox.feature_ids to load the real GeoJSON.",
+                    "Inside the sandbox, ordered features are feature_0, feature_1, and features.",
+                    *[
+                        f"- feature_id={feature_id}, ordered_variable=feature_{index}"
+                        for index, feature_id in enumerate(selected_feature_ids)
+                    ],
+                ]
+            )
+        )
 
-    try:
-        from services.data_service.crud.raster_crud import RasterCRUD
+    if payload.target_id is not None and payload.data_type == DataType.RASTER:
+        try:
+            from services.data_service.crud.raster_crud import RasterCRUD
 
-        raster = await RasterCRUD.get_raster_by_index_id(db, int(payload.target_id))
-    except Exception as exc:
-        logger.warning("[agent] target sandbox input map unavailable: %s", exc)
-        return ""
+            raster = await RasterCRUD.get_raster_by_index_id(db, int(payload.target_id))
+        except Exception as exc:
+            logger.warning("[agent] target sandbox input map unavailable: %s", exc)
+            raster = None
 
-    if not raster:
-        return ""
+        if raster:
+            sections.append(
+                "\n".join(
+                    [
+                        "[Sandbox Input Map]",
+                        "Use this exact mapping when generating run_script_sandbox code for the target raster.",
+                        "The gateway injects stable aliases before the generated script runs.",
+                        _format_sandbox_input_map_line(
+                            raster,
+                            ordered_variable="input_0 when this raster_id is first in raster_ids",
+                        ),
+                    ]
+                )
+            )
 
-    return "\n".join(
-        [
-            "[Sandbox Input Map]",
-            "Use this exact mapping when generating run_script_sandbox code for the target raster.",
-            "The gateway injects stable aliases before the generated script runs.",
-            _format_sandbox_input_map_line(raster, ordered_variable="input_0 when this raster_id is first in raster_ids"),
-        ]
-    )
+    if payload.target_id is not None and payload.data_type == DataType.VECTOR:
+        try:
+            from services.annotation_service.crud.layer_crud import LayerCRUD
+
+            layer = await LayerCRUD(vector_db).get_layer(uuid.UUID(str(payload.target_id)))
+        except Exception as exc:
+            logger.warning("[agent] vector sandbox input map unavailable: %s", exc)
+            layer = None
+
+        if layer:
+            layer_id = str(getattr(layer, "id", payload.target_id))
+            sections.append(
+                "\n".join(
+                    [
+                        "[Sandbox Vector Layer Map]",
+                        "Pass this exact UUID in run_script_sandbox.vector_layer_ids to copy real layer features.",
+                        f"- vector_layer_id={layer_id}, open_expr=layer_features[{_json_dumps(layer_id)}]",
+                    ]
+                )
+            )
+
+    return "\n\n".join(sections)
+
+
+def _selected_feature_ids_from_map_context(
+    map_context: dict[str, Any] | None,
+) -> list[str]:
+    if not isinstance(map_context, dict):
+        return []
+    selected = map_context.get("selected_features")
+    if not isinstance(selected, list):
+        return []
+
+    result = []
+    seen = set()
+    for item in selected:
+        if not isinstance(item, dict):
+            continue
+        feature_id = str(item.get("feature_id") or "").strip()
+        if feature_id and feature_id not in seen:
+            result.append(feature_id)
+            seen.add(feature_id)
+    return result[:100]
 
 
 async def _build_workspace_context(

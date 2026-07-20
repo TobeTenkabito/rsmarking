@@ -37,4 +37,23 @@ describe('RasterAPI errors', () => {
             RasterAPI.executeScript('import rasterio', [1], 'out.tif')
         ).rejects.toThrow('Sandbox exited with status code 1');
     });
+
+    it('sends selected vector feature ids with script requests', async () => {
+        global.fetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: vi.fn(async () => ({ status: 'success' })),
+        });
+
+        await RasterAPI.executeScript(
+            "print(feature_0)",
+            [],
+            'analysis.tif',
+            ['76467ec3-bcef-43d5-9428-f66883b6b151']
+        );
+
+        const body = global.fetch.mock.calls[0][1].body;
+        expect(body.get('raster_ids')).toBe('');
+        expect(body.get('feature_ids')).toBe('76467ec3-bcef-43d5-9428-f66883b6b151');
+    });
 });

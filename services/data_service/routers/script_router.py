@@ -1,9 +1,14 @@
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.data_service.bridges.executor_bridge import dispatch_user_script
+from services.data_service.bridges.executor_bridge import (
+    _sandbox_feature_alias,
+    dispatch_user_script,
+)
+from services.data_service.bridges.vector_bridge import internal_fetch_feature
 from services.data_service.database import get_db
 from services.executor_service.security import validate_script_content
 
@@ -14,14 +19,32 @@ router = APIRouter()
 @router.post("/execute-script")
 async def execute_user_script(
     script: str = Form(...),
-    raster_ids: str = Form(...),
+    raster_ids: str = Form(""),
+    feature_ids: str = Form(""),
     output_name: str = Form(...),
+    output_required: bool = Form(False),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        ids = [int(item.strip()) for item in raster_ids.split(",") if item.strip()]
-        if not ids:
-            raise HTTPException(status_code=400, detail="At least one raster ID is required")
+        try:
+            ids = [int(item.strip()) for item in raster_ids.split(",") if item.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="raster_ids must contain integers")
+
+        try:
+            vector_ids = [
+                UUID(item.strip())
+                for item in feature_ids.split(",")
+                if item.strip()
+            ]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="feature_ids must contain UUID values")
+
+        if not ids and not vector_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Select at least one raster or vector feature for the sandbox",
+            )
 
         is_valid, blocked_label = validate_script_content(script)
         if not is_valid:
@@ -30,7 +53,28 @@ async def execute_user_script(
                 detail=f"Script contains a blocked operation: {blocked_label}",
             )
 
-        result = await dispatch_user_script(db, script, ids, output_name)
+        vector_inputs = []
+        for feature_id in dict.fromkeys(vector_ids):
+            feature = await internal_fetch_feature(feature_id)
+            layer_id = feature.get("layer_id")
+            vector_inputs.append(
+                {
+                    "name": f"feature_{feature_id}.geojson",
+                    "alias": _sandbox_feature_alias(str(feature_id)),
+                    "feature_id": str(feature_id),
+                    "layer_id": str(layer_id) if layer_id is not None else None,
+                    "geojson": feature,
+                }
+            )
+
+        result = await dispatch_user_script(
+            db,
+            script,
+            ids,
+            output_name,
+            vector_inputs=vector_inputs,
+            output_required=output_required,
+        )
         return {
             "status": "success",
             "message": "Script execution completed",

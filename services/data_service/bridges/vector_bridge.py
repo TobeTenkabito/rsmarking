@@ -1,12 +1,13 @@
 import httpx
 import logging
+import os
 from typing import List, Dict, Any
 from uuid import UUID
 from fastapi import HTTPException
 
 logger = logging.getLogger("data_service.executor_bridge")
 
-ANNOTATION_SERVICE_URL = "http://localhost:8001"
+ANNOTATION_SERVICE_URL = os.getenv("ANNOTATION_SERVICE_URL", "http://localhost:8001").rstrip("/")
 
 
 async def internal_create_layer(
@@ -115,6 +116,39 @@ async def internal_fetch_features(layer_id: UUID) -> List[Dict[str, Any]]:
         except Exception as e:
             logger.error(f"Internal communication failure: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Unable to fetch vector data: {str(e)}")
+
+
+async def internal_fetch_feature(feature_id: UUID | str) -> Dict[str, Any]:
+    url = f"{ANNOTATION_SERVICE_URL}/features/{feature_id}"
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            response = await client.get(url)
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} does not exist")
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, dict) or data.get("type") != "Feature":
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Annotation service returned invalid GeoJSON for feature {feature_id}",
+                )
+            return data
+        except HTTPException:
+            raise
+        except httpx.ReadTimeout:
+            raise HTTPException(status_code=504, detail="Fetching vector feature timed out")
+        except httpx.HTTPStatusError as e:
+            try:
+                detail = e.response.json().get("detail", e.response.text)
+            except Exception:
+                detail = e.response.text
+            raise HTTPException(status_code=e.response.status_code, detail=detail)
+        except Exception as e:
+            logger.error("Failed to fetch vector feature %s: %s", feature_id, e)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unable to fetch vector feature {feature_id}: {e}",
+            )
 
 
 async def internal_fetch_fields(layer_id: UUID | str) -> List[Dict[str, Any]]:

@@ -1,9 +1,11 @@
 import os
+import json
 import logging
 import numpy as np
 import rasterio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
+from geoalchemy2.functions import ST_AsGeoJSON
 
 from services.data_service.crud.raster_crud import RasterCRUD
 from services.annotation_service.crud.layer_crud import LayerCRUD
@@ -119,34 +121,65 @@ async def _extract_vector_data(db: AsyncSession, layer_id: str) -> VectorContext
             prop_type = type(v).__name__
             properties_schema[k] = prop_type
             if prop_type in ['int', 'float']:
-                agg_stmt = text(f"""
-                    SELECT MIN((properties->>'{k}')::numeric), MAX((properties->>'{k}')::numeric), AVG((properties->>'{k}')::numeric)
-                    FROM features WHERE layer_id = :layer_id AND properties ? '{k}'
+                agg_stmt = text(r"""
+                    SELECT MIN((properties->>:property_key)::numeric),
+                           MAX((properties->>:property_key)::numeric),
+                           AVG((properties->>:property_key)::numeric)
+                    FROM features
+                    WHERE layer_id = :layer_id
+                      AND properties ? :property_key
+                      AND (properties->>:property_key)
+                          ~ '^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)$'
                 """)
-                agg_res = await db.execute(agg_stmt, {"layer_id": layer_id})
+                agg_res = await db.execute(
+                    agg_stmt,
+                    {"layer_id": layer_id, "property_key": k},
+                )
                 agg_row = agg_res.fetchone()
                 if agg_row and agg_row[0] is not None:
                     numeric_stats[k] = NumericStats(min=float(agg_row[0]), max=float(agg_row[1]), mean=float(agg_row[2]))
 
-        stmt_geom_type = text("""
-            SELECT ST_GeometryType(geom) as geom_type 
-            FROM features WHERE layer_id = :layer_id AND geom IS NOT NULL LIMIT 1
-        """)
-        res_geom = await db.execute(stmt_geom_type, {"layer_id": layer_id})
-        geom_row = res_geom.fetchone()
-        geometry_type = geom_row[0] if geom_row else "Unknown"
+    stmt_geom_type = text("""
+        SELECT ST_GeometryType(geom) as geom_type
+        FROM features WHERE layer_id = :layer_id AND geom IS NOT NULL LIMIT 1
+    """)
+    res_geom = await db.execute(stmt_geom_type, {"layer_id": layer_id})
+    geom_row = res_geom.fetchone()
+    geometry_type = geom_row[0] if geom_row else "Unknown"
 
-        stmt_sample = select(Feature.properties).where(Feature.layer_id == layer_id).limit(3)
-        res_sample = await db.execute(stmt_sample)
-        sample_data = [row[0] for row in res_sample.all() if row[0]]
-
-        return VectorContextData(
-            name=layer.name, crs="EPSG:4326", bounds=bounds, feature_count=total_features,
-            category_distribution=distribution, properties_schema=properties_schema,
-            numeric_stats=numeric_stats,
-            primary_geometry_type=geometry_type,
-            sample_features=sample_data
+    stmt_sample = (
+        select(
+            Feature.id,
+            Feature.layer_id,
+            Feature.category,
+            Feature.properties,
+            ST_AsGeoJSON(Feature.geom).label("geometry_json"),
         )
+        .where(Feature.layer_id == layer_id)
+        .limit(3)
+    )
+    res_sample = await db.execute(stmt_sample)
+    sample_data = [
+        {
+            "id": str(row.id),
+            "layer_id": str(row.layer_id),
+            "type": "Feature",
+            "geometry": json.loads(row.geometry_json),
+            "properties": {
+                **(row.properties or {}),
+                "category": row.category,
+            },
+        }
+        for row in res_sample.all()
+    ]
+
+    return VectorContextData(
+        name=layer.name, crs="EPSG:4326", bounds=bounds, feature_count=total_features,
+        category_distribution=distribution, properties_schema=properties_schema,
+        numeric_stats=numeric_stats,
+        primary_geometry_type=geometry_type,
+        sample_features=sample_data
+    )
 
 
 def _get_16_point_sampling(src: rasterio.DatasetReader) -> dict:

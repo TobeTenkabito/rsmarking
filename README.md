@@ -211,6 +211,19 @@ frontend and normal backend workflows still start; use `-RequireExecutorImage`
 when custom script execution must be available before startup is considered
 successful.
 
+Custom scripts receive selected raster inputs as `input_0`, `input_1`, and
+stable `raster_<index_id>` aliases. A map-selected vector feature is copied
+into the isolated container as real GeoJSON and exposed as `feature_0`,
+`features`, and `feature_by_id`; helpers include `feature_geometry()`,
+`feature_shape()`, and `read_geojson()`. Scripts that only inspect or calculate
+vector data may finish without creating a raster, in which case their bounded
+execution log is shown in the script editor. Raster-producing scripts should
+write `OUTPUT_FILE`.
+
+Host raster paths are accepted only from the repository `storage` directory by
+default. Deployments with additional managed data roots can set
+`SANDBOX_ALLOWED_INPUT_ROOTS` using the platform path separator.
+
 ### Manual launch
 
 From the repository root:

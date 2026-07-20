@@ -24,6 +24,16 @@ def _sandbox_raster_alias(raster_id: int) -> str:
     return f"raster_{token}"
 
 
+def _sandbox_feature_alias(feature_id: str) -> str:
+    token = re.sub(r"\W+", "_", str(feature_id)).strip("_") or "input"
+    return f"feature_{token}"
+
+
+def _sandbox_layer_alias(layer_id: str) -> str:
+    token = re.sub(r"\W+", "_", str(layer_id)).strip("_") or "input"
+    return f"layer_{token}"
+
+
 def _trim_executor_logs(logs: str) -> str:
     lines = [line for line in logs.splitlines() if line.strip()]
     excerpt = "\n".join(lines[-MAX_EXECUTOR_LOG_LINES:])
@@ -70,6 +80,8 @@ async def dispatch_user_script(
     script: str,
     raster_ids: list[int],
     output_name: str,
+    vector_inputs: list[dict] | None = None,
+    output_required: bool = True,
 ):
     input_files_payload = []
     for raster_id in raster_ids:
@@ -95,7 +107,9 @@ async def dispatch_user_script(
                 "script_id": task_id,
                 "script": script,
                 "input_files": input_files_payload,
+                "vector_inputs": vector_inputs or [],
                 "output_name": raw_output_filename,
+                "output_required": output_required,
             }
             response = await client.post(EXECUTOR_URL, json=payload)
             response.raise_for_status()
@@ -116,7 +130,19 @@ async def dispatch_user_script(
             detail=_format_executor_error(res_data),
         )
 
-    tmp_path = res_data.get("output_path") or os.path.join(UPLOAD_DIR, raw_output_filename)
+    tmp_path = res_data.get("output_path")
+    if not tmp_path and output_required:
+        tmp_path = os.path.join(UPLOAD_DIR, raw_output_filename)
+
+    if not tmp_path:
+        return {
+            "status": "success",
+            "id": None,
+            "cog_url": None,
+            "logs": res_data.get("logs", ""),
+            "output_created": False,
+        }
+
     cog_filename = f"{task_id}_{prefix}.tif"
     cog_path = os.path.join(COG_DIR, cog_filename)
 

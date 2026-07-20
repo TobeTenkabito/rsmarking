@@ -4,7 +4,7 @@
  */
 export const ScriptTemplate = {
 
-    renderScriptEditor(rasters, selectedIds, currentScript = '') {
+    renderScriptEditor(rasters, selectedIds, currentScript = '', selectedFeatures = []) {
         return `
             <div class="flex h-full">
 
@@ -13,7 +13,8 @@ export const ScriptTemplate = {
                     <div class="mb-4">
                         <h3 class="text-sm font-bold text-slate-700 mb-2">Input Imagery Selection</h3>
                         <div id="script-selected-count" class="text-xs text-slate-500">
-                            Selected ${selectedIds.length} imagery items
+                            Selected ${selectedIds.length} imagery item(s),
+                            ${selectedFeatures.length} vector feature(s)
                         </div>
                     </div>
 
@@ -36,6 +37,19 @@ export const ScriptTemplate = {
                             </label>`
                         ).join('')}
                     </div>
+
+                    ${selectedFeatures.length ? `
+                        <div class="mt-5 p-3 rounded-lg border border-emerald-200 bg-emerald-50">
+                            <div class="text-xs font-bold text-emerald-800">
+                                Selected vector feature input
+                            </div>
+                            ${selectedFeatures.map((feature, index) => `
+                                <div class="mt-1 text-[10px] text-emerald-700 break-all">
+                                    feature_${index}: ${feature.id} (${feature.geometryType})
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
 
                     <div class="mt-6 pt-6 border-t border-slate-100">
                         <label class="text-sm font-bold text-slate-700 block mb-2">Output File Name</label>
@@ -87,10 +101,14 @@ export const ScriptTemplate = {
                             id="script-editor-textarea"
                             class="flex-1 h-full p-4 font-mono text-sm bg-slate-50 resize-none
                                    focus:outline-none focus:bg-white"
-                            placeholder="# Enter Python code here&#10;# Available variables: input_0, input_1, ... and OUTPUT_FILE&#10;# Container paths: /data/inputs/ and /data/outputs/&#10;&#10;import rasterio&#10;import numpy as np&#10;&#10;# Read the first selected raster&#10;with rasterio.open(input_0) as src:&#10;    data = src.read(1)&#10;    profile = src.profile&#10;&#10;# Process data&#10;processed_data = data&#10;&#10;# Save result&#10;with rasterio.open(OUTPUT_FILE, 'w', **profile) as dst:&#10;    dst.write(processed_data, 1)"
+                            placeholder="# Available rasters: input_0, input_1, ...&#10;# Available selected vectors: feature_0, features, feature_by_id&#10;# Helpers: feature_geometry(), feature_shape(), read_geojson()&#10;# Container paths: /data/inputs/ and /data/outputs/&#10;# Output raster path: OUTPUT_FILE&#10;&#10;import rasterio&#10;import numpy as np&#10;&#10;with rasterio.open(input_0) as src:&#10;    data = src.read(1)&#10;    profile = src.profile&#10;&#10;processed_data = data&#10;&#10;with rasterio.open(OUTPUT_FILE, 'w', **profile) as dst:&#10;    dst.write(processed_data, 1)"
                             spellcheck="false"
                         >${currentScript}</textarea>
                     </div>
+
+                    <pre id="script-execution-logs"
+                         class="hidden mt-3 max-h-32 overflow-auto rounded-lg bg-slate-900 p-3
+                                text-[11px] leading-5 text-emerald-300 whitespace-pre-wrap"></pre>
 
                     <!-- Security Note -->
                     <div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">

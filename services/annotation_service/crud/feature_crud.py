@@ -163,7 +163,11 @@ class FeatureCRUD:
         await self.db.commit()
         return len(data_to_insert)
 
-    async def export_by_layer(self, layer_id: UUID) -> List[Dict[str, Any]]:
+    async def export_by_layer(
+        self,
+        layer_id: UUID,
+        limit: int | None = None,
+    ) -> List[Dict[str, Any]]:
         """
         export all features in the selected layer
         """
@@ -174,6 +178,11 @@ class FeatureCRUD:
             Feature.properties,
             ST_AsGeoJSON(Feature.geom).label("geometry_json")
         ).where(Feature.layer_id == layer_id)
+
+        if limit is not None:
+            if limit < 1:
+                return []
+            query = query.limit(limit)
 
         result = await self.db.execute(query)
         features = []

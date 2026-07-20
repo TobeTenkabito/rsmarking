@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from services.ai_gateway import function_registry
+from services.ai_gateway import data_extractor
 from services.ai_gateway.function_registry import (
     AIFunctionInvokeRequest,
     invoke_registered_function,
@@ -40,6 +41,57 @@ def test_vector_feature_tool_schema_contains_geojson_arguments():
     assert "layer_id" in parameters["properties"]
     assert "geometry" in parameters["properties"]
     assert "properties" in parameters["properties"]
+
+
+def test_empty_vector_layer_still_produces_first_turn_context(monkeypatch):
+    layer_id = uuid4()
+
+    class FakeLayerCRUD:
+        def __init__(self, db):
+            self.db = db
+
+        async def get_layer(self, requested_id):
+            assert str(requested_id) == str(layer_id)
+            return SimpleNamespace(id=layer_id, name="Empty layer")
+
+    class Result:
+        def __init__(self, *, rows=None, scalar=None, first=None):
+            self._rows = rows or []
+            self._scalar = scalar
+            self._first = first
+
+        def all(self):
+            return self._rows
+
+        def scalar_one_or_none(self):
+            return self._scalar
+
+        def fetchone(self):
+            return self._first
+
+    class FakeDB:
+        def __init__(self):
+            self.results = iter(
+                [
+                    Result(rows=[]),       # category distribution
+                    Result(first=None),    # bounds
+                    Result(scalar=None),   # property schema
+                    Result(first=None),    # geometry type
+                    Result(rows=[]),       # concrete samples
+                ]
+            )
+
+        async def execute(self, statement, params=None):
+            return next(self.results)
+
+    monkeypatch.setattr(data_extractor, "LayerCRUD", FakeLayerCRUD)
+
+    context = _run(data_extractor._extract_vector_data(FakeDB(), str(layer_id)))
+
+    assert context.name == "Empty layer"
+    assert context.feature_count == 0
+    assert context.sample_features == []
+    assert context.primary_geometry_type == "Unknown"
 
 
 def test_ai_function_can_create_vector_project(monkeypatch):

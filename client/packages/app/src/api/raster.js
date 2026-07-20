@@ -582,10 +582,15 @@ export const RasterAPI = {
     );
   },
 
-  async executeScript(script, rasterIds, outputName) {
+  async executeScript(script, rasterIds = [], outputName, featureIds = []) {
     return postForm(
       '/execute-script',
-      { script, raster_ids: rasterIds.join(','), output_name: outputName },
+      {
+        script,
+        raster_ids: rasterIds.join(','),
+        feature_ids: featureIds.join(','),
+        output_name: outputName,
+      },
       'Script execution failed'
     );
   },

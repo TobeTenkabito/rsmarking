@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import json
+import re
 import shutil
 import uuid
 from typing import Any
@@ -18,6 +19,7 @@ from services.executor_service.config import (
     DOCKER_IMAGE_NAME,
     HOST_RAW_DIR,
     HOST_TMP_DIR,
+    SANDBOX_ALLOWED_INPUT_ROOTS,
     SANDBOX_CPU_LIMIT,
     SANDBOX_FORCE_REBUILD,
     SANDBOX_MEM_LIMIT,
@@ -32,6 +34,11 @@ from services.executor_service.security import validate_script_content
 
 logger = logging.getLogger("executor_service.runner")
 SANDBOX_SPEC_HASH_LABEL = "rsmarking.sandbox.spec_hash"
+MAX_VECTOR_INPUT_BYTES = 16 * 1024 * 1024
+MAX_VECTOR_TOTAL_BYTES = 64 * 1024 * 1024
+MAX_VECTOR_INPUTS = 100
+MAX_SANDBOX_LOG_CHARS = 128 * 1024
+MAX_SANDBOX_LOG_LINES = 2000
 
 try:
     client = docker.from_env()
@@ -46,10 +53,78 @@ def _safe_name(value: str, fallback: str) -> str:
     return candidate or fallback
 
 
+def _safe_task_token(value: str | None) -> str:
+    """Return a filesystem-safe, collision-resistant token for task workdirs."""
+    raw = str(value or uuid.uuid4())
+    readable = re.sub(r"[^A-Za-z0-9_.-]+", "_", raw).strip("._-")[:48] or "task"
+    digest = hashlib.sha256(raw.encode("utf-8", errors="replace")).hexdigest()[:12]
+    return f"{readable}_{digest}"
+
+
+def _unique_name(value: str, fallback: str, used_names: set[str]) -> str:
+    candidate = _safe_name(value, fallback)
+    stem, suffix = os.path.splitext(candidate)
+    sequence = 1
+    while candidate.casefold() in used_names:
+        sequence += 1
+        candidate = f"{stem}_{sequence}{suffix}"
+    used_names.add(candidate.casefold())
+    return candidate
+
+
+def _json_bytes(value: Any) -> bytes:
+    try:
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Vector input is not valid GeoJSON-compatible JSON: {exc}") from exc
+    if len(encoded) > MAX_VECTOR_INPUT_BYTES:
+        raise ValueError(
+            f"Vector input exceeds the {MAX_VECTOR_INPUT_BYTES // (1024 * 1024)} MiB sandbox limit"
+        )
+    return encoded
+
+
+def _validated_input_path(value: str) -> str:
+    resolved = os.path.realpath(os.path.abspath(str(value or "")))
+    if not os.path.isfile(resolved):
+        raise ValueError(f"Input file does not exist: {value}")
+
+    for root in SANDBOX_ALLOWED_INPUT_ROOTS:
+        try:
+            common = os.path.commonpath([resolved, root])
+            if os.path.normcase(common) == os.path.normcase(root):
+                return resolved
+        except ValueError:
+            continue
+    raise ValueError("Input file is outside the configured sandbox storage roots")
+
+
 def _decode_logs(value: Any) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return str(value or "")
+
+
+def _container_logs(container: Any) -> str:
+    try:
+        raw_logs = container.logs(
+            stdout=True,
+            stderr=True,
+            tail=MAX_SANDBOX_LOG_LINES,
+        )
+    except TypeError:
+        # Compatibility with older Docker clients and lightweight test doubles.
+        raw_logs = container.logs(stdout=True, stderr=True)
+    logs = _decode_logs(raw_logs)
+    if len(logs) <= MAX_SANDBOX_LOG_CHARS:
+        return logs
+    return "[... sandbox logs truncated ...]\n" + logs[-MAX_SANDBOX_LOG_CHARS:]
 
 
 def _image_context_hash() -> str:
@@ -117,6 +192,8 @@ class DockerRunner:
         script: str,
         input_files: list[dict[str, Any]],
         output_name: str,
+        vector_inputs: list[dict[str, Any]] | None = None,
+        output_required: bool = True,
     ) -> dict[str, Any]:
         is_valid, blocked_label = validate_script_content(script)
         if not is_valid:
@@ -132,6 +209,8 @@ class DockerRunner:
             output_filename=output_name,
             script_id=script_id,
             input_files=input_files,
+            vector_inputs=vector_inputs,
+            output_required=output_required,
         )
 
     async def cleanup(self):
@@ -153,6 +232,8 @@ def run_in_sandbox(
     output_filename: str,
     script_id: str | None = None,
     input_files: list[dict[str, Any]] | None = None,
+    vector_inputs: list[dict[str, Any]] | None = None,
+    output_required: bool = True,
 ) -> dict[str, Any]:
     del input_filenames
 
@@ -167,12 +248,14 @@ def run_in_sandbox(
         return {"status": "error", "message": "Docker service is unavailable"}
 
     task_id = script_id or str(uuid.uuid4())
-    safe_output_name = _safe_name(output_filename, f"{task_id}_result.tif")
-    script_host_path = os.path.join(HOST_TMP_DIR, f"script_{task_id}.py")
-    temp_input_dir = os.path.join(HOST_TMP_DIR, f"input_{task_id}")
-    temp_output_dir = os.path.join(HOST_TMP_DIR, f"output_{task_id}")
+    task_token = _safe_task_token(task_id)
+    safe_output_name = _safe_name(output_filename, f"{task_token}_result.tif")
+    script_host_path = os.path.join(HOST_TMP_DIR, f"script_{task_token}.py")
+    temp_input_dir = os.path.join(HOST_TMP_DIR, f"input_{task_token}")
+    temp_output_dir = os.path.join(HOST_TMP_DIR, f"output_{task_token}")
     os.makedirs(temp_input_dir, exist_ok=True)
     os.makedirs(temp_output_dir, exist_ok=True)
+    os.makedirs(HOST_RAW_DIR, exist_ok=True)
     container = None
 
     try:
@@ -183,15 +266,22 @@ def run_in_sandbox(
 
         copied_inputs: list[str] = []
         sandbox_input_map: list[dict[str, Any]] = []
+        used_input_names: set[str] = set()
         for idx, file_info in enumerate(input_files or []):
             src_path = file_info.get("path", "")
-            if not src_path or not os.path.exists(src_path):
+            try:
+                src_path = _validated_input_path(src_path)
+            except ValueError as exc:
                 return {
                     "status": "error",
-                    "message": f"Input file does not exist: {src_path}",
+                    "message": str(exc),
                 }
 
-            file_name = _safe_name(file_info.get("name", ""), f"input_{idx}.tif")
+            file_name = _unique_name(
+                file_info.get("name", ""),
+                f"input_{idx}.tif",
+                used_input_names,
+            )
             dst_path = os.path.join(temp_input_dir, file_name)
             shutil.copy2(src_path, dst_path)
             copied_inputs.append(file_name)
@@ -201,6 +291,64 @@ def run_in_sandbox(
                     "name": file_name,
                     "raster_id": file_info.get("raster_id"),
                     "alias": file_info.get("alias"),
+                }
+            )
+
+        sandbox_vector_map: list[dict[str, Any]] = []
+        total_vector_bytes = 0
+        if len(vector_inputs or []) > MAX_VECTOR_INPUTS:
+            return {
+                "status": "error",
+                "message": f"Too many vector inputs; maximum is {MAX_VECTOR_INPUTS}",
+            }
+
+        for idx, vector_info in enumerate(vector_inputs or []):
+            geojson = vector_info.get("geojson")
+            if not isinstance(geojson, dict) or geojson.get("type") not in {
+                "Feature",
+                "FeatureCollection",
+            }:
+                return {
+                    "status": "error",
+                    "message": (
+                        f"Vector input {idx} must be a GeoJSON Feature or FeatureCollection"
+                    ),
+                }
+
+            fallback = f"vector_{idx}.geojson"
+            file_name = _unique_name(
+                vector_info.get("name", ""),
+                fallback,
+                used_input_names,
+            )
+            if not file_name.lower().endswith((".geojson", ".json")):
+                file_name = _unique_name(
+                    f"{os.path.splitext(file_name)[0]}.geojson",
+                    fallback,
+                    used_input_names,
+                )
+            encoded = _json_bytes(geojson)
+            total_vector_bytes += len(encoded)
+            if total_vector_bytes > MAX_VECTOR_TOTAL_BYTES:
+                return {
+                    "status": "error",
+                    "message": (
+                        "Combined vector inputs exceed the "
+                        f"{MAX_VECTOR_TOTAL_BYTES // (1024 * 1024)} MiB sandbox limit"
+                    ),
+                }
+            dst_path = os.path.join(temp_input_dir, file_name)
+            with open(dst_path, "wb") as handle:
+                handle.write(encoded)
+
+            sandbox_vector_map.append(
+                {
+                    "index": idx,
+                    "name": file_name,
+                    "alias": vector_info.get("alias"),
+                    "feature_id": vector_info.get("feature_id"),
+                    "layer_id": vector_info.get("layer_id"),
+                    "geojson_type": geojson.get("type"),
                 }
             )
 
@@ -228,6 +376,7 @@ def run_in_sandbox(
             environment={
                 "OUTPUT_FILENAME": safe_output_name,
                 "SANDBOX_INPUT_MAP": json.dumps(sandbox_input_map, ensure_ascii=False),
+                "SANDBOX_VECTOR_MAP": json.dumps(sandbox_vector_map, ensure_ascii=False),
                 "HOME": "/tmp",
                 "MPLCONFIGDIR": "/tmp/matplotlib",
                 "OMP_NUM_THREADS": thread_limit,
@@ -263,10 +412,10 @@ def run_in_sandbox(
             return {
                 "status": "error",
                 "message": f"Script execution timed out after {SANDBOX_TIMEOUT_SEC} seconds",
-                "logs": _decode_logs(container.logs(stdout=True, stderr=True)),
+                "logs": _container_logs(container),
             }
 
-        logs = _decode_logs(container.logs(stdout=True, stderr=True))
+        logs = _container_logs(container)
         exit_code = int(wait_result.get("StatusCode", 1))
         if exit_code != 0:
             return {
@@ -289,6 +438,15 @@ def run_in_sandbox(
                     created_files[0],
                     safe_output_name,
                 )
+            elif not output_required and not created_files:
+                return {
+                    "status": "success",
+                    "logs": logs,
+                    "output_path": None,
+                    "output_filename": None,
+                    "input_files": copied_inputs,
+                    "vector_inputs": sandbox_vector_map,
+                }
             else:
                 return {
                     "status": "error",
@@ -305,6 +463,7 @@ def run_in_sandbox(
             "output_path": output_path,
             "output_filename": safe_output_name,
             "input_files": copied_inputs,
+            "vector_inputs": sandbox_vector_map,
         }
 
     except ContainerError as e:
