@@ -30,6 +30,10 @@ function normalizeLongitude(lng) {
     return ((((lng + 180) % 360) + 360) % 360) - 180;
 }
 
+function unwrapLongitudeNear(lng, reference) {
+    return lng + 360 * Math.round((reference - lng) / 360);
+}
+
 function normalizePoint(point) {
     return {
         lng: normalizeLongitude(Number(point.lng)),
@@ -51,6 +55,12 @@ function sanitizePath(points) {
         if (!point) continue;
         const normalized = normalizePoint(point);
         if (!Number.isFinite(normalized.lng) || !Number.isFinite(normalized.lat)) continue;
+        if (result.length > 0) {
+            normalized.lng = unwrapLongitudeNear(
+                normalized.lng,
+                result[result.length - 1].lng
+            );
+        }
         if (!samePoint(result[result.length - 1], normalized)) {
             result.push(normalized);
         }
@@ -73,8 +83,9 @@ function closeRing(points) {
 
 function buildRectangleRing(a, b) {
     if (!a || !b || samePoint(a, b)) return [];
-    const west = Math.min(a.lng, b.lng);
-    const east = Math.max(a.lng, b.lng);
+    const secondLongitude = unwrapLongitudeNear(b.lng, a.lng);
+    const west = Math.min(a.lng, secondLongitude);
+    const east = Math.max(a.lng, secondLongitude);
     const south = Math.min(a.lat, b.lat);
     const north = Math.max(a.lat, b.lat);
 
@@ -136,11 +147,18 @@ export class AnnotationModule {
         this.currentType = null;
         this.cesiumDraw = null;
         this._drawButtons = null;
+        this._boundMapModeWillChange = () => {
+            if (this.currentHandler || this.cesiumDraw) this.stopDrawing();
+        };
 
         this.initEventListeners();
     }
 
     initEventListeners() {
+        window.addEventListener(
+            'map-mode-will-change',
+            this._boundMapModeWillChange
+        );
         if (!this.map) return;
 
         this.map.on('draw:created', async (e) => {

@@ -41,4 +41,23 @@ describe('AnnotationModule annotation interaction tests', () => {
         expect(mockHandler.disable).toHaveBeenCalled();
         expect(module.startDrawing).toHaveBeenCalledWith('polygon');
     });
+
+    it('keeps a 3D-drawn dateline path continuous in its saved coordinates', () => {
+        const module = new AnnotationModule(createMockApp());
+        module.cesiumDraw = {
+            mode: 'polyline',
+            vertices: [
+                { lng: 170, lat: 10 },
+                { lng: -170, lat: 10 },
+            ],
+            cursor: null,
+        };
+
+        const result = module._buildCesiumGeometry();
+
+        expect(result.geometry).toEqual({
+            type: 'LineString',
+            coordinates: [[170, 10], [190, 10]],
+        });
+    });
 });

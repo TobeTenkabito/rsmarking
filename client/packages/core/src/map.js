@@ -1,3 +1,8 @@
+import {
+    normalizeViewBboxes,
+    prepareGeoJSONForRendering,
+} from './geo/geometryRender.js';
+
 export class MapEngine {
     constructor(containerId) {
         console.group("%c[MapEngine] 🏗️ engine initialization", "color: #8b5cf6; font-weight: bold;");
@@ -5,8 +10,12 @@ export class MapEngine {
 
         this.layers = new Map();
         this.vectorLayers = new Map();
+        this._vectorGeoJSONSources = new Map();
         this._rasterLayerOrder = [];
         this._vectorLayerOrder = [];
+        this._viewChangeListeners = new Set();
+        this._modeTransitionToken = 0;
+        this._modeSwitchTimer = null;
 
         this.isReady = false;
         this.tileServiceBase = window.RSMARKING_CONFIG?.tileServiceUrl || "http://localhost:8005";
@@ -29,7 +38,11 @@ export class MapEngine {
             return;
         }
         try {
-            this.map = L.map(this.containerId, { zoomControl: false, preferCanvas: true }).setView([35, 105], 4);
+            this.map = L.map(this.containerId, {
+                zoomControl: false,
+                preferCanvas: true,
+                worldCopyJump: true,
+            }).setView([35, 105], 4);
             L.control.zoom({ position: 'bottomright' }).addTo(this.map);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap', crossOrigin: 'anonymous'
@@ -207,6 +220,19 @@ export class MapEngine {
 
     updateVectorLayer(layerId, geojson, selectedId) {
         if (!this.isReady || !this.map) return;
+        const sourceGeoJSON = geojson?.type === 'FeatureCollection'
+            ? geojson
+            : { type: 'FeatureCollection', features: [] };
+        const renderGeoJSON = prepareGeoJSONForRendering(sourceGeoJSON);
+        const sourceFeaturesById = new Map(
+            (sourceGeoJSON.features || [])
+                .map(feature => [
+                    feature?.id ?? feature?.properties?.id,
+                    feature,
+                ])
+                .filter(([featureId]) => featureId !== undefined && featureId !== null)
+        );
+        this._vectorGeoJSONSources.set(layerId, sourceGeoJSON);
         let vectorLayer = this.vectorLayers.get(layerId);
 
         const getFeatureStyle = (feature) => {
@@ -234,8 +260,28 @@ export class MapEngine {
             }
             return L.marker(latlng);
         };
+        const onEachFeature = (feature, layer) => {
+            layer.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                const fid = feature.id || feature.properties?.id;
+                window.dispatchEvent(new CustomEvent('inspect-feature', {
+                    detail: {
+                        id: fid,
+                        feature: sourceFeaturesById.get(fid) ?? feature,
+                        layerId,
+                    }
+                }));
+            });
+        };
 
-        if (vectorLayer && typeof vectorLayer.options.pointToLayer !== 'function') {
+        if (
+            vectorLayer &&
+            (
+                typeof vectorLayer.options.pointToLayer !== 'function' ||
+                typeof vectorLayer.clearLayers !== 'function' ||
+                typeof vectorLayer.addData !== 'function'
+            )
+        ) {
             this.map.removeLayer(vectorLayer);
             this.vectorLayers.delete(layerId);
             vectorLayer = null;
@@ -243,18 +289,10 @@ export class MapEngine {
 
         if (!vectorLayer) {
             console.log(`[MapEngine] 🎨 created layer instance: ${layerId}`);
-            vectorLayer = L.geoJSON(geojson, {
+            vectorLayer = L.geoJSON(renderGeoJSON, {
                 style: getFeatureStyle,
                 pointToLayer,
-                onEachFeature: (feature, layer) => {
-                    layer.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e);
-                        const fid = feature.id || feature.properties?.id;
-                        window.dispatchEvent(new CustomEvent('inspect-feature', {
-                            detail: { id: fid, feature, layerId }
-                        }));
-                    });
-                }
+                onEachFeature,
             });
             vectorLayer.addTo(this.map);
             this.vectorLayers.set(layerId, vectorLayer);
@@ -264,57 +302,15 @@ export class MapEngine {
             return;
         }
 
-        const newFeaturesMap  = new Map();
-        const featuresToAdd   = [];
-        const layerIndexById  = new Map();
-
-        if (geojson?.features) {
-            geojson.features.forEach(f => {
-                const fid = f.id || f.properties?.id;
-                if (fid) newFeaturesMap.set(fid, f);
-            });
-        }
-
-        vectorLayer.eachLayer(layer => {
-            const fid = layer.feature.id || layer.feature.properties?.id;
-            if (!newFeaturesMap.has(fid)) {
-                vectorLayer.removeLayer(layer);
-            } else {
-                layer.feature = newFeaturesMap.get(fid);
-                layerIndexById.set(fid, layer);
-            }
-        });
-
-        if (geojson?.features) {
-            geojson.features.forEach(f => {
-                const fid = f.id || f.properties?.id;
-                if (fid && !layerIndexById.has(fid)) featuresToAdd.push(f);
-            });
-        }
-
-        if (featuresToAdd.length > 0) {
-            vectorLayer.options.style = getFeatureStyle;
-            vectorLayer.addData(featuresToAdd);
-            vectorLayer.eachLayer(layer => {
-                const fid = layer.feature.id || layer.feature.properties?.id;
-                if (!layerIndexById.has(fid)) layerIndexById.set(fid, layer);
-            });
-        }
-
-        const prevSelectedId = vectorLayer._lastSelectedId;
-        if (prevSelectedId !== selectedId) {
-            if (prevSelectedId && layerIndexById.has(prevSelectedId)) {
-                layerIndexById.get(prevSelectedId).setStyle(getFeatureStyle);
-            }
-            if (selectedId && layerIndexById.has(selectedId)) {
-                const selectedLayer = layerIndexById.get(selectedId);
-                selectedLayer.setStyle(getFeatureStyle);
-                if (typeof selectedLayer.bringToFront === 'function') selectedLayer.bringToFront();
-            }
-            vectorLayer._lastSelectedId = selectedId;
-        } else if (featuresToAdd.length === 0) {
-            vectorLayer.setStyle(getFeatureStyle);
-        }
+        // Rebuild from the latest render-safe geometry. Replacing only
+        // childLayer.feature leaves Leaflet's internal LatLng arrays stale,
+        // and Cesium then receives coordinates from the previous response.
+        vectorLayer.options.style = getFeatureStyle;
+        vectorLayer.options.pointToLayer = pointToLayer;
+        vectorLayer.options.onEachFeature = onEachFeature;
+        vectorLayer.clearLayers();
+        vectorLayer.addData(renderGeoJSON);
+        vectorLayer._lastSelectedId = selectedId;
 
         this._applyVectorLayerOrder();
         if (this._is3D) this._syncSingleVectorToCesium(layerId);
@@ -328,6 +324,7 @@ export class MapEngine {
             if (!visibleSet.has(layerId)) {
                 this.map.removeLayer(vectorLayer);
                 this.vectorLayers.delete(layerId);
+                this._vectorGeoJSONSources.delete(layerId);
             }
         }
         this._applyVectorLayerOrder();
@@ -341,6 +338,7 @@ export class MapEngine {
             this.vectorLayers.delete(layerId);
             console.log(`[MapEngine] ➖ remove vector layer: ${layerId}`);
         }
+        this._vectorGeoJSONSources.delete(layerId);
         this._applyVectorLayerOrder();
         if (this._is3D && this._cesiumViewer) {
             this._invalidateCesiumVectorSync(layerId);
@@ -383,8 +381,16 @@ export class MapEngine {
     }
 
     _initCesium() {
-        if (this._cesiumViewer) return;
+        if (this._cesiumViewer) return true;
+        if (typeof Cesium === 'undefined') {
+            console.error('[MapEngine] Cesium is not loaded');
+            return false;
+        }
         const container = document.getElementById('cesium-container');
+        if (!container) {
+            console.error('[MapEngine] Cesium container was not found');
+            return false;
+        }
         container.style.display = 'block';
         this._cesiumViewer = new Cesium.Viewer('cesium-container', {
             terrainProvider:      new Cesium.EllipsoidTerrainProvider(),
@@ -417,25 +423,52 @@ export class MapEngine {
 
         this._cesiumViewer.cesiumWidget.creditContainer.style.display = 'none';
         this._cesiumViewer.scene.globe.depthTestAgainstTerrain = false;
+        this._cesiumViewer.camera.moveEnd.addEventListener(() => {
+            if (this._is3D) this._emitViewChange();
+        });
 
         container.style.display = 'none';
 
         console.log('[MapEngine] 🌐 Cesium 3D engine is ready');
+        return true;
     }
 
     switchTo3D() {
         if (this._is3D) return;
-        this._initCesium();
+        try {
+            if (!this._initCesium()) return;
+        } catch (error) {
+            this._cesiumViewer?.destroy?.();
+            this._cesiumViewer = null;
+            const container = document.getElementById('cesium-container');
+            if (container) container.style.display = 'none';
+            console.error('[MapEngine] Cesium initialization failed:', error);
+            return;
+        }
+        this._dispatchMapModeEvent('map-mode-will-change', '3d');
+        this._modeTransitionToken += 1;
+        const transitionToken = this._modeTransitionToken;
+        if (this._modeSwitchTimer) clearTimeout(this._modeSwitchTimer);
         const center = this.map.getCenter();
         const zoom   = this.map.getZoom();
         const height = 40000000 / Math.pow(2, zoom);
-        document.getElementById('cesium-container').style.display = 'block';
-        document.getElementById('map').style.visibility = 'hidden';
-        setTimeout(() => {
+        const cesiumContainer = document.getElementById('cesium-container');
+        const mapContainer = document.getElementById(this.containerId);
+        this._is3D = true;
+        if (cesiumContainer) cesiumContainer.style.display = 'block';
+        if (mapContainer) mapContainer.style.visibility = 'hidden';
+        this._modeSwitchTimer = setTimeout(() => {
+            this._modeSwitchTimer = null;
+            if (!this._is3D || transitionToken !== this._modeTransitionToken) return;
             this._cesiumViewer.resize();
             this._cesiumViewer.camera.flyTo({
                 destination: Cesium.Cartesian3.fromDegrees(center.lng, center.lat, height),
-                duration: 1.2
+                duration: 1.2,
+                complete: () => {
+                    if (this._is3D && transitionToken === this._modeTransitionToken) {
+                        this._emitViewChange();
+                    }
+                },
             });
             this._syncRastersToCesium();
             this._syncVectorsToCesium();
@@ -444,27 +477,39 @@ export class MapEngine {
         const label = document.getElementById('globe-btn-label');
         if (btn)   btn.classList.add('is-3d');
         if (label) label.textContent = '2D';
-        this._is3D = true;
+        this._dispatchMapModeEvent('map-mode-change', '3d');
         console.log('[MapEngine] 🌐 switched to 3D globe view');
     }
 
     switchTo2D() {
         if (!this._is3D) return;
+        this._dispatchMapModeEvent('map-mode-will-change', '2d');
+        this._modeTransitionToken += 1;
+        if (this._modeSwitchTimer) {
+            clearTimeout(this._modeSwitchTimer);
+            this._modeSwitchTimer = null;
+        }
+        this._cesiumViewer?.camera?.cancelFlight?.();
         if (this._cesiumViewer) {
             const pos  = this._cesiumViewer.camera.positionCartographic;
             const lng  = Cesium.Math.toDegrees(pos.longitude);
             const lat  = Cesium.Math.toDegrees(pos.latitude);
             const zoom = Math.round(Math.log2(40000000 / pos.height));
-            this.map.setView([lat, lng], Math.max(2, Math.min(zoom, 18)));
+            if ([lng, lat, zoom].every(Number.isFinite)) {
+                this.map.setView([lat, lng], Math.max(2, Math.min(zoom, 18)));
+            }
         }
-        document.getElementById('cesium-container').style.display = 'none';
-        document.getElementById('map').style.visibility = 'visible';
+        const cesiumContainer = document.getElementById('cesium-container');
+        const mapContainer = document.getElementById(this.containerId);
+        if (cesiumContainer) cesiumContainer.style.display = 'none';
+        if (mapContainer) mapContainer.style.visibility = 'visible';
+        this._is3D = false;
         this.map.invalidateSize();
         const btn   = document.getElementById('globe-toggle-btn');
         const label = document.getElementById('globe-btn-label');
         if (btn)   btn.classList.remove('is-3d');
         if (label) label.textContent = '3D';
-        this._is3D = false;
+        this._dispatchMapModeEvent('map-mode-change', '2d');
         console.log('[MapEngine] 🗺️ switched back to 2D map view');
     }
 
@@ -480,22 +525,63 @@ export class MapEngine {
         return this._cesiumViewer;
     }
 
+    onViewChange(listener) {
+        if (typeof listener !== 'function') return () => {};
+        this._viewChangeListeners.add(listener);
+        return () => this._viewChangeListeners.delete(listener);
+    }
+
+    _emitViewChange() {
+        for (const listener of this._viewChangeListeners) {
+            try {
+                listener();
+            } catch (error) {
+                console.error('[MapEngine] view-change listener failed:', error);
+            }
+        }
+    }
+
+    _dispatchMapModeEvent(eventName, mode) {
+        if (
+            typeof window === 'undefined' ||
+            typeof window.dispatchEvent !== 'function' ||
+            typeof CustomEvent === 'undefined'
+        ) {
+            return;
+        }
+        window.dispatchEvent(new CustomEvent(eventName, {
+            detail: { mode, is3D: mode === '3d' },
+        }));
+    }
+
+    getViewBboxes() {
+        return normalizeViewBboxes(this._getRawViewBbox());
+    }
+
     getViewBbox() {
+        const bboxes = this.getViewBboxes();
+        if (bboxes.length === 1) return bboxes[0];
+        if (bboxes.length > 1) {
+            const south = Math.min(...bboxes.map(bbox => bbox[1]));
+            const north = Math.max(...bboxes.map(bbox => bbox[3]));
+            return [-180, south, 180, north];
+        }
+        return null;
+    }
+
+    _getRawViewBbox() {
         if (this._is3D && this._cesiumViewer && typeof Cesium !== 'undefined') {
             const rectangle = this._cesiumViewer.camera.computeViewRectangle(
                 this._cesiumViewer.scene.globe.ellipsoid
             );
 
             if (rectangle) {
-                const west = Math.max(-180, Cesium.Math.toDegrees(rectangle.west));
-                const south = Math.max(-90, Cesium.Math.toDegrees(rectangle.south));
-                const east = Math.min(180, Cesium.Math.toDegrees(rectangle.east));
-                const north = Math.min(90, Cesium.Math.toDegrees(rectangle.north));
-
-                if (west <= east && south <= north) {
-                    return [west, south, east, north];
-                }
-                return [-180, south, 180, north];
+                return [
+                    Cesium.Math.toDegrees(rectangle.west),
+                    Cesium.Math.toDegrees(rectangle.south),
+                    Cesium.Math.toDegrees(rectangle.east),
+                    Cesium.Math.toDegrees(rectangle.north),
+                ];
             }
 
             return [-180, -90, 180, 90];
@@ -552,7 +638,7 @@ export class MapEngine {
         const leafletLayer = this.vectorLayers.get(layerId);
         if (!leafletLayer) return;
 
-        const geojson = leafletLayer.toGeoJSON();
+        const geojson = this._vectorGeoJSONSources.get(layerId);
         if (!geojson?.features?.length) return;
 
         const processedFeatures = geojson.features.map(f => {
@@ -574,7 +660,10 @@ export class MapEngine {
             return f;
         });
 
-        const processedGeoJSON = { ...geojson, features: processedFeatures };
+        const processedGeoJSON = prepareGeoJSONForRendering({
+            ...geojson,
+            features: processedFeatures,
+        });
 
         try {
             const dataSource = await Cesium.GeoJsonDataSource.load(processedGeoJSON, {
@@ -612,10 +701,20 @@ export class MapEngine {
                 }
             });
 
-            if (this._cesiumVectorSyncTokens.get(layerId) !== syncToken) return;
+            if (
+                !this._is3D ||
+                this._cesiumVectorSyncTokens.get(layerId) !== syncToken
+            ) return;
 
             dataSource.name = layerId;
             await this._cesiumViewer.dataSources.add(dataSource);
+            if (
+                !this._is3D ||
+                this._cesiumVectorSyncTokens.get(layerId) !== syncToken
+            ) {
+                this._cesiumViewer.dataSources.remove(dataSource);
+                return;
+            }
             this._cesiumVectorDataSources.set(layerId, dataSource);
             this._applyCesiumVectorOrder();
             console.log(`[MapEngine] 🔷 vector layer synced to Cesium: ${layerId}`);

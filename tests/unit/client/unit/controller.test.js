@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MapController } from '@app/core/MapController.js';
+import { VectorAPI } from '@app/api/vector.js';
 import { Store } from '@app/store/index.js';
 
 
@@ -29,6 +30,8 @@ function createEngine() {
         },
         setRasterLayerOrder: vi.fn(),
         setVectorLayerOrder: vi.fn(),
+        updateVectorLayer: vi.fn(),
+        onViewChange: vi.fn(() => vi.fn()),
     };
 }
 
@@ -50,10 +53,44 @@ describe('MapController', () => {
 
     it('binds and removes the map move listener', () => {
         expect(engine.map.on).toHaveBeenCalledWith('moveend', expect.any(Function));
+        expect(engine.onViewChange).toHaveBeenCalledWith(expect.any(Function));
 
         controller.destroy();
 
         expect(engine.map.off).toHaveBeenCalledWith('moveend', expect.any(Function));
+    });
+
+    it('fetches and merges both view envelopes when the globe crosses the dateline', async () => {
+        engine.getViewBboxes = vi.fn(() => [
+            [170, -20, 180, 20],
+            [-180, -20, -170, 20],
+        ]);
+        Store.state.visibleVectorLayerIds = new Set(['vector-a']);
+        const fetchSpy = vi.spyOn(VectorAPI, 'fetchFeaturesInBbox')
+            .mockImplementation(async (_layerId, bbox) => ({
+                type: 'FeatureCollection',
+                features: [{
+                    type: 'Feature',
+                    id: bbox[0] > 0 ? 'east' : 'west',
+                    geometry: { type: 'Point', coordinates: [bbox[0], 0] },
+                    properties: {},
+                }],
+            }));
+
+        await controller.fetchViewportFeatures();
+
+        expect(fetchSpy).toHaveBeenCalledTimes(2);
+        expect(engine.updateVectorLayer).toHaveBeenCalledWith(
+            'vector-a',
+            expect.objectContaining({
+                features: expect.arrayContaining([
+                    expect.objectContaining({ id: 'east' }),
+                    expect.objectContaining({ id: 'west' }),
+                ]),
+            }),
+            null
+        );
+        fetchSpy.mockRestore();
     });
 
     it('forwards store render order to the map engine', () => {

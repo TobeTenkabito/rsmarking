@@ -12,6 +12,25 @@ function debounce(fn, delay) {
     };
 }
 
+function mergeFeatureCollections(collections) {
+    const features = [];
+    const seen = new Set();
+
+    for (const collection of collections) {
+        for (const feature of collection?.features || []) {
+            const id = feature?.id ?? feature?.properties?.id;
+            const key = id !== undefined && id !== null
+                ? `id:${id}`
+                : `feature:${JSON.stringify(feature)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            features.push(feature);
+        }
+    }
+
+    return { type: 'FeatureCollection', features };
+}
+
 /**
  * MapController - English（Store/UI）English
  */
@@ -31,6 +50,7 @@ export class MapController {
          * moveend English 300ms English
          */
         this._debouncedFetch = debounce(() => this.fetchViewportFeatures(), 300);
+        this._unsubscribeEngineViewChange = null;
 
         // English
         this._boundMoveEndHandler = async () => {
@@ -187,6 +207,11 @@ export class MapController {
         if (!map?.on) return;
 
         map.on('moveend', this._boundMoveEndHandler);
+        if (typeof this.engine?.onViewChange === 'function') {
+            this._unsubscribeEngineViewChange = this.engine.onViewChange(
+                this._boundMoveEndHandler
+            );
+        }
     }
 
     /**
@@ -198,6 +223,8 @@ export class MapController {
         if (map?.off) {
             map.off('moveend', this._boundMoveEndHandler);
         }
+        this._unsubscribeEngineViewChange?.();
+        this._unsubscribeEngineViewChange = null;
 
         // CancelEnglish
         for (const controller of this._abortControllers.values()) {
@@ -217,8 +244,10 @@ export class MapController {
         const visibleIds = Store.getVectorRenderOrder();
         if (visibleIds.length === 0) return;
 
-        const bbox = this._getMapBbox();
-        if (!bbox) return;
+        const bboxes = typeof this.engine?.getViewBboxes === 'function'
+            ? this.engine.getViewBboxes()
+            : [this._getMapBbox()].filter(Boolean);
+        if (bboxes.length === 0) return;
 
         const fetchPromises = visibleIds.map(async (layerId) => {
             // CancelEnglish
@@ -229,11 +258,14 @@ export class MapController {
             this._abortControllers.set(layerId, controller);
 
             try {
-                const data = await VectorAPI.fetchFeaturesInBbox(
-                    layerId,
-                    bbox,
-                    { signal: controller.signal }  // Pass the cancel signal
+                const responses = await Promise.all(
+                    bboxes.map(bbox => VectorAPI.fetchFeaturesInBbox(
+                        layerId,
+                        bbox,
+                        { signal: controller.signal }
+                    ))
                 );
+                const data = mergeFeatureCollections(responses);
 
                 // EnglishSucceededEnglish
                 this._abortControllers.delete(layerId);
