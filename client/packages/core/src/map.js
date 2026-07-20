@@ -3,6 +3,18 @@ import {
     prepareGeoJSONForRendering,
 } from './geo/geometryRender.js';
 
+function fingerprintJSON(value) {
+    const text = JSON.stringify(value);
+    let hashA = 2166136261;
+    let hashB = 0x9e3779b9;
+    for (let index = 0; index < text.length; index += 1) {
+        const code = text.charCodeAt(index);
+        hashA = Math.imul(hashA ^ code, 16777619);
+        hashB = Math.imul(hashB ^ code, 1597334677);
+    }
+    return `${text.length}:${hashA >>> 0}:${hashB >>> 0}`;
+}
+
 export class MapEngine {
     constructor(containerId) {
         console.group("%c[MapEngine] 🏗️ engine initialization", "color: #8b5cf6; font-weight: bold;");
@@ -30,6 +42,8 @@ export class MapEngine {
         this._is3D = false;
         this._cesiumVectorDataSources = new Map();
         this._cesiumVectorSyncTokens = new Map();
+        this._cesiumVectorFingerprints = new Map();
+        this._cesiumVectorPendingFingerprints = new Map();
     }
 
     _initMap() {
@@ -349,7 +363,6 @@ export class MapEngine {
     setVectorLayerOrder(layerIds = []) {
         this._vectorLayerOrder = layerIds.map((id) => String(id)).filter(Boolean);
         this._applyVectorLayerOrder();
-        if (this._is3D) this._syncVectorsToCesium();
     }
 
     _getOrderedVectorLayerIds() {
@@ -464,11 +477,6 @@ export class MapEngine {
             this._cesiumViewer.camera.flyTo({
                 destination: Cesium.Cartesian3.fromDegrees(center.lng, center.lat, height),
                 duration: 1.2,
-                complete: () => {
-                    if (this._is3D && transitionToken === this._modeTransitionToken) {
-                        this._emitViewChange();
-                    }
-                },
             });
             this._syncRastersToCesium();
             this._syncVectorsToCesium();
@@ -619,11 +627,19 @@ export class MapEngine {
 
     _syncVectorsToCesium() {
         if (!this._cesiumViewer) return;
-        for (const layerId of Array.from(this._cesiumVectorDataSources.keys())) {
-            this._invalidateCesiumVectorSync(layerId);
-            this._removeCesiumVectorDataSource(layerId);
+        const orderedLayerIds = this._getOrderedVectorLayerIds();
+        const visibleLayerIds = new Set(orderedLayerIds);
+        const synchronizedLayerIds = new Set([
+            ...this._cesiumVectorDataSources.keys(),
+            ...this._cesiumVectorPendingFingerprints.keys(),
+        ]);
+        for (const layerId of synchronizedLayerIds) {
+            if (!visibleLayerIds.has(layerId)) {
+                this._invalidateCesiumVectorSync(layerId);
+                this._removeCesiumVectorDataSource(layerId);
+            }
         }
-        [...this._getOrderedVectorLayerIds()].reverse().forEach((layerId) => {
+        [...orderedLayerIds].reverse().forEach((layerId) => {
             this._syncSingleVectorToCesium(layerId);
         });
     }
@@ -631,15 +647,13 @@ export class MapEngine {
     async _syncSingleVectorToCesium(layerId) {
         if (!this._cesiumViewer) return;
 
-        // clear any previous data source with the same name to avoid duplicate overlays
-        const syncToken = this._invalidateCesiumVectorSync(layerId);
-        this._removeCesiumVectorDataSource(layerId);
-
         const leafletLayer = this.vectorLayers.get(layerId);
-        if (!leafletLayer) return;
-
         const geojson = this._vectorGeoJSONSources.get(layerId);
-        if (!geojson?.features?.length) return;
+        if (!leafletLayer || !geojson?.features?.length) {
+            this._invalidateCesiumVectorSync(layerId);
+            this._removeCesiumVectorDataSource(layerId);
+            return;
+        }
 
         const processedFeatures = geojson.features.map(f => {
             const drawType = f.properties?.draw_type;
@@ -663,6 +677,27 @@ export class MapEngine {
         const processedGeoJSON = prepareGeoJSONForRendering({
             ...geojson,
             features: processedFeatures,
+        });
+        const fingerprint = fingerprintJSON(processedGeoJSON);
+        const currentDataSource = this._cesiumVectorDataSources.get(layerId);
+        if (
+            currentDataSource &&
+            this._cesiumVectorFingerprints.get(layerId) === fingerprint
+        ) {
+            this._applyCesiumVectorOrder();
+            return currentDataSource;
+        }
+        if (
+            this._cesiumVectorPendingFingerprints.get(layerId)?.fingerprint ===
+            fingerprint
+        ) {
+            return null;
+        }
+
+        const syncToken = this._invalidateCesiumVectorSync(layerId);
+        this._cesiumVectorPendingFingerprints.set(layerId, {
+            fingerprint,
+            token: syncToken,
         });
 
         try {
@@ -715,11 +750,28 @@ export class MapEngine {
                 this._cesiumViewer.dataSources.remove(dataSource);
                 return;
             }
+            const previousDataSource =
+                this._cesiumVectorDataSources.get(layerId);
             this._cesiumVectorDataSources.set(layerId, dataSource);
+            this._cesiumVectorFingerprints.set(layerId, fingerprint);
+            if (previousDataSource && previousDataSource !== dataSource) {
+                this._cesiumViewer.dataSources.remove(previousDataSource);
+            }
+            this._cesiumViewer.dataSources.getByName(layerId)
+                .filter(candidate => candidate !== dataSource)
+                .forEach(candidate =>
+                    this._cesiumViewer.dataSources.remove(candidate)
+                );
             this._applyCesiumVectorOrder();
             console.log(`[MapEngine] 🔷 vector layer synced to Cesium: ${layerId}`);
         } catch (err) {
             console.error(`[MapEngine] ❌ vector layer sync failed [${layerId}]:`, err);
+        } finally {
+            const pending =
+                this._cesiumVectorPendingFingerprints.get(layerId);
+            if (pending?.token === syncToken) {
+                this._cesiumVectorPendingFingerprints.delete(layerId);
+            }
         }
     }
 
@@ -741,6 +793,8 @@ export class MapEngine {
     }
 
     _removeCesiumVectorDataSource(layerId) {
+        this._cesiumVectorFingerprints.delete(layerId);
+        this._cesiumVectorPendingFingerprints.delete(layerId);
         if (!this._cesiumViewer) return;
 
         const tracked = this._cesiumVectorDataSources.get(layerId);

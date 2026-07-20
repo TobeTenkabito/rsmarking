@@ -30,6 +30,7 @@ function createEngine() {
         },
         setRasterLayerOrder: vi.fn(),
         setVectorLayerOrder: vi.fn(),
+        syncVisibleLayers: vi.fn(),
         updateVectorLayer: vi.fn(),
         onViewChange: vi.fn(() => vi.fn()),
     };
@@ -91,6 +92,28 @@ describe('MapController', () => {
             null
         );
         fetchSpy.mockRestore();
+    });
+
+    it('does not refetch or resync visibility when only current features change', () => {
+        Store.state.vectorLayers = [{ id: 'vector-a' }];
+        Store.state.visibleVectorLayerIds = new Set(['vector-a']);
+        Store.state.activeVectorLayerId = 'vector-a';
+        controller._debouncedFetch = vi.fn();
+
+        controller.handleVectorStateChange({ ...Store.state });
+        Store.state.currentFeatures = {
+            type: 'FeatureCollection',
+            features: [{
+                type: 'Feature',
+                id: 'feature-a',
+                properties: {},
+                geometry: { type: 'Point', coordinates: [10, 20] },
+            }],
+        };
+        controller.handleVectorStateChange({ ...Store.state });
+
+        expect(engine.syncVisibleLayers).toHaveBeenCalledOnce();
+        expect(controller._debouncedFetch).toHaveBeenCalledOnce();
     });
 
     it('forwards store render order to the map engine', () => {

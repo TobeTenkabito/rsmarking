@@ -51,6 +51,9 @@ export class MapController {
          */
         this._debouncedFetch = debounce(() => this.fetchViewportFeatures(), 300);
         this._unsubscribeEngineViewChange = null;
+        this._lastVisibleVectorOrderKey = null;
+        this._lastVectorFetchStateKey = null;
+        this._lastSelectedFeatureId = Symbol('uninitialized-selection');
 
         // English
         this._boundMoveEndHandler = async () => {
@@ -270,12 +273,14 @@ export class MapController {
                 // EnglishSucceededEnglish
                 this._abortControllers.delete(layerId);
 
+                // Render first so Store observers never see new attributes
+                // paired with stale map geometry.
+                this.renderVectorData(layerId, data);
+
                 // English Store
                 if (layerId === Store.state.activeVectorLayerId) {
                     Store.setCurrentFeatures(data);
                 }
-
-                this.renderVectorData(layerId, data);
             } catch (err) {
                 if (err.name === 'AbortError') {
                     // EnglishCancel，English，English
@@ -296,8 +301,19 @@ export class MapController {
      */
     handleVectorStateChange(state) {
         // English，EnglishCancelEnglish
-        if (this.engine.syncVisibleLayers) {
-            this.engine.syncVisibleLayers(Store.getVectorRenderOrder());
+        const visibleOrder = Store.getVectorRenderOrder();
+        const visibleOrderKey = JSON.stringify(visibleOrder);
+        const fetchStateKey = JSON.stringify({
+            activeLayerId: state.activeVectorLayerId ?? null,
+            visibleLayerIds: [...visibleOrder].sort(),
+        });
+
+        if (
+            visibleOrderKey !== this._lastVisibleVectorOrderKey &&
+            this.engine.syncVisibleLayers
+        ) {
+            this._lastVisibleVectorOrderKey = visibleOrderKey;
+            this.engine.syncVisibleLayers(visibleOrder);
         }
 
         // EnglishToolbar
@@ -306,7 +322,20 @@ export class MapController {
         }
 
         // English，English
-        this._debouncedFetch();
+        if (fetchStateKey !== this._lastVectorFetchStateKey) {
+            this._lastVectorFetchStateKey = fetchStateKey;
+            if (visibleOrder.length > 0) this._debouncedFetch();
+        }
+
+        if (state.selectedFeatureId !== this._lastSelectedFeatureId) {
+            this._lastSelectedFeatureId = state.selectedFeatureId;
+            if (state.activeVectorLayerId && state.currentFeatures?.features) {
+                this.renderVectorData(
+                    state.activeVectorLayerId,
+                    state.currentFeatures
+                );
+            }
+        }
     }
 
 

@@ -16,6 +16,8 @@ function bareEngine() {
         _vectorLayerOrder: [],
         _cesiumVectorDataSources: new Map(),
         _cesiumVectorSyncTokens: new Map(),
+        _cesiumVectorFingerprints: new Map(),
+        _cesiumVectorPendingFingerprints: new Map(),
         _cesiumViewer: null,
         _is3D: false,
         _viewChangeListeners: new Set(),
@@ -105,6 +107,81 @@ describe('MapEngine 2D/3D synchronization', () => {
         expect(engine._cesiumViewer.camera.flyTo).not.toHaveBeenCalled();
         expect(engine._syncVectorsToCesium).not.toHaveBeenCalled();
         expect(document.getElementById('map').style.visibility).toBe('visible');
+    });
+
+    it('keeps the old Cesium data source visible until its replacement is ready', async () => {
+        let resolveLoad;
+        const loadPromise = new Promise(resolve => {
+            resolveLoad = resolve;
+        });
+        const oldDataSource = { name: 'layer-a', marker: 'old' };
+        const newDataSource = {
+            name: '',
+            marker: 'new',
+            entities: { values: [] },
+        };
+        const collection = [oldDataSource];
+        const dataSources = {
+            add: vi.fn(async dataSource => {
+                collection.push(dataSource);
+                return dataSource;
+            }),
+            remove: vi.fn(dataSource => {
+                const index = collection.indexOf(dataSource);
+                if (index >= 0) collection.splice(index, 1);
+                return index >= 0;
+            }),
+            getByName: vi.fn(name =>
+                collection.filter(dataSource => dataSource.name === name)
+            ),
+            raiseToTop: vi.fn(),
+        };
+        global.Cesium = {
+            GeoJsonDataSource: {
+                load: vi.fn(() => loadPromise),
+            },
+        };
+
+        const engine = bareEngine();
+        engine._is3D = true;
+        engine._cesiumViewer = { dataSources };
+        engine._vectorLayerOrder = ['layer-a'];
+        engine.vectorLayers.set('layer-a', {});
+        engine._vectorGeoJSONSources.set('layer-a', {
+            type: 'FeatureCollection',
+            features: [{
+                type: 'Feature',
+                id: 'line-a',
+                properties: {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: [[0, 0], [10, 0]],
+                },
+            }],
+        });
+        engine._cesiumVectorDataSources.set('layer-a', oldDataSource);
+
+        const synchronization = engine._syncSingleVectorToCesium('layer-a');
+        await Promise.resolve();
+        const duplicateSynchronization =
+            engine._syncSingleVectorToCesium('layer-a');
+
+        expect(dataSources.remove).not.toHaveBeenCalled();
+        expect(collection).toContain(oldDataSource);
+        await duplicateSynchronization;
+        expect(global.Cesium.GeoJsonDataSource.load).toHaveBeenCalledOnce();
+
+        resolveLoad(newDataSource);
+        await synchronization;
+
+        expect(collection).toEqual([newDataSource]);
+        expect(dataSources.add.mock.invocationCallOrder[0]).toBeLessThan(
+            dataSources.remove.mock.invocationCallOrder[0]
+        );
+
+        await engine._syncSingleVectorToCesium('layer-a');
+        expect(global.Cesium.GeoJsonDataSource.load).toHaveBeenCalledOnce();
+        expect(dataSources.remove).toHaveBeenCalledOnce();
     });
 
     it('notifies view listeners without letting one failure block the others', () => {
