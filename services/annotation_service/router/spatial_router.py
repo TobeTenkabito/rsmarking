@@ -13,7 +13,7 @@ router = APIRouter(prefix="/spatial", tags=["Spatial"])
 class ClipVectorByRasterRequest(BaseModel):
     clip_geometry: dict = Field(
         ...,
-        description="GeoJSON Geometry object built by the frontend from raster bounds_wgs84 in EPSG:4326."
+        description="GeoJSON valid-pixel raster footprint in EPSG:4326."
     )
     features: list[dict] = Field(
         ...,
@@ -34,9 +34,8 @@ async def clip_vector_by_raster_endpoint(
     body: ClipVectorByRasterRequest,
 ):
     """
-    Clip vector features with the raster spatial extent.
+    Clip vector features with the raster valid-pixel footprint.
     In-memory operation that returns a GeoJSON FeatureCollection without writing to the database.
-    The frontend builds clip_geometry from existing bounds_wgs84, so no raster service lookup is required.
     """
     try:
         return clip_vector_by_raster(

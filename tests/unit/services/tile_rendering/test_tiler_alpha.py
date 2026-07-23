@@ -169,7 +169,7 @@ def test_nodata_pixels_are_zeroed_before_rendering(mocker):
     assert np.all(tile[:, 64:, 3] == 255)
 
 
-def test_unmasked_internal_zero_pixels_stay_opaque(mocker):
+def test_unmasked_internal_zero_pixels_are_transparent(mocker):
     data = np.ones((3, 256, 256), dtype=np.float32)
     data[:, 96:160, 96:160] = 0
 
@@ -180,6 +180,26 @@ def test_unmasked_internal_zero_pixels_stay_opaque(mocker):
     mocker.patch(
         "services.tile_service.engine.tiler.rasterio.open",
         return_value=FakeDataset(data),
+    )
+
+    tile = TileEngine("fake.tif").read_tile(0, 0, 0, bands=[1, 2, 3])
+
+    assert tile is not None
+    assert np.all(tile[96:160, 96:160, 3] == 0)
+    assert np.all(tile[:96, :, 3] == 255)
+
+
+def test_explicit_mask_keeps_valid_zero_pixels_opaque(mocker):
+    data = np.ones((3, 256, 256), dtype=np.float32)
+    data[:, 96:160, 96:160] = 0
+
+    mocker.patch("services.tile_service.engine.tiler.HAS_FAST_TILER", False)
+    mocker.patch("services.tile_service.engine.tiler.fast_stretch_and_stack", None)
+    mocker.patch("services.tile_service.engine.tiler.get_tile_window", return_value=None)
+    mocker.patch("services.tile_service.engine.tiler.os.path.exists", return_value=True)
+    mocker.patch(
+        "services.tile_service.engine.tiler.rasterio.open",
+        return_value=FakeDataset(data, mask_value=254),
     )
 
     tile = TileEngine("fake.tif").read_tile(0, 0, 0, bands=[1, 2, 3])

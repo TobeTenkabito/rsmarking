@@ -1,6 +1,7 @@
 import logging
 import os
 
+import rasterio
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,7 +97,10 @@ async def query_spectrum(
     if not record:
         raise HTTPException(status_code=404, detail="Raster not found")
 
-    file_path = resolve_raster_file_path(record.cog_path) or resolve_raster_file_path(record.file_path)
+    file_path = (
+        resolve_raster_file_path(record.cog_path)
+        or resolve_raster_file_path(record.file_path)
+    )
     if not file_path:
         raise HTTPException(
             status_code=404,
@@ -159,3 +163,36 @@ async def raster_statistics(
         }
     )
     return stats
+
+
+@router.get("/raster/{raster_id}/footprint")
+async def raster_footprint(
+    raster_id: int,
+    dst_crs: str = "EPSG:4326",
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the exact Polygon/MultiPolygon formed by valid raster pixels."""
+    record = await RasterCRUD.get_raster_by_index_id(db, raster_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Raster not found")
+
+    file_path = resolve_raster_file_path(record.cog_path) or resolve_raster_file_path(record.file_path)
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Raster file not found")
+
+    try:
+        footprint = RasterProcessor.valid_pixel_footprint(file_path, dst_crs=dst_crs)
+    except (ValueError, rasterio.errors.RasterioError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(f"Raster footprint failed: {exc}")
+        raise HTTPException(status_code=500, detail="Raster footprint failed") from exc
+
+    if footprint["geometry"] is None:
+        raise HTTPException(status_code=422, detail="Raster contains no valid pixels")
+
+    return {
+        "raster_id": record.index_id,
+        "crs": dst_crs,
+        **footprint,
+    }

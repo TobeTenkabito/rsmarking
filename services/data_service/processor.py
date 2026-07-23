@@ -52,6 +52,10 @@ from functions.implement.extraction import (
     extract_cloud,
 )
 from functions.implement.rasterize_ops import raster_to_vector, vector_to_raster
+from functions.implement.raster_validity import (
+    band_validity_mask,
+    valid_pixel_footprint as build_valid_pixel_footprint,
+)
 
 logger = logging.getLogger("data_service.processor")
 
@@ -96,6 +100,18 @@ class RasterProcessor:
                 "data_type": src.dtypes[0],
                 "resolution": src.res,
             }
+
+    @staticmethod
+    def valid_pixel_footprint(
+        file_path: str,
+        dst_crs: str | None = "EPSG:4326",
+        band_indices: list[int] | None = None,
+    ) -> dict:
+        return build_valid_pixel_footprint(
+            file_path,
+            dst_crs=dst_crs,
+            band_indexes=band_indices,
+        )
 
     @staticmethod
     def extract_bands(input_path: str, output_path: str, band_indices: list[int],) -> None:
@@ -743,14 +759,31 @@ class RasterProcessor:
 
             # 4. read all band values at this pixel(Window avoid reading the full image)
             window = rasterio.windows.Window(col, row, 1, 1)
-            pixel_values = src.read(window=window)  # shape: (band_count, 1, 1)
+            raw_pixel_values = src.read(window=window, masked=True)
+            if np.ma.isMaskedArray(raw_pixel_values):
+                read_valid = ~np.ma.getmaskarray(raw_pixel_values)
+                pixel_values = raw_pixel_values.filled(0)
+            else:
+                read_valid = None
+                pixel_values = raw_pixel_values
 
-            nodata = src.nodata
+            band_indexes = list(range(1, src.count + 1))
+            valid = band_validity_mask(
+                pixel_values,
+                src,
+                band_indexes,
+                read_valid_mask=read_valid,
+            )
+            if not np.any(valid[:, 0, 0]):
+                raise ValueError(
+                    f"coordinate ({lng}, {lat}) does not fall on a valid raster pixel"
+                )
+
             result_bands = []
 
             for i in range(src.count):
                 raw_val = pixel_values[i, 0, 0]
-                is_nodata = nodata is not None and float(raw_val) == float(nodata)
+                is_nodata = not bool(valid[i, 0, 0])
 
                 # band-name priority: input parameter > embedded file description > default numbering
                 if band_names and i < len(band_names):

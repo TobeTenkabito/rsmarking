@@ -216,7 +216,7 @@ export const VectorAPI = {
      * @param {GeoJSON.Geometry} clipGeometry
      *   English GeoJSON Geometry object，CRSEnglish EPSG:4326。
      *   English：
-     *     - Rectangle：EnglishCallerEnglish boundsToGeometry(bounds_wgs84) English
+     *     - Raster footprint: exact valid-pixel Polygon/MultiPolygon
      *     - EnglishPolygon：English geometry
      *     - EnglishVectorEnglish：English feature.geometry
      *

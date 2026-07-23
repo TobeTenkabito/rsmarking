@@ -56,4 +56,20 @@ describe('RasterAPI errors', () => {
         expect(body.get('raster_ids')).toBe('');
         expect(body.get('feature_ids')).toBe('76467ec3-bcef-43d5-9428-f66883b6b151');
     });
+
+    it('requests the valid-pixel footprint instead of raster bounds', async () => {
+        global.fetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: vi.fn(async () => ({
+                geometry: { type: 'Polygon', coordinates: [] },
+            })),
+        });
+
+        await RasterAPI.getFootprint(123, 'EPSG:4326');
+
+        expect(global.fetch.mock.calls[0][0]).toContain(
+            '/raster/123/footprint?dst_crs=EPSG%3A4326'
+        );
+    });
 });

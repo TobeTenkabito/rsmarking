@@ -669,6 +669,15 @@ export const RasterAPI = {
     }
   },
 
+  async getFootprint(rasterId, dstCrs = 'EPSG:4326') {
+    const params = new URLSearchParams({ dst_crs: dstCrs });
+    return request(
+      `${BASE_URL}/raster/${rasterId}/footprint?${params}`,
+      {},
+      'Raster footprint query failed'
+    );
+  },
+
   async getStatistics(rasterId, options = {}) {
     const params = new URLSearchParams({
       bins: String(options.bins ?? 32),

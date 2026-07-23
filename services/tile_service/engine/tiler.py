@@ -10,6 +10,10 @@ import rasterio
 from pyproj import Transformer
 from rasterio.enums import Resampling
 
+from functions.implement.raster_validity import (
+    band_validity_mask,
+    dataset_has_explicit_mask,
+)
 from services.tile_service.core.config import settings
 
 from .stats import StatsManager
@@ -17,11 +21,6 @@ from .utils import get_tile_window
 
 logger = logging.getLogger("tile_service.engine")
 
-
-try:
-    from scipy import ndimage as scipy_ndimage
-except ImportError:
-    scipy_ndimage = None
 
 try:
     from .rendering import render_tile
@@ -394,29 +393,18 @@ class TileEngine:
     ):
         height, width = data.shape[1], data.shape[2]
 
-        if read_valid_mask is None:
-            valid = np.ones(data.shape, dtype=bool)
-        else:
-            valid = np.asarray(read_valid_mask, dtype=bool)
-            if valid.shape != data.shape:
-                valid = np.broadcast_to(valid, data.shape).copy()
-            else:
-                valid = valid.copy()
-
-        valid &= np.isfinite(data)
-        valid = self._apply_nodata_mask(data, valid, src, valid_bands)
+        valid = band_validity_mask(
+            data,
+            src,
+            valid_bands,
+            read_valid_mask=read_valid_mask,
+            zero_is_invalid=True if alpha_mode == "data" else None,
+        )
 
         coverage = self._alpha_from_window(src, window, height, width) > 0
         valid &= coverage[None, :, :]
 
-        if alpha_mode == "data":
-            valid &= self._data_value_mask(data, src, valid_bands)
-            return valid
-
-        if not self._has_explicit_mask(src):
-            alpha = coverage.astype(np.uint8) * 255
-            alpha = self._remove_edge_fill_pixels(data, alpha)
-            valid &= (alpha > 0)[None, :, :]
+        if alpha_mode == "data" or not self._has_explicit_mask(src, valid_bands):
             return valid
 
         try:
@@ -528,59 +516,8 @@ class TileEngine:
         return (rows_inside[:, None] & cols_inside[None, :]).astype(np.uint8) * 255
 
     @staticmethod
-    def _has_explicit_mask(src):
-        if getattr(src, "nodata", None) is not None:
-            return True
-
-        mask_flags = getattr(src, "mask_flag_enums", None)
-        if not mask_flags:
-            return False
-
-        for band_flags in mask_flags:
-            for flag in band_flags:
-                name = getattr(flag, "name", str(flag)).lower()
-                if name in {"alpha", "nodata", "per_dataset"}:
-                    return True
-        return False
-
-    @staticmethod
-    def _remove_edge_fill_pixels(data, alpha):
-        fill_pixels = np.all(data == 0, axis=0)
-        if not np.any(fill_pixels):
-            return alpha
-        if np.all(fill_pixels):
-            return np.zeros_like(alpha, dtype=np.uint8)
-
-        seeds = fill_pixels & (alpha == 0)
-        if not np.any(seeds):
-            seeds = np.zeros_like(fill_pixels, dtype=bool)
-            seeds[0, :] = fill_pixels[0, :]
-            seeds[-1, :] = fill_pixels[-1, :]
-            seeds[:, 0] |= fill_pixels[:, 0]
-            seeds[:, -1] |= fill_pixels[:, -1]
-
-        if not np.any(seeds):
-            return alpha
-
-        if scipy_ndimage is not None:
-            outside_fill = scipy_ndimage.binary_propagation(seeds, mask=fill_pixels)
-        else:
-            outside_fill = seeds
-            while True:
-                expanded = outside_fill.copy()
-                expanded[1:, :] |= outside_fill[:-1, :]
-                expanded[:-1, :] |= outside_fill[1:, :]
-                expanded[:, 1:] |= outside_fill[:, :-1]
-                expanded[:, :-1] |= outside_fill[:, 1:]
-                expanded &= fill_pixels
-                if np.array_equal(expanded, outside_fill):
-                    break
-                outside_fill = expanded
-
-        if np.any(outside_fill):
-            alpha = alpha.copy()
-            alpha[outside_fill] = 0
-        return alpha
+    def _has_explicit_mask(src, valid_bands=None):
+        return dataset_has_explicit_mask(src, valid_bands)
 
     def _fallback_process(self, data, mins, maxs):
         count, height, width = data.shape

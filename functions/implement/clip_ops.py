@@ -20,6 +20,8 @@ from shapely.geometry import shape, mapping
 from shapely.strtree import STRtree
 import pyproj
 
+from functions.implement.raster_validity import band_validity_mask
+
 logger = logging.getLogger("functions.clip_ops")
 
 _DEFAULT_SLIVER_AREA_THRESHOLD = 1e-10
@@ -115,10 +117,8 @@ def clip_raster_by_vector(
     with rasterio.open(raster_path) as src:
         raster_crs = src.crs
         src_nodata = src.nodata
-        fill_value = (
-            nodata if nodata is not None
-            else (src_nodata if src_nodata is not None else 0)
-        )
+        output_nodata = nodata if nodata is not None else src_nodata
+        fill_value = output_nodata if output_nodata is not None else 0
 
         transformer = _build_transformer(src_vector_crs, raster_crs)
         shapely_geoms = [_geojson_to_shapely(g) for g in geojson_geometries]
@@ -145,28 +145,49 @@ def clip_raster_by_vector(
             crop=crop,
             nodata=fill_value,
             all_touched=all_touched,
-            filled=True,
+            filled=False,
         )
+        clipped_mask = np.ma.getmaskarray(clipped_data)
+        filled_data = clipped_data.filled(fill_value)
+        per_band_valid = band_validity_mask(
+            filled_data,
+            src,
+            range(1, src.count + 1),
+            read_valid_mask=~clipped_mask,
+        )
+        valid_pixels = np.any(per_band_valid, axis=0)
+        if not np.any(valid_pixels):
+            raise ValueError(
+                "Clip geometry does not intersect any valid raster pixels."
+            )
 
         out_meta = src.meta.copy()
         out_meta.update({
             "driver": "GTiff",
-            "height": clipped_data.shape[1],
-            "width": clipped_data.shape[2],
+            "height": filled_data.shape[1],
+            "width": filled_data.shape[2],
             "transform": clipped_transform,
-            "nodata": fill_value,
         })
+        if output_nodata is None:
+            out_meta.pop("nodata", None)
+        else:
+            out_meta["nodata"] = output_nodata
 
-        with rasterio.open(output_path, "w", **out_meta) as dest:
-            dest.write(clipped_data)
+        # A raster grid is rectangular, but its validity does not have to be.
+        # Persist the exact polygon/source validity as an internal mask.
+        with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+            with rasterio.open(output_path, "w", **out_meta) as dest:
+                dest.write(filled_data)
+                dest.write_mask(valid_pixels.astype(np.uint8) * 255)
 
     logger.info(f"Vector-to-raster clipping complete: {output_path}")
 
     return {
-        "width": clipped_data.shape[2],
-        "height": clipped_data.shape[1],
-        "bands": clipped_data.shape[0],
-        "nodata": fill_value,
+        "width": filled_data.shape[2],
+        "height": filled_data.shape[1],
+        "bands": filled_data.shape[0],
+        "nodata": output_nodata,
+        "valid_pixel_count": int(np.count_nonzero(valid_pixels)),
         "output_path": output_path,
     }
 
@@ -184,7 +205,7 @@ def clip_vector_by_raster(
     if mode not in ("intersects", "within", "clip"):
         raise ValueError(f"Unsupported mode: {mode}")
 
-    raster_box_wgs84 = _geojson_to_shapely(clip_geometry)
+    raster_footprint_wgs84 = _geojson_to_shapely(clip_geometry)
 
     if src_vector_crs and src_vector_crs.upper() != "EPSG:4326":
         transformer = pyproj.Transformer.from_crs(
@@ -193,9 +214,12 @@ def clip_vector_by_raster(
         def transform_box(pts):
             x, y = transformer.transform(pts[:, 0], pts[:, 1])
             return np.column_stack((x, y))
-        raster_box = shapely.transform(raster_box_wgs84, transform_box)
+        raster_footprint = shapely.transform(
+            raster_footprint_wgs84,
+            transform_box,
+        )
     else:
-        raster_box = raster_box_wgs84
+        raster_footprint = raster_footprint_wgs84
 
     # Preprocess features into an index map and geometry array.
     indexed_features = []
@@ -215,7 +239,7 @@ def clip_vector_by_raster(
 
     predicate = "contains" if mode == "within" else "intersects"
     # STRtree returns NumPy indices.
-    candidate_indices = tree.query(raster_box, predicate=predicate)
+    candidate_indices = tree.query(raster_footprint, predicate=predicate)
 
     if len(candidate_indices) == 0:
         return _empty_feature_collection(len(geojson_features), mode)
@@ -231,7 +255,10 @@ def clip_vector_by_raster(
     elif mode == "clip":
         # Vectorized intersection keeps the work inside GEOS.
         candidate_geoms = geom_array[candidate_indices]
-        clipped_geoms = shapely.intersection(candidate_geoms, raster_box)
+        clipped_geoms = shapely.intersection(
+            candidate_geoms,
+            raster_footprint,
+        )
 
         for i, idx in enumerate(candidate_indices):
             orig_idx = indexed_features[idx][0]

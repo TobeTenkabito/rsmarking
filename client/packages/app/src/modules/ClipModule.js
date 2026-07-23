@@ -1,7 +1,6 @@
 import { Store } from '../store/index.js';
 import { RasterAPI } from '../api/raster.js';
 import { VectorAPI } from '../api/vector.js';
-import { boundsToGeometry } from '../utils/geometry.js';
 
 const CLIP_MODE = {
     NONE:   null,
@@ -38,11 +37,23 @@ export class ClipModule {
             this.app.ui.showToast('Load a raster image on the map first.', 'warning');
             return;
         }
-        if (!raster.bounds_wgs84) {
-            this.app.ui.showToast('Current imagery is missing spatial extent information (bounds_wgs84).', 'error');
-            return;
+        this.app.ui.showGlobalLoading('Calculating the valid-pixel footprint...');
+        try {
+            const footprint = await RasterAPI.getFootprint(
+                raster.index_id,
+                'EPSG:4326',
+            );
+            if (!footprint?.geometry) {
+                this.app.ui.showToast('The current raster has no valid pixels.', 'warning');
+                return;
+            }
+            await this._executeClipVector(layerId, footprint.geometry);
+        } catch (err) {
+            console.error('[ClipModule] Raster footprint failed:', err);
+            this.app.ui.showToast(`Raster footprint failed: ${err.message}`, 'error');
+        } finally {
+            this.app.ui.hideGlobalLoading();
         }
-        await this._executeClipVector(layerId, boundsToGeometry(raster.bounds_wgs84));
     }
 
     /** English B-2：EnglishPolygonEnglishVector */
