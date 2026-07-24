@@ -8,6 +8,11 @@ import numpy as np
 import rasterio
 from rasterio.warp import transform as transform_coords
 
+from functions.implement.raster_validity import (
+    dataset_has_explicit_mask,
+    read_masked_data,
+)
+
 
 ClassifierName = Literal["nearest_centroid", "random_forest", "svm"]
 
@@ -76,7 +81,14 @@ def supervised_classification(
 
     with rasterio.open(input_path) as src:
         stack, valid_mask, profile = _read_stack(src, band_indices)
-        train_x, train_y = _extract_training_samples(src, stack, samples, label_lookup, label_names)
+        train_x, train_y = _extract_training_samples(
+            src,
+            stack,
+            valid_mask,
+            samples,
+            label_lookup,
+            label_names,
+        )
         if len(np.unique(train_y)) < 2:
             raise ValueError("Supervised classification requires at least two classes")
 
@@ -106,11 +118,18 @@ def supervised_classification(
 
 def _read_stack(src: rasterio.DatasetReader, band_indices: list[int] | None) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     indexes = _normalize_band_indices(src.count, band_indices)
-    stack = src.read(indexes).astype("float32")
-    valid_mask = np.ones((src.height, src.width), dtype=bool)
-    if src.nodata is not None:
-        valid_mask &= ~np.any(stack == np.float32(src.nodata), axis=0)
-    valid_mask &= np.all(np.isfinite(stack), axis=0)
+    masked_stack = read_masked_data(
+        src,
+        indexes,
+        zero_is_invalid=False,
+    ).astype("float32")
+    stack = np.asarray(masked_stack.filled(0), dtype="float32")
+    valid_mask = (
+        ~np.any(np.ma.getmaskarray(masked_stack), axis=0)
+        & np.all(np.isfinite(stack), axis=0)
+    )
+    if not dataset_has_explicit_mask(src, indexes):
+        valid_mask &= np.any(stack != 0, axis=0)
     profile = src.profile.copy()
     return stack, valid_mask, profile
 
@@ -186,6 +205,7 @@ def _classify_features(
 def _extract_training_samples(
     src: rasterio.DatasetReader,
     stack: np.ndarray,
+    valid_mask: np.ndarray,
     samples: list[dict[str, Any]],
     label_lookup: dict[Any, int],
     label_names: dict[int, str],
@@ -207,6 +227,8 @@ def _extract_training_samples(
             vector = np.asarray(values, dtype="float32")
         else:
             row, col = _sample_row_col(src, sample)
+            if not valid_mask[row, col]:
+                continue
             vector = stack[:, row, col].astype("float32")
 
         if vector.ndim != 1 or vector.size != stack.shape[0]:

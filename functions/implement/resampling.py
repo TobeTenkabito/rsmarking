@@ -7,6 +7,12 @@ from rasterio.enums import Resampling
 from rasterio.transform import from_origin
 from rasterio.warp import reproject, transform_bounds
 
+from functions.implement.raster_validity import (
+    pixel_validity_on_grid,
+    read_pixel_validity_mask,
+    write_dataset_mask,
+)
+
 
 ResolutionUnit = Literal["source", "degrees", "meters"]
 
@@ -134,30 +140,46 @@ def resample_raster(
             height=dst_height,
         )
 
-        with rasterio.open(output_path, "w", **profile) as dst:
-            if src_crs is None:
-                data = src.read(
-                    out_shape=(src.count, dst_height, dst_width),
-                    resampling=resampling,
-                )
-                dst.write(data)
-            else:
-                for band_index in range(1, src.count + 1):
-                    reproject(
-                        source=rasterio.band(src, band_index),
-                        destination=rasterio.band(dst, band_index),
-                        src_transform=src.transform,
-                        src_crs=src.crs,
-                        src_nodata=src.nodata,
-                        dst_transform=dst_transform,
-                        dst_crs=dst_crs.to_string() if dst_crs else None,
-                        dst_nodata=src.nodata,
+        with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+            with rasterio.open(output_path, "w", **profile) as dst:
+                if src_crs is None:
+                    data = src.read(
+                        out_shape=(src.count, dst_height, dst_width),
                         resampling=resampling,
                     )
+                    dst.write(data)
+                    destination_valid = read_pixel_validity_mask(
+                        src,
+                        out_shape=(dst_height, dst_width),
+                        resampling=Resampling.nearest,
+                        zero_is_invalid=None,
+                    )
+                else:
+                    for band_index in range(1, src.count + 1):
+                        reproject(
+                            source=rasterio.band(src, band_index),
+                            destination=rasterio.band(dst, band_index),
+                            src_transform=src.transform,
+                            src_crs=src.crs,
+                            src_nodata=src.nodata,
+                            dst_transform=dst_transform,
+                            dst_crs=dst_crs.to_string() if dst_crs else None,
+                            dst_nodata=src.nodata,
+                            resampling=resampling,
+                        )
+                    destination_valid = pixel_validity_on_grid(
+                        src,
+                        dst,
+                        zero_is_invalid=None,
+                    )
 
-            for band_index, description in enumerate(src.descriptions, start=1):
-                if description:
-                    dst.set_band_description(band_index, description)
+                write_dataset_mask(dst, destination_valid)
+                for band_index, description in enumerate(
+                    src.descriptions,
+                    start=1,
+                ):
+                    if description:
+                        dst.set_band_description(band_index, description)
 
         return {
             "width": dst_width,

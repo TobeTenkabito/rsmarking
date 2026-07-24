@@ -94,8 +94,8 @@ export const clipModal = `
                                         text-slate-600 rounded-xl p-3 text-center cursor-pointer
                                         hover:border-amber-300">
                                 <div class="text-lg mb-1">📐</div>
-                                <div class="text-[11px] font-bold">Imagery Bounds</div>
-                                <div class="text-[9px] opacity-60">Use raster bounds</div>
+                                <div class="text-[11px] font-bold">Valid Pixel Footprint</div>
+                                <div class="text-[9px] opacity-60">Use valid raster pixels</div>
                             </div>
                         </label>
                         <label class="clip-source-option">

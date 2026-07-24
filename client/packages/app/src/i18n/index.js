@@ -341,6 +341,8 @@ const literalCatalog = {
         'Clip one layer by another': '用一个图层裁剪另一个图层',
         'Imagery Bounds': '影像范围',
         'Use raster bounds': '使用栅格范围',
+        'Valid Pixel Footprint': '有效像素范围',
+        'Use valid raster pixels': '使用栅格有效像素',
         '-- Use current active layer --': '-- 使用当前激活图层 --',
         '— Please select a clip layer —': '— 请选择裁剪图层 —',
         'DEM Analysis': 'DEM 分析',

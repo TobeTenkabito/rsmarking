@@ -4,6 +4,7 @@ import re
 import numpy as np
 import numexpr as ne
 import rasterio
+from rasterio.enums import Resampling
 from typing import TypedDict, TypeAlias, ParamSpec, List, Dict, Any
 from collections.abc import Callable
 from pyproj import Transformer
@@ -54,7 +55,10 @@ from functions.implement.extraction import (
 from functions.implement.rasterize_ops import raster_to_vector, vector_to_raster
 from functions.implement.raster_validity import (
     band_validity_mask,
+    read_masked_data,
+    read_masked_on_grid,
     valid_pixel_footprint as build_valid_pixel_footprint,
+    write_dataset_mask,
 )
 
 logger = logging.getLogger("data_service.processor")
@@ -447,14 +451,38 @@ class RasterProcessor:
 
         with rasterio.open(band1_path) as src1, rasterio.open(band2_path) as src2:
             meta = src1.meta.copy()
-            meta.update({"dtype": "float32", "count": 1, "driver": "GTiff"})
-            band1: BandArray = src1.read(1)
-            band2: BandArray = src2.read(
-                1, out_shape=(src1.height, src1.width)
+            meta.update({
+                "dtype": "float32",
+                "count": 1,
+                "driver": "GTiff",
+                "nodata": -9999.0,
+            })
+            band1 = read_masked_data(
+                src1,
+                1,
+                zero_is_invalid=None,
+            ).astype("float32")
+            band2 = read_masked_on_grid(
+                src2,
+                src1,
+                1,
+                resampling=Resampling.bilinear,
+                zero_is_invalid=None,
+            ).astype("float32")
+            valid = (
+                ~np.ma.getmaskarray(band1)
+                & ~np.ma.getmaskarray(band2)
             )
-            result: BandArray = index_func(band1, band2)
-            with rasterio.open(output_path, "w", **meta) as dest:
-                dest.write(result, 1)
+            result = np.asarray(
+                index_func(band1.filled(0), band2.filled(0)),
+                dtype="float32",
+            )
+            valid &= np.isfinite(result)
+            result[~valid] = -9999.0
+            with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+                with rasterio.open(output_path, "w", **meta) as dest:
+                    dest.write(result, 1)
+                    write_dataset_mask(dest, valid)
         build_raster_overviews(output_path)
 
     @staticmethod
@@ -493,7 +521,11 @@ class RasterProcessor:
         return tokens
 
     @staticmethod
-    def _load_bands(path: str, indices: list[int]) -> np.ndarray:
+    def _load_bands(
+        path: str,
+        indices: list[int],
+        reference_path: str | None = None,
+    ) -> np.ma.MaskedArray:
         """
         load selected bands from a file,return shape=(n_bands, H, W) text float32 text.
         indices load all bands when empty.
@@ -509,7 +541,22 @@ class RasterProcessor:
                             f"File {path} has {total} bands; requested band index {idx} is out of range"
                         )
                 bands_to_read = indices
-            data = src.read(bands_to_read).astype("float32")  # (n, H, W)
+            if reference_path is None:
+                data = read_masked_data(
+                    src,
+                    bands_to_read,
+                    zero_is_invalid=None,
+                )
+            else:
+                with rasterio.open(reference_path) as reference:
+                    data = read_masked_on_grid(
+                        src,
+                        reference,
+                        bands_to_read,
+                        resampling=Resampling.bilinear,
+                        zero_is_invalid=None,
+                    )
+            data = data.astype("float32")
         return data
 
     @staticmethod
@@ -547,41 +594,44 @@ class RasterProcessor:
         if not path_mapping:
             raise ValueError("No input variables were provided.")
         token_map = RasterProcessor._parse_var_tokens(expression)
+        if not token_map:
+            raise ValueError("The expression does not reference any raster variables.")
 
         # verify all base variable names are in path_mapping text
         for token, (var_name, _) in token_map.items():
             if var_name not in path_mapping:
                 raise ValueError(f"Variable in expression '{var_name}' does not have a matching file path in the mapping")
-        meta = None
-        ref_height, ref_width = None, None
-        first_path = next(iter(path_mapping.values()))
+        first_variable = next(iter(token_map.values()))[0]
+        first_path = path_mapping[first_variable]
         with rasterio.open(first_path) as src:
             meta = src.meta.copy()
-            ref_height, ref_width = src.height, src.width
 
-        # verify all files share spatial dimensions
-        for var_name, path in path_mapping.items():
-            with rasterio.open(path) as src:
-                if src.height != ref_height or src.width != ref_width:
-                    raise ValueError(
-                        f"text '{var_name}' spatial dimensions ({src.height}×{src.width}) "
-                        f"with reference ({ref_height}×{ref_width}) do not match"
-                    )
-        token_arrays: dict[str, np.ndarray] = {}
+        token_arrays: dict[str, np.ma.MaskedArray] = {}
         for token, (var_name, indices) in token_map.items():
             token_arrays[token] = RasterProcessor._load_bands(
-                path_mapping[var_name], indices
+                path_mapping[var_name],
+                indices,
+                reference_path=first_path,
             )
         output_bands = RasterProcessor._resolve_output_bands(token_arrays)
         results = []
+        result_validity = []
         with np.errstate(divide="ignore", invalid="ignore"):
             for band_idx in range(output_bands):
                 local_dict = {}
+                band_valid = None
                 for token, arr in token_arrays.items():
                     if arr.shape[0] == 1:
-                        local_dict[token] = arr[0]
+                        operand = arr[0]
                     else:
-                        local_dict[token] = arr[band_idx]
+                        operand = arr[band_idx]
+                    operand_valid = ~np.ma.getmaskarray(operand)
+                    band_valid = (
+                        operand_valid.copy()
+                        if band_valid is None
+                        else band_valid & operand_valid
+                    )
+                    local_dict[token] = operand.filled(0)
 
                 safe_expr = expression
                 safe_dict = {}
@@ -591,21 +641,25 @@ class RasterProcessor:
                     safe_dict[safe_name] = local_dict[token]
 
                 band_result = ne.evaluate(safe_expr, local_dict=safe_dict)
-                band_result = np.nan_to_num(
-                    band_result.astype("float32"),
-                    nan=0.0, posinf=1.0, neginf=-1.0
-                )
+                band_result = np.asarray(band_result, dtype="float32")
+                band_valid &= np.isfinite(band_result)
+                band_result[~band_valid] = -9999.0
                 results.append(band_result)
+                result_validity.append(band_valid)
 
         output_array = np.stack(results, axis=0)
+        output_valid = np.any(np.stack(result_validity, axis=0), axis=0)
 
         meta.update({
             "dtype": "float32",
             "count": output_bands,
-            "driver": "GTiff"
+            "driver": "GTiff",
+            "nodata": -9999.0,
         })
-        with rasterio.open(output_path, "w", **meta) as dest:
-            dest.write(output_array)
+        with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+            with rasterio.open(output_path, "w", **meta) as dest:
+                dest.write(output_array)
+                write_dataset_mask(dest, output_valid)
 
         build_raster_overviews(output_path)
 
@@ -657,17 +711,34 @@ class RasterProcessor:
         bands: BandList = []
         with rasterio.open(paths[0]) as first_src:
             meta = first_src.meta.copy()
-            meta.update({"dtype": "uint8", "count": 1, "driver": "GTiff"})
-            height: int = first_src.height
-            width: int = first_src.width
+            meta.update({
+                "dtype": "uint8",
+                "count": 1,
+                "driver": "GTiff",
+                "nodata": 0,
+            })
+            valid = np.ones(
+                (first_src.height, first_src.width),
+                dtype=bool,
+            )
             for path in paths:
                 with rasterio.open(path) as src:
-                    if src.height != height or src.width != width:
-                        raise ValueError("Bands are not consistency!")
-                    bands.append(src.read(1))
+                    band = read_masked_on_grid(
+                        src,
+                        first_src,
+                        1,
+                        resampling=Resampling.bilinear,
+                        zero_is_invalid=None,
+                    )
+                    valid &= ~np.ma.getmaskarray(band)
+                    bands.append(band.filled(0))
         mask: MaskArray = extraction_func(bands, **kwargs)
-        with rasterio.open(output_path, "w", **meta) as dest:
-            dest.write(mask.astype("uint8"), 1)
+        mask = np.asarray(mask, dtype="uint8")
+        mask[~valid] = 0
+        with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+            with rasterio.open(output_path, "w", **meta) as dest:
+                dest.write(mask, 1)
+                write_dataset_mask(dest, valid)
         build_raster_overviews(output_path)
 
     @staticmethod

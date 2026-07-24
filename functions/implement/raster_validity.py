@@ -15,10 +15,31 @@ from typing import Iterable
 
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 from rasterio.features import shapes
+from rasterio.vrt import WarpedVRT
 from rasterio.warp import transform_geom
 from shapely.geometry import mapping, shape
 from shapely.ops import unary_union
+
+
+_VALIDITY_SIDECAR_SUFFIXES = (".msk", ".aux.xml", ".ovr")
+
+
+def raster_validity_signature(file_path: str) -> str:
+    """Stable cache version covering the raster and GDAL validity sidecars."""
+    absolute_path = os.path.abspath(file_path)
+    parts = []
+    for suffix in ("", *_VALIDITY_SIDECAR_SUFFIXES):
+        candidate = absolute_path + suffix
+        try:
+            stat = os.stat(candidate)
+            parts.append(
+                f"{suffix or 'raster'}:{stat.st_mtime_ns}:{stat.st_size}"
+            )
+        except OSError:
+            parts.append(f"{suffix or 'raster'}:missing")
+    return "|".join(parts)
 
 
 def _is_nan(value) -> bool:
@@ -108,6 +129,241 @@ def band_validity_mask(
     if zero_is_invalid:
         valid &= values != 0
     return valid
+
+
+def read_masked_data(
+    dataset,
+    band_indexes: int | Iterable[int] | None = None,
+    *,
+    zero_is_invalid: bool | None = False,
+    **read_kwargs,
+) -> np.ma.MaskedArray:
+    """Read raster samples while applying the shared per-band validity rules.
+
+    Algorithmic callers default to standard GDAL semantics, where a numeric
+    zero remains valid unless mask/nodata metadata says otherwise. Rendering
+    and footprint callers can pass ``zero_is_invalid=None`` to enable the
+    legacy-background fallback for unmasked rasters.
+    """
+    if band_indexes is None:
+        indexes = list(range(1, int(dataset.count) + 1))
+        read_arg = indexes
+        scalar = False
+    elif isinstance(band_indexes, int):
+        indexes = [band_indexes]
+        read_arg = band_indexes
+        scalar = True
+    else:
+        indexes = list(band_indexes)
+        read_arg = indexes
+        scalar = False
+
+    raw = dataset.read(read_arg, masked=True, **read_kwargs)
+    if np.ma.isMaskedArray(raw):
+        read_valid = ~np.ma.getmaskarray(raw)
+        values = np.asarray(raw.filled(0))
+    else:
+        read_valid = None
+        values = np.asarray(raw)
+
+    normalized_values = values[np.newaxis, ...] if scalar else values
+    normalized_valid = (
+        read_valid[np.newaxis, ...]
+        if scalar and read_valid is not None
+        else read_valid
+    )
+    valid = band_validity_mask(
+        normalized_values,
+        dataset,
+        indexes,
+        read_valid_mask=normalized_valid,
+        zero_is_invalid=zero_is_invalid,
+    )
+    if scalar:
+        return np.ma.array(values, mask=~valid[0], copy=False)
+    return np.ma.array(values, mask=~valid, copy=False)
+
+
+def read_pixel_validity_mask(
+    dataset,
+    band_indexes: Iterable[int] | None = None,
+    *,
+    out_shape: tuple[int, int] | None = None,
+    resampling: Resampling = Resampling.nearest,
+    zero_is_invalid: bool | None = None,
+) -> np.ndarray:
+    """Read the union of renderable pixels without retaining band data."""
+    indexes = list(band_indexes or range(1, int(dataset.count) + 1))
+    height, width = out_shape or (dataset.height, dataset.width)
+    pixel_valid = np.zeros((height, width), dtype=bool)
+    for band_index in indexes:
+        read_kwargs = {"masked": True}
+        if out_shape is not None:
+            read_kwargs.update({
+                "out_shape": out_shape,
+                "resampling": resampling,
+            })
+        raw = dataset.read(band_index, **read_kwargs)
+        read_valid = (
+            ~np.ma.getmaskarray(raw)
+            if np.ma.isMaskedArray(raw)
+            else None
+        )
+        values = np.asarray(raw.filled(0) if np.ma.isMaskedArray(raw) else raw)
+        band_valid = band_validity_mask(
+            values,
+            dataset,
+            [band_index],
+            read_valid_mask=read_valid,
+            zero_is_invalid=zero_is_invalid,
+        )[0]
+        pixel_valid |= band_valid
+    return pixel_valid
+
+
+def grids_match(source, reference) -> bool:
+    """Whether two datasets address the same pixels on the same spatial grid."""
+    return (
+        source.crs == reference.crs
+        and source.transform == reference.transform
+        and source.width == reference.width
+        and source.height == reference.height
+    )
+
+
+def read_masked_on_grid(
+    source,
+    reference,
+    band_indexes: int | Iterable[int] | None = None,
+    *,
+    resampling: Resampling = Resampling.nearest,
+    zero_is_invalid: bool | None = False,
+) -> np.ma.MaskedArray:
+    """Read a dataset on a reference grid, reprojecting data and masks together."""
+    if grids_match(source, reference):
+        return read_masked_data(
+            source,
+            band_indexes,
+            zero_is_invalid=zero_is_invalid,
+        )
+    if source.crs is None or reference.crs is None:
+        raise ValueError(
+            "Rasters on different grids require a CRS for mask-aware alignment."
+        )
+
+    if band_indexes is None:
+        indexes = list(range(1, int(source.count) + 1))
+        scalar = False
+    elif isinstance(band_indexes, int):
+        indexes = [band_indexes]
+        scalar = True
+    else:
+        indexes = list(band_indexes)
+        scalar = False
+
+    with WarpedVRT(
+        source,
+        crs=reference.crs,
+        transform=reference.transform,
+        width=reference.width,
+        height=reference.height,
+        resampling=resampling,
+        add_alpha=True,
+    ) as vrt:
+        aligned = read_masked_data(
+            vrt,
+            band_indexes,
+            zero_is_invalid=False,
+        ).copy()
+        coverage = vrt.read(vrt.count) > 0
+
+    aligned_values = np.asarray(aligned.filled(0))
+    valid = ~np.ma.getmaskarray(aligned)
+    valid &= coverage if scalar else coverage[np.newaxis, ...]
+    if (
+        zero_is_invalid is True
+        or (
+            zero_is_invalid is None
+            and not dataset_has_explicit_mask(source, indexes)
+        )
+    ):
+        valid &= aligned_values != 0
+    return np.ma.array(aligned_values, mask=~valid, copy=False)
+
+
+def pixel_validity_on_grid(
+    source,
+    reference,
+    band_indexes: Iterable[int] | None = None,
+    *,
+    source_transform=None,
+    zero_is_invalid: bool | None = None,
+) -> np.ndarray:
+    """Project the union of source-valid pixels onto a reference grid."""
+    indexes = list(band_indexes or range(1, int(source.count) + 1))
+    effective_transform = source_transform or source.transform
+    if (
+        source.crs == reference.crs
+        and effective_transform == reference.transform
+        and source.width == reference.width
+        and source.height == reference.height
+    ):
+        return read_pixel_validity_mask(
+            source,
+            indexes,
+            zero_is_invalid=zero_is_invalid,
+        )
+    if source.crs is None or reference.crs is None:
+        raise ValueError(
+            "Rasters on different grids require a CRS for validity alignment."
+        )
+
+    pixel_valid = np.zeros(
+        (reference.height, reference.width),
+        dtype=bool,
+    )
+    with WarpedVRT(
+        source,
+        src_crs=source.crs,
+        src_transform=effective_transform,
+        crs=reference.crs,
+        transform=reference.transform,
+        width=reference.width,
+        height=reference.height,
+        resampling=Resampling.nearest,
+        add_alpha=True,
+    ) as vrt:
+        coverage = vrt.read(vrt.count) > 0
+        for band_index in indexes:
+            raw = vrt.read(band_index, masked=True)
+            read_valid = (
+                ~np.ma.getmaskarray(raw)
+                if np.ma.isMaskedArray(raw)
+                else np.ones(raw.shape, dtype=bool)
+            )
+            read_valid &= coverage
+            values = np.asarray(
+                raw.filled(0)
+                if np.ma.isMaskedArray(raw)
+                else raw
+            )
+            band_valid = band_validity_mask(
+                values,
+                source,
+                [band_index],
+                read_valid_mask=read_valid,
+                zero_is_invalid=zero_is_invalid,
+            )[0]
+            pixel_valid |= band_valid
+    return pixel_valid
+
+
+def write_dataset_mask(destination, valid_pixels: np.ndarray) -> None:
+    """Persist a 2-D Boolean validity mask on an open raster destination."""
+    valid = np.asarray(valid_pixels, dtype=bool)
+    if valid.shape != (destination.height, destination.width):
+        raise ValueError("Dataset mask shape does not match the output raster grid.")
+    destination.write_mask(valid.astype(np.uint8) * 255)
 
 
 def _dataset_windows(dataset):
@@ -220,11 +476,11 @@ def compute_valid_pixel_footprint(
 @lru_cache(maxsize=64)
 def _cached_valid_pixel_footprint(
     absolute_path: str,
-    modified_time_ns: int,
+    validity_signature: str,
     dst_crs: str | None,
     band_indexes: tuple[int, ...] | None,
 ) -> dict:
-    del modified_time_ns  # Included in the key to invalidate changed rasters.
+    del validity_signature  # Included in the cache key.
     with rasterio.open(absolute_path) as dataset:
         return compute_valid_pixel_footprint(
             dataset,
@@ -241,12 +497,12 @@ def valid_pixel_footprint(
 ) -> dict:
     """Return a cached, mutation-safe valid-pixel footprint for a raster file."""
     absolute_path = os.path.abspath(file_path)
-    modified_time_ns = os.stat(absolute_path).st_mtime_ns
+    validity_signature = raster_validity_signature(absolute_path)
     indexes = tuple(band_indexes) if band_indexes is not None else None
     return deepcopy(
         _cached_valid_pixel_footprint(
             absolute_path,
-            modified_time_ns,
+            validity_signature,
             dst_crs,
             indexes,
         )

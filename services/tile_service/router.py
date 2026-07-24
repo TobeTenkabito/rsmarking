@@ -17,13 +17,14 @@ from services.data_service.database import get_db
 from services.tile_service.core.cache import tile_cache
 from services.tile_service.core.config import settings
 from services.tile_service.engine.tiler import get_tile_engine
+from functions.implement.raster_validity import raster_validity_signature
 
 import services.tile_service.logic as logic
 
 logger = logging.getLogger("tile_service.control")
 router = APIRouter()
 
-RENDER_CACHE_VERSION = "render_v4_pixel_validity"
+RENDER_CACHE_VERSION = "render_v5_mask_propagation"
 
 
 def _profile_enabled() -> bool:
@@ -75,11 +76,8 @@ def _parse_bands(bands: str):
     return parsed or [int(part) for part in settings.DEFAULT_BANDS.split(",")]
 
 
-def _file_version(file_path: str) -> int:
-    try:
-        return os.stat(file_path).st_mtime_ns
-    except OSError:
-        return 0
+def _file_version(file_path: str) -> str:
+    return raster_validity_signature(file_path)
 
 
 def _alpha_strategy() -> str:

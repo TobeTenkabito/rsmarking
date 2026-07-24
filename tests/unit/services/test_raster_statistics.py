@@ -57,3 +57,40 @@ def test_compute_raster_statistics_validates_band_indices(tmp_path):
 
     with pytest.raises(ValueError):
         compute_raster_statistics(str(raster_path), band_indices=[3])
+
+
+def test_compute_raster_statistics_uses_renderable_pixel_validity(tmp_path):
+    implicit_background = tmp_path / "implicit_background.tif"
+    explicit_zero = tmp_path / "explicit_zero.tif"
+    data = np.array([[0, 5]], dtype=np.float32)
+
+    with rasterio.open(
+        implicit_background,
+        "w",
+        driver="GTiff",
+        height=1,
+        width=2,
+        count=1,
+        dtype="float32",
+        transform=from_origin(0, 1, 1, 1),
+    ) as dst:
+        dst.write(data, 1)
+
+    with rasterio.open(
+        explicit_zero,
+        "w",
+        driver="GTiff",
+        height=1,
+        width=2,
+        count=1,
+        dtype="float32",
+        transform=from_origin(0, 1, 1, 1),
+    ) as dst:
+        dst.write(data, 1)
+        dst.write_mask(np.full((1, 2), 255, dtype=np.uint8))
+
+    implicit_stats = compute_raster_statistics(str(implicit_background))
+    explicit_stats = compute_raster_statistics(str(explicit_zero))
+
+    assert implicit_stats["bands"][0]["valid_count"] == 1
+    assert explicit_stats["bands"][0]["valid_count"] == 2

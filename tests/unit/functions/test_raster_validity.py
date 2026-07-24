@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 
@@ -153,3 +155,50 @@ def test_spectrum_rejects_zero_background_without_explicit_mask(tmp_path):
 
     result = RasterProcessor.query_spectrum(str(raster_path), 1.5, 1.5)
     assert result["bands"][0]["value"] == 4.0
+
+
+def test_footprint_cache_invalidates_when_external_mask_changes(tmp_path):
+    raster_path = tmp_path / "external_mask.tif"
+    with rasterio.open(
+        raster_path,
+        "w",
+        driver="GTiff",
+        height=2,
+        width=2,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:3857",
+        transform=from_origin(0, 2, 1, 1),
+    ) as dst:
+        dst.write(np.ones((2, 2), dtype=np.uint8), 1)
+
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=False):
+        with rasterio.open(raster_path, "r+") as dst:
+            dst.write_mask(
+                np.array([[255, 0], [0, 0]], dtype=np.uint8)
+            )
+
+    first = valid_pixel_footprint(
+        str(raster_path),
+        dst_crs="EPSG:3857",
+    )
+    raster_stat = os.stat(raster_path)
+
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=False):
+        with rasterio.open(raster_path, "r+") as dst:
+            dst.write_mask(
+                np.array([[255, 255], [0, 0]], dtype=np.uint8)
+            )
+    os.utime(
+        raster_path,
+        ns=(raster_stat.st_atime_ns, raster_stat.st_mtime_ns),
+    )
+
+    second = valid_pixel_footprint(
+        str(raster_path),
+        dst_crs="EPSG:3857",
+    )
+
+    assert (tmp_path / "external_mask.tif.msk").exists()
+    assert first["valid_pixel_count"] == 1
+    assert second["valid_pixel_count"] == 2

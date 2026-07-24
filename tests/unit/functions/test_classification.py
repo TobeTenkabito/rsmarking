@@ -11,7 +11,7 @@ from functions.implement.classification import (
 from functions.implement.segmentation import deep_learning_segmentation
 
 
-def _write_raster(path, data):
+def _write_raster(path, data, valid_mask=None):
     if data.ndim == 2:
         data = data[np.newaxis, ...]
     with rasterio.open(
@@ -26,6 +26,8 @@ def _write_raster(path, data):
         transform=from_origin(0, data.shape[1], 1, 1),
     ) as dst:
         dst.write(data.astype("float32"))
+        if valid_mask is not None:
+            dst.write_mask(np.asarray(valid_mask, dtype=np.uint8) * 255)
 
 
 def test_supervised_classification_uses_labeled_pixels(tmp_path):
@@ -76,6 +78,50 @@ def test_unsupervised_classification_creates_requested_classes(tmp_path):
         assert classified.dtypes[0] == "uint16"
         assert set(np.unique(labels)) == {1, 2}
     assert result["class_count"] == 2
+
+
+def test_unsupervised_classification_excludes_masked_source_pixels(tmp_path):
+    source = tmp_path / "source_masked.tif"
+    output = tmp_path / "unsupervised_masked.tif"
+    data = np.ones((1, 4, 4), dtype=np.float32)
+    data[:, 2:, :] = 10
+    valid = np.ones((4, 4), dtype=bool)
+    valid[0, 0] = False
+    _write_raster(source, data, valid_mask=valid)
+
+    unsupervised_classification(
+        str(source),
+        str(output),
+        n_classes=2,
+        method="kmeans",
+        random_seed=7,
+    )
+
+    with rasterio.open(output) as classified:
+        assert classified.read(1)[0, 0] == 0
+        assert classified.dataset_mask()[0, 0] == 0
+
+
+def test_unsupervised_classification_excludes_implicit_zero_background(tmp_path):
+    source = tmp_path / "legacy_background.tif"
+    output = tmp_path / "legacy_background_classified.tif"
+    data = np.zeros((1, 4, 4), dtype=np.float32)
+    data[:, 1:3, :] = 1
+    data[:, 2, :] = 10
+    _write_raster(source, data)
+
+    unsupervised_classification(
+        str(source),
+        str(output),
+        n_classes=2,
+        method="kmeans",
+        random_seed=7,
+    )
+
+    with rasterio.open(output) as classified:
+        labels = classified.read(1)
+        assert np.all(labels[[0, 3], :] == 0)
+        assert np.all(labels[1:3, :] > 0)
 
 
 def test_deep_learning_segmentation_builtin_backend(tmp_path):

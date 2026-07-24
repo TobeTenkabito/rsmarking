@@ -35,6 +35,10 @@ class FakeStatsDataset:
         )
 
 
+class ExplicitMaskStatsDataset(FakeStatsDataset):
+    mask_flag_enums = (("per_dataset",),)
+
+
 def test_stats_manager_concurrent_same_file_band(tmp_path, monkeypatch):
     src = FakeStatsDataset(str(tmp_path / "image.tif"))
     StatsManager.invalidate_file(src.name)
@@ -101,6 +105,22 @@ def test_stats_manager_ignores_masked_nan_and_nodata(tmp_path):
     assert np.isfinite(high)
     assert high > low
     assert low >= 10.0
+
+
+def test_stats_manager_preserves_valid_zero_when_mask_is_explicit(tmp_path):
+    manager = StatsManager()
+    implicit = FakeStatsDataset(str(tmp_path / "implicit.tif"))
+    explicit = ExplicitMaskStatsDataset(str(tmp_path / "explicit.tif"))
+    band = np.concatenate([
+        np.zeros(30, dtype=np.float32),
+        np.linspace(10, 100, 70, dtype=np.float32),
+    ])
+
+    implicit_low, _ = manager._compute_tile_stats(band, implicit, 1)
+    explicit_low, _ = manager._compute_tile_stats(band, explicit, 1)
+
+    assert implicit_low >= 10
+    assert explicit_low == 0
 
 
 def test_stats_manager_skips_metadata_stats_that_equal_nodata(tmp_path, monkeypatch):

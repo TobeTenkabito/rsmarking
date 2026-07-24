@@ -129,3 +129,29 @@ def test_runtime_allows_vector_analysis_without_forcing_an_output(tmp_path, monk
     sandbox_entry.main()
 
     assert list(Path(output_dir).iterdir()) == []
+
+
+def test_save_raster_helper_persists_masked_array_validity(tmp_path, monkeypatch):
+    output = tmp_path / "masked.tif"
+    monkeypatch.setattr(sandbox_entry, "OUTPUT_DIR", str(tmp_path))
+    data = np.ma.array(
+        np.array([[0, 5], [6, 7]], dtype=np.float32),
+        mask=np.array([[False, False], [True, True]]),
+    )
+    profile = {
+        "driver": "GTiff",
+        "height": 2,
+        "width": 2,
+        "count": 1,
+        "dtype": "float32",
+        "transform": rasterio.transform.from_origin(0, 2, 1, 1),
+    }
+
+    sandbox_entry.save_raster_helper(data, str(output), profile)
+
+    with rasterio.open(output) as result:
+        np.testing.assert_array_equal(
+            result.dataset_mask() > 0,
+            np.array([[True, True], [False, False]]),
+        )
+        assert result.read(1)[0, 0] == 0

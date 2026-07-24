@@ -5,6 +5,8 @@ from threading import RLock
 import numpy as np
 from rasterio.enums import Resampling
 
+from functions.implement.raster_validity import band_validity_mask
+
 logger = logging.getLogger("tile_service.stats")
 
 # Shared across TileEngine instances. Key: (file_path, band_idx) -> (low, high)
@@ -150,16 +152,28 @@ class StatsManager:
 
     def _compute_tile_stats(self, band, src=None, b_idx=None):
         if np.ma.isMaskedArray(band):
-            band = band.filled(np.nan)
+            read_valid = ~np.ma.getmaskarray(band)
+            band = band.filled(0)
+        else:
+            read_valid = None
         band = np.asarray(band, dtype=np.float32)
-        mask = np.isfinite(band) & (band != 0)
 
-        nodata = self._band_nodata(src, b_idx)
-        if nodata is not None:
-            if self._is_nan(nodata):
-                mask &= ~np.isnan(band)
-            else:
-                mask &= band != float(nodata)
+        if src is not None and b_idx is not None:
+            validity_values = band
+            validity_read_mask = read_valid
+            if band.ndim == 1:
+                validity_values = band[np.newaxis, :]
+                if read_valid is not None:
+                    validity_read_mask = read_valid[np.newaxis, :]
+            mask = band_validity_mask(
+                validity_values,
+                src,
+                [b_idx],
+                read_valid_mask=validity_read_mask,
+                zero_is_invalid=None,
+            )[0].reshape(band.shape)
+        else:
+            mask = np.isfinite(band) & (band != 0)
 
         valid = band[mask]
         if valid.size < 10:

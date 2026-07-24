@@ -217,13 +217,30 @@ def output_path(filename):
 
 def save_raster_helper(data, path, profile):
     safe_path = _safe_container_path(path, for_write=True)
-    with rasterio.open(safe_path, "w", **profile) as dst:
-        if data.ndim == 2:
-            dst.write(data, 1)
-            return
+    is_masked = np.ma.isMaskedArray(data)
+    if is_masked:
+        data_mask = np.ma.getmaskarray(data)
+        fill_value = profile.get("nodata")
+        if fill_value is None:
+            fill_value = 0
+        array = np.asarray(data.filled(fill_value))
+        if array.ndim == 2:
+            valid_pixels = ~data_mask
+        else:
+            valid_pixels = np.all(~data_mask, axis=0)
+    else:
+        array = np.asarray(data)
+        valid_pixels = None
 
-        for i in range(data.shape[0]):
-            dst.write(data[i], i + 1)
+    with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+        with rasterio.open(safe_path, "w", **profile) as dst:
+            if array.ndim == 2:
+                dst.write(array, 1)
+            else:
+                for i in range(array.shape[0]):
+                    dst.write(array[i], i + 1)
+            if valid_pixels is not None:
+                dst.write_mask(valid_pixels.astype(np.uint8) * 255)
 
 
 def main():

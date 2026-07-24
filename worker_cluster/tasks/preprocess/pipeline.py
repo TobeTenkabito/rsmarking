@@ -18,6 +18,11 @@ from worker_cluster.bridge.db_sync import get_sync_db
 from services.data_service.models import RasterMetadata, RasterField
 from services.data_service.processor import RasterProcessor
 from functions.implement.io_ops import build_raster_overviews, convert_raster_to_cog
+from functions.implement.raster_validity import (
+    pixel_validity_on_grid,
+    read_masked_data,
+    write_dataset_mask,
+)
 
 import rasterio
 import numpy as np
@@ -139,17 +144,26 @@ def reproject_task(
                 "driver": "GTiff",
             })
             self.report(30, "Writing reprojected result")
-            with rasterio.open(output_path, "w", **meta) as dst:
-                for band_idx in range(1, src.count + 1):
-                    reproject(
-                        source=rasterio.band(src, band_idx),
-                        destination=rasterio.band(dst, band_idx),
-                        src_transform=src.transform,
-                        src_crs=src.crs,
-                        dst_transform=transform,
-                        dst_crs=target_crs,
-                        resampling=Resampling.nearest,
+            with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+                with rasterio.open(output_path, "w", **meta) as dst:
+                    for band_idx in range(1, src.count + 1):
+                        reproject(
+                            source=rasterio.band(src, band_idx),
+                            destination=rasterio.band(dst, band_idx),
+                            src_transform=src.transform,
+                            src_crs=src.crs,
+                            src_nodata=src.nodata,
+                            dst_transform=transform,
+                            dst_crs=target_crs,
+                            dst_nodata=src.nodata,
+                            resampling=Resampling.nearest,
+                        )
+                    destination_valid = pixel_validity_on_grid(
+                        src,
+                        dst,
+                        zero_is_invalid=None,
                     )
+                    write_dataset_mask(dst, destination_valid)
 
         self.report(80, "Building overviews")
         build_raster_overviews(output_path)
@@ -197,26 +211,28 @@ def compute_statistics_task(self, index_id: int, file_path: str) -> dict:
 
         with rasterio.open(file_path) as src:
             band_count = src.count
-            nodata = src.nodata
 
             for i in range(1, band_count + 1):
                 self.report(
                     10 + int(80 * i / band_count),
                     f"Calculating statistics for band {i}/{band_count}"
                 )
-                data = src.read(i).astype("float32")
-                if nodata is not None:
-                    data = data[data != nodata]
-                if data.size == 0:
+                data = read_masked_data(
+                    src,
+                    i,
+                    zero_is_invalid=None,
+                ).astype("float32")
+                values = np.ma.compressed(np.ma.masked_invalid(data))
+                if values.size == 0:
                     stats_list.append({"band": i, "min": None, "max": None,
                                        "mean": None, "std": None})
                     continue
                 stats_list.append({
                     "band":  i,
-                    "min":   float(np.nanmin(data)),
-                    "max":   float(np.nanmax(data)),
-                    "mean":  float(np.nanmean(data)),
-                    "std":   float(np.nanstd(data)),
+                    "min":   float(np.min(values)),
+                    "max":   float(np.max(values)),
+                    "mean":  float(np.mean(values)),
+                    "std":   float(np.std(values)),
                 })
 
         # write RasterField(text,cannot be deleted by frontend)

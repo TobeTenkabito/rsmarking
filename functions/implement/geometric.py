@@ -11,6 +11,12 @@ from rasterio.enums import Resampling
 from rasterio.transform import array_bounds, from_gcps, from_origin
 from rasterio.warp import calculate_default_transform, reproject
 
+from functions.implement.raster_validity import (
+    pixel_validity_on_grid,
+    read_pixel_validity_mask,
+    write_dataset_mask,
+)
+
 
 _RESAMPLING_METHODS = {
     name: getattr(Resampling, name)
@@ -84,32 +90,63 @@ def geometric_correction(
                 target_resolution_x,
                 target_resolution_y,
             )
-            with rasterio.open(output_path, "w", **profile) as dst:
-                if src.crs is None:
-                    data = src.read(out_shape=(src.count, height, width), resampling=resampling)
-                    dst.write(data)
-                else:
-                    for band_index in range(1, src.count + 1):
-                        reproject(
-                            source=rasterio.band(src, band_index),
-                            destination=rasterio.band(dst, band_index),
-                            src_transform=corrected_transform,
-                            src_crs=src.crs,
-                            src_nodata=src.nodata,
-                            dst_transform=dst_transform,
-                            dst_crs=dst_crs_value,
-                            dst_nodata=src.nodata,
+            with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+                with rasterio.open(output_path, "w", **profile) as dst:
+                    if src.crs is None:
+                        data = src.read(
+                            out_shape=(src.count, height, width),
                             resampling=resampling,
                         )
-                _copy_band_descriptions(src, dst)
-                dst.update_tags(GEOMETRIC_CORRECTION="true", GEOMETRIC_METHOD=_method_name(gcps))
+                        dst.write(data)
+                        destination_valid = read_pixel_validity_mask(
+                            src,
+                            out_shape=(height, width),
+                            resampling=Resampling.nearest,
+                            zero_is_invalid=None,
+                        )
+                    else:
+                        for band_index in range(1, src.count + 1):
+                            reproject(
+                                source=rasterio.band(src, band_index),
+                                destination=rasterio.band(dst, band_index),
+                                src_transform=corrected_transform,
+                                src_crs=src.crs,
+                                src_nodata=src.nodata,
+                                dst_transform=dst_transform,
+                                dst_crs=dst_crs_value,
+                                dst_nodata=src.nodata,
+                                resampling=resampling,
+                            )
+                        destination_valid = pixel_validity_on_grid(
+                            src,
+                            dst,
+                            source_transform=corrected_transform,
+                            zero_is_invalid=None,
+                        )
+                    write_dataset_mask(dst, destination_valid)
+                    _copy_band_descriptions(src, dst)
+                    dst.update_tags(
+                        GEOMETRIC_CORRECTION="true",
+                        GEOMETRIC_METHOD=_method_name(gcps),
+                    )
         else:
             profile = src.profile.copy()
             profile.update(driver="GTiff", transform=corrected_transform)
-            with rasterio.open(output_path, "w", **profile) as dst:
-                dst.write(src.read())
-                _copy_band_descriptions(src, dst)
-                dst.update_tags(GEOMETRIC_CORRECTION="true", GEOMETRIC_METHOD=_method_name(gcps))
+            with rasterio.Env(GDAL_TIFF_INTERNAL_MASK=True):
+                with rasterio.open(output_path, "w", **profile) as dst:
+                    dst.write(src.read())
+                    write_dataset_mask(
+                        dst,
+                        read_pixel_validity_mask(
+                            src,
+                            zero_is_invalid=None,
+                        ),
+                    )
+                    _copy_band_descriptions(src, dst)
+                    dst.update_tags(
+                        GEOMETRIC_CORRECTION="true",
+                        GEOMETRIC_METHOD=_method_name(gcps),
+                    )
             width, height = src.width, src.height
             dst_transform = corrected_transform
 

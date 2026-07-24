@@ -13,6 +13,7 @@ from rasterio.enums import Resampling
 from functions.implement.raster_validity import (
     band_validity_mask,
     dataset_has_explicit_mask,
+    raster_validity_signature,
 )
 from services.tile_service.core.config import settings
 
@@ -69,10 +70,7 @@ def clear_tile_engine_cache():
 
 
 def _file_mtime_ns(file_path: str):
-    try:
-        return os.stat(file_path).st_mtime_ns
-    except OSError:
-        return 0
+    return raster_validity_signature(file_path)
 
 
 def _profile_enabled() -> bool:
@@ -116,11 +114,11 @@ class TileEngine:
         self._lock = RLock()
         self._thread_local = local()
 
-    def _get_src(self, current_mtime_ns: int | None = None):
+    def _get_src(self, current_mtime_ns: int | str | None = None):
         src, _ = self._open_src(current_mtime_ns)
         return src
 
-    def _open_src(self, current_mtime_ns: int | None = None):
+    def _open_src(self, current_mtime_ns: int | str | None = None):
         if current_mtime_ns is None:
             current_mtime_ns = _file_mtime_ns(self.file_path)
 
@@ -186,7 +184,7 @@ class TileEngine:
         except Exception:
             logger.warning("Failed to log raster diagnostics for %s", _safe_basename(self.file_path))
 
-    def _refresh_file_state(self, current_mtime_ns: int):
+    def _refresh_file_state(self, current_mtime_ns: int | str):
         with self._lock:
             file_changed = (
                 self._file_mtime_ns is not None
@@ -202,7 +200,7 @@ class TileEngine:
 
             self._file_mtime_ns = current_mtime_ns
 
-    def _get_transformer(self, src, current_mtime_ns: int):
+    def _get_transformer(self, src, current_mtime_ns: int | str):
         transformer_key = (self.file_path, current_mtime_ns, str(src.crs))
         with self._lock:
             if self._transformer is None or self._transformer_key != transformer_key:

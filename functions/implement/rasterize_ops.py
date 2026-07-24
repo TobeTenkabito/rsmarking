@@ -9,6 +9,8 @@ from shapely.geometry import mapping, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform, unary_union
 
+from functions.implement.raster_validity import band_validity_mask
+
 
 def vector_to_raster(
         features: List[Dict[str, Any]],
@@ -145,7 +147,13 @@ def raster_to_vector(
                 f"Band index {band_index} is out of range for raster with {src.count} band(s)"
             )
 
-        data = src.read(band_index)
+        raw_data = src.read(band_index, masked=True)
+        if np.ma.isMaskedArray(raw_data):
+            read_valid = ~np.ma.getmaskarray(raw_data)
+            data = np.asarray(raw_data.filled(0))
+        else:
+            read_valid = None
+            data = np.asarray(raw_data)
         if data.dtype.name not in {"int16", "int32", "uint8", "uint16", "float32"}:
             data = data.astype("float32")
         include_mask = None
@@ -153,13 +161,23 @@ def raster_to_vector(
         if np.issubdtype(data.dtype, np.floating):
             include_mask = np.isfinite(data)
 
-        if skip_nodata and src.nodata is not None:
-            nodata = src.nodata
-            if isinstance(nodata, float) and math.isnan(nodata):
-                nodata_mask = ~np.isnan(data)
-            else:
-                nodata_mask = data != nodata
-            include_mask = nodata_mask if include_mask is None else include_mask & nodata_mask
+        if skip_nodata:
+            nodata_mask = band_validity_mask(
+                data[np.newaxis, ...],
+                src,
+                [band_index],
+                read_valid_mask=(
+                    read_valid[np.newaxis, ...]
+                    if read_valid is not None
+                    else None
+                ),
+                zero_is_invalid=False,
+            )[0]
+            include_mask = (
+                nodata_mask
+                if include_mask is None
+                else include_mask & nodata_mask
+            )
 
         if skip_zero:
             zero_mask = data != 0

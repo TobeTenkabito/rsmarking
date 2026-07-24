@@ -5,6 +5,8 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 
+from functions.implement.raster_validity import read_masked_data
+
 
 def _finite_values(data: np.ma.MaskedArray) -> np.ndarray:
     values = np.ma.compressed(data)
@@ -60,10 +62,11 @@ def _band_stats(
     out_width: int,
     bins: int,
 ) -> dict:
-    data = src.read(
+    data = read_masked_data(
+        src,
         band_index,
+        zero_is_invalid=None,
         out_shape=(out_height, out_width),
-        masked=True,
         resampling=Resampling.nearest,
     )
     data = np.ma.masked_invalid(data)

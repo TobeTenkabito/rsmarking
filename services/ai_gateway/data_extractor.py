@@ -3,6 +3,7 @@ import json
 import logging
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from geoalchemy2.functions import ST_AsGeoJSON
@@ -17,6 +18,10 @@ from services.ai_gateway.schema_validator import (
     SpatialBounds,
     NumericStats
 )
+from functions.implement.raster_validity import (
+    dataset_has_explicit_mask,
+    read_masked_data,
+)
 
 logger = logging.getLogger("ai_gateway.data_extractor")
 
@@ -27,9 +32,18 @@ def _compute_raster_stats(file_path: str) -> NumericStats | None:
     try:
         with rasterio.open(file_path) as src:
             factor = max(1, src.width // 512, src.height // 512)
-            out_shape = (1, int(src.height / factor), int(src.width / factor))
-            data = src.read(1, out_shape=out_shape)
-            valid_data = data[data != src.nodata] if src.nodata is not None else data
+            out_shape = (
+                max(1, int(src.height / factor)),
+                max(1, int(src.width / factor)),
+            )
+            data = read_masked_data(
+                src,
+                1,
+                zero_is_invalid=None,
+                out_shape=out_shape,
+                resampling=Resampling.nearest,
+            )
+            valid_data = np.ma.compressed(np.ma.masked_invalid(data))
             if valid_data.size == 0:
                 return None
 
@@ -196,12 +210,18 @@ def _get_16_point_sampling(src: rasterio.DatasetReader) -> dict:
     points = [(x, y) for y in reversed(y_coords) for x in x_coords]
 
     values = []
-    nodata_val = src.nodata
-
-    for val in src.sample(points):
-        v = float(val[0]) if val.size > 0 else None
-        if v is not None and nodata_val is not None and np.isclose(v, nodata_val):
+    has_explicit_validity = dataset_has_explicit_mask(src, [1])
+    for val in src.sample(points, indexes=[1], masked=True):
+        sample = val[0] if val.size > 0 else np.ma.masked
+        if np.ma.is_masked(sample):
             v = None
+        else:
+            v = float(sample)
+            if not np.isfinite(v) or (
+                not has_explicit_validity
+                and np.isclose(v, 0.0)
+            ):
+                v = None
         values.append(v)
 
     return {
