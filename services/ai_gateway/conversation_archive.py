@@ -16,14 +16,34 @@ ARCHIVE_DIR = os.path.join(BASE_DIR, "storage", "ai_conversations")
 
 
 class ConversationArchiveRequest(BaseModel):
-    session_id: str | None = Field(default=None, description="Agent session id.")
+    session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+        description="Agent session id.",
+    )
     title: str | None = Field(default=None, max_length=120, description="Optional archive title.")
-    messages: list[dict[str, Any]] = Field(default_factory=list, description="Conversation messages.")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Optional client metadata.")
+    messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        max_length=40,
+        description="Conversation messages.",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        max_length=32,
+        description="Optional client metadata.",
+    )
 
 
 class ConversationRestoreRequest(BaseModel):
-    session_id: str | None = Field(default=None, description="Optional session id to restore into.")
+    session_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+        description="Optional session id to restore into.",
+    )
 
 
 def archive_conversation(payload: ConversationArchiveRequest) -> dict[str, Any]:
@@ -119,7 +139,7 @@ def build_archive_memory_context(limit: int = 5) -> str:
 
 def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
-    for message in messages:
+    for message in messages[:40]:
         role = str(message.get("role") or "").strip()
         content = str(message.get("content") or "")
         if role not in {"user", "assistant", "system", "tool"} or not content:
@@ -252,10 +272,9 @@ def _read_archive_by_filename(filename: str) -> dict[str, Any]:
 
 
 def _archive_path(archive_id: str) -> str:
-    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", archive_id)
-    if not safe_id:
-        raise ValueError("Invalid archive id")
-    return os.path.join(ARCHIVE_DIR, f"{safe_id}.json")
+    if not re.fullmatch(r"[a-f0-9]{32}", archive_id):
+        raise FileNotFoundError(archive_id)
+    return os.path.join(ARCHIVE_DIR, f"{archive_id}.json")
 
 
 def _ensure_archive_dir() -> None:

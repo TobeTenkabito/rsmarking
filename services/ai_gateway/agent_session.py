@@ -10,6 +10,9 @@ from typing import Any
 
 SESSION_TTL_SECONDS = 6 * 60 * 60
 MAX_SESSION_MESSAGES = 20
+MAX_SESSION_USER_CHARS = 4000
+MAX_SESSION_ASSISTANT_CHARS = 24000
+MAX_AGENT_SESSIONS = 512
 
 _SESSION_LOCK = Lock()
 _AGENT_SESSIONS: dict[str, dict[str, Any]] = {}
@@ -51,12 +54,17 @@ def append_session_turn(session_id: str, user_prompt: str, answer: str) -> None:
 
     purge_expired_sessions()
     with _SESSION_LOCK:
+        _ensure_session_capacity_locked(session_id)
         session = _AGENT_SESSIONS.setdefault(
             session_id,
             {"messages": deque(maxlen=MAX_SESSION_MESSAGES), "updated_at": time.time()},
         )
-        session["messages"].append({"role": "user", "content": user_prompt})
-        session["messages"].append({"role": "assistant", "content": answer})
+        session["messages"].append(
+            {"role": "user", "content": user_prompt[:MAX_SESSION_USER_CHARS]}
+        )
+        session["messages"].append(
+            {"role": "assistant", "content": answer[:MAX_SESSION_ASSISTANT_CHARS]}
+        )
         session["updated_at"] = time.time()
 
 
@@ -71,12 +79,13 @@ def restore_session_messages(session_id: str, messages: list[dict[str, Any]]) ->
     normalized = deque(maxlen=MAX_SESSION_MESSAGES)
     for message in messages:
         role = message.get("role")
-        content = str(message.get("content") or "")
+        content = str(message.get("content") or "")[:MAX_SESSION_ASSISTANT_CHARS]
         if role not in {"user", "assistant"} or not content:
             continue
         normalized.append({"role": role, "content": content})
 
     with _SESSION_LOCK:
+        _ensure_session_capacity_locked(session_id)
         _AGENT_SESSIONS[session_id] = {
             "messages": normalized,
             "updated_at": time.time(),
@@ -118,3 +127,26 @@ def _try_acquire_execution_lock(session_id: str) -> Any | None:
         if lock.acquire(blocking=False):
             return lock
         return None
+
+
+def _ensure_session_capacity_locked(incoming_session_id: str) -> None:
+    if incoming_session_id in _AGENT_SESSIONS:
+        return
+
+    overflow = len(_AGENT_SESSIONS) - MAX_AGENT_SESSIONS + 1
+    if overflow <= 0:
+        return
+
+    candidates = sorted(
+        _AGENT_SESSIONS.items(),
+        key=lambda item: item[1].get("updated_at", 0),
+    )
+    for session_id, _session in candidates:
+        lock = _AGENT_SESSION_EXECUTION_LOCKS.get(session_id)
+        if lock is not None and lock.locked():
+            continue
+        _AGENT_SESSIONS.pop(session_id, None)
+        _AGENT_SESSION_EXECUTION_LOCKS.pop(session_id, None)
+        overflow -= 1
+        if overflow <= 0:
+            break

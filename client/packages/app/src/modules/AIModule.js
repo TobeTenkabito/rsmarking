@@ -8,6 +8,12 @@ const AGENT_ATTACHMENT_LIMIT = 6;
 const AGENT_TEXT_EXCERPT_CHARS = 12000;
 const AGENT_TEXT_FILE_BYTES = 512 * 1024;
 const AGENT_IMAGE_FILE_BYTES = 3 * 1024 * 1024;
+const AGENT_IMAGE_MIME_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+]);
 const AGENT_RESPONSE_REVEAL_DELAY_MS = 90;
 
 export class AIModule {
@@ -716,7 +722,11 @@ export class AIModule {
     }
 
     async _readAgentAttachment(file) {
-        const kind = file.type?.startsWith('image/') ? 'image' : this._isTextAttachment(file) ? 'text' : 'file';
+        const kind = AGENT_IMAGE_MIME_TYPES.has((file.type || '').toLowerCase())
+            ? 'image'
+            : this._isTextAttachment(file)
+                ? 'text'
+                : 'file';
         const attachment = {
             id: this._createMessageId(),
             name: file.name || 'attachment',

@@ -30,7 +30,7 @@ def normalize_tool_call(tool_call: Any) -> dict[str, Any]:
             "id": str(tool_call.get("id") or ""),
             "type": tool_call.get("type") or "function",
             "function": {
-                "name": function.get("name") or "",
+                "name": str(function.get("name") or ""),
                 "arguments": function.get("arguments") or "{}",
             },
         }
@@ -40,16 +40,20 @@ def normalize_tool_call(tool_call: Any) -> dict[str, Any]:
         "id": str(getattr(tool_call, "id", "")),
         "type": getattr(tool_call, "type", "function"),
         "function": {
-            "name": getattr(function, "name", "") if function else "",
+            "name": str(getattr(function, "name", "") or "") if function else "",
             "arguments": getattr(function, "arguments", "{}") if function else "{}",
         },
     }
 
 
-def parse_tool_arguments(raw_arguments: str) -> tuple[dict[str, Any], str | None]:
+def parse_tool_arguments(raw_arguments: Any) -> tuple[dict[str, Any], str | None]:
+    if isinstance(raw_arguments, dict):
+        return dict(raw_arguments), None
+    if not isinstance(raw_arguments, str):
+        return {}, "Tool arguments must be a JSON object or encoded JSON string."
     try:
         parsed = json.loads(raw_arguments or "{}")
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
         return {}, f"Tool arguments must be valid JSON: {exc}"
 
     if not isinstance(parsed, dict):
