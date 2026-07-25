@@ -56,10 +56,93 @@ def test_agent_returns_direct_answer_without_tool_calls(monkeypatch):
 
     assert result["status"] == "success"
     assert result["mode"] == "agent"
+    assert result["permission_level"] == "standard"
     assert result["answer"] == "No tool needed."
     assert result["steps"] == []
     assert calls[0]["model"] == "test-model"
     assert calls[0]["tools"]
+
+
+def test_agent_full_control_permission_reaches_prompt_gate_and_response(monkeypatch):
+    calls = []
+    invoked = []
+    responses = [
+        _response(
+            tool_calls=[
+                _tool_call(
+                    "delete_raster",
+                    {"raster_id": 42},
+                )
+            ]
+        ),
+        _response("Project cleanup completed."),
+    ]
+
+    async def fake_acompletion(**kwargs):
+        calls.append(kwargs)
+        return responses.pop(0)
+
+    async def fake_invoke_agent_tool(name, arguments, db, vector_db):
+        invoked.append((name, arguments))
+        return {"status": "success", "result": {"deleted": arguments["raster_id"]}}
+
+    monkeypatch.setattr(agent_handler, "acompletion", fake_acompletion)
+    monkeypatch.setattr(agent_handler, "_get_agent_tools", lambda names: [{"type": "function"}])
+    monkeypatch.setattr(agent_handler, "_get_allowed_tool_names", lambda names: {"delete_raster"})
+    monkeypatch.setattr(agent_handler, "_invoke_agent_tool", fake_invoke_agent_tool)
+
+    result = _run(
+        handle_agent(
+            AgentRequestPayload(
+                user_prompt="Take over this project and organize its data.",
+                permission_level="full_control",
+                language="en",
+                tool_names=["delete_raster"],
+            ),
+            db=object(),
+            vector_db=object(),
+            model_name="test-model",
+        )
+    )
+
+    assert invoked == [("delete_raster", {"raster_id": 42})]
+    assert result["permission_level"] == "full_control"
+    assert result["steps"][0]["status"] == "success"
+    assert "Active permission tier: full project control" in calls[0]["messages"][0]["content"]
+    assert "No permission tier may modify RSMarking project source code" in calls[0]["messages"][0]["content"]
+
+
+def test_permission_tiers_hide_tools_they_can_never_execute():
+    tools = [
+        {"type": "function", "function": {"name": name}}
+        for name in (
+            "get_raster_metadata",
+            "create_vector_layer",
+            "update_vector_layer",
+            "delete_vector_layer",
+            "write_project_source",
+        )
+    ]
+    names = {tool["function"]["name"] for tool in tools}
+
+    read_tools, read_names = agent_handler._restrict_tools_for_permission(
+        tools,
+        names,
+        agent_handler.AgentPermissionLevel.READ_ONLY,
+    )
+    safe_tools, safe_names = agent_handler._restrict_tools_for_permission(
+        tools,
+        names,
+        agent_handler.AgentPermissionLevel.SAFE,
+    )
+
+    assert read_names == {"get_raster_metadata"}
+    assert [tool["function"]["name"] for tool in read_tools] == ["get_raster_metadata"]
+    assert safe_names == {"get_raster_metadata", "create_vector_layer"}
+    assert [tool["function"]["name"] for tool in safe_tools] == [
+        "get_raster_metadata",
+        "create_vector_layer",
+    ]
 
 
 def test_agent_invokes_registered_tool_and_returns_trace(monkeypatch):

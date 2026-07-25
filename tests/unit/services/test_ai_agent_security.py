@@ -2,8 +2,10 @@ import pytest
 from pydantic import ValidationError
 
 from services.ai_gateway.agent_security import (
+    AgentPermissionLevel,
     authorize_tool_call,
     build_untrusted_context_message,
+    hard_boundary_violation,
     sanitize_error_message,
     sanitize_model_output,
     tool_effect,
@@ -240,3 +242,166 @@ def test_tool_effect_defaults_unknown_processing_tools_to_execute():
     assert tool_effect("update_vector_layer") == "update"
     assert tool_effect("create_vector_layer") == "create"
     assert tool_effect("future_processing_tool") == "execute"
+
+
+def test_read_only_permission_allows_inspection_but_blocks_every_side_effect():
+    read = authorize_tool_call(
+        "get_raster_metadata",
+        {"raster_id": 42},
+        "Inspect raster 42.",
+        permission_level=AgentPermissionLevel.READ_ONLY,
+    )
+    execute = authorize_tool_call(
+        "calculate_ndvi",
+        {"red_id": 1, "nir_id": 2},
+        "Calculate NDVI.",
+        permission_level=AgentPermissionLevel.READ_ONLY,
+    )
+    create = authorize_tool_call(
+        "create_vector_layer",
+        {"project_id": "p", "name": "new"},
+        "Create a layer.",
+        permission_level=AgentPermissionLevel.READ_ONLY,
+    )
+
+    assert read.allowed is True
+    assert execute.allowed is False
+    assert create.allowed is False
+    assert "read-only" in execute.reason
+
+
+def test_safe_permission_creates_outputs_but_never_mutates_existing_data():
+    create = authorize_tool_call(
+        "create_vector_layer",
+        {"project_id": "p", "name": "water"},
+        "Create a vector layer.",
+        permission_level=AgentPermissionLevel.SAFE,
+    )
+    execute = authorize_tool_call(
+        "calculate_ndvi",
+        {"red_id": 1, "nir_id": 2},
+        "Calculate NDVI.",
+        permission_level=AgentPermissionLevel.SAFE,
+    )
+    update = authorize_tool_call(
+        "update_vector_layer",
+        {"layer_id": "layer-1", "name": "new"},
+        "Update vector layer layer-1.",
+        permission_level=AgentPermissionLevel.SAFE,
+    )
+    delete = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "Delete raster 42.",
+        permission_level=AgentPermissionLevel.SAFE,
+    )
+
+    assert create.allowed is True
+    assert execute.allowed is True
+    assert update.allowed is False
+    assert delete.allowed is False
+
+
+def test_full_control_can_autonomously_manage_data_for_an_actionable_task():
+    update = authorize_tool_call(
+        "update_vector_layer",
+        {"layer_id": "layer-1", "name": "organized"},
+        "Take over this project and organize its layers.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    chinese_project_takeover = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "帮我整理一下当前项目",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    delete = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "Take over this project and organize its layers.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    custom_algorithm = authorize_tool_call(
+        "run_script_sandbox",
+        {"script": "print('score')"},
+        "帮我实现一个新的像元评分功能",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    unrelated_read_request = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "Summarize the attached report.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    unrelated_action_request = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "Execute an analysis of the attached report.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+
+    assert update.allowed is True
+    assert delete.allowed is True
+    assert chinese_project_takeover.allowed is True
+    assert custom_algorithm.allowed is True
+    assert unrelated_read_request.allowed is False
+    assert unrelated_action_request.allowed is False
+
+
+def test_full_control_still_respects_negation_and_source_code_hard_boundary():
+    negated = authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        "Take over the project, but do not delete raster 42.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    source_tool = authorize_tool_call(
+        "write_project_source",
+        {"path": "services/api.py", "content": "changed"},
+        "Take over and finish the project.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    source_script = authorize_tool_call(
+        "run_script_sandbox",
+        {
+            "script": (
+                "open('services/ai_gateway/agent_handler.py', 'w').write('changed')"
+            )
+        },
+        "Take over and finish the project.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+    future_source_tool = authorize_tool_call(
+        "apply_change",
+        {"target_path": "client/packages/app/src/main.js", "replacement": "changed"},
+        "Take over and finish the project.",
+        permission_level=AgentPermissionLevel.FULL_CONTROL,
+    )
+
+    assert negated.allowed is False
+    assert source_tool.allowed is False
+    assert source_script.allowed is False
+    assert future_source_tool.allowed is False
+    assert hard_boundary_violation("write_project_source", {}) is not None
+
+
+def test_permission_level_is_validated_and_defaults_to_standard():
+    payload = AgentRequestPayload(user_prompt="Inspect the current project.")
+
+    assert payload.permission_level == AgentPermissionLevel.STANDARD
+    with pytest.raises(ValidationError):
+        AgentRequestPayload(
+            user_prompt="Inspect the current project.",
+            permission_level="unlimited",
+        )
+
+
+def test_non_expert_implementation_request_can_authorize_custom_sandbox_work():
+    decision = authorize_tool_call(
+        "run_script_sandbox",
+        {"script": "print('custom score')"},
+        "帮我实现一个新的像元评分功能",
+        permission_level=AgentPermissionLevel.STANDARD,
+    )
+
+    assert decision.allowed is True

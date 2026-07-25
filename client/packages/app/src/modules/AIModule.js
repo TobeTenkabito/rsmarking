@@ -51,6 +51,8 @@ export class AIModule {
             ModalComponent.renderAITargetOptions(rasters, Layers);
         const modeSelect = document.getElementById('ai-mode-select');
         if (modeSelect) modeSelect.value = 'agent';
+        const permissionSelect = document.getElementById('ai-permission-select');
+        if (permissionSelect) permissionSelect.value = 'standard';
         const languageSelect = document.getElementById('ai-language-select');
         if (languageSelect) languageSelect.value = getLanguage();
 
@@ -289,6 +291,9 @@ export class AIModule {
         this._pendingResult = null;
         this._clearAgentAttachments();
         this._clearTransientMessages();
+        const permissionSelect = document.getElementById('ai-permission-select');
+        if (permissionSelect) permissionSelect.value = 'standard';
+        this._syncPermissionUI();
         this._renderAgentConversation();
         document.getElementById('ai-prompt-input')?.focus();
     }
@@ -571,6 +576,11 @@ export class AIModule {
             map_context: mapContext,
         };
 
+        if (mode === 'agent') {
+            request.permission_level =
+                document.getElementById('ai-permission-select')?.value || 'standard';
+        }
+
         if (targetId) {
             request.target_id = targetId;
             request.data_type = dataType;
@@ -599,6 +609,12 @@ export class AIModule {
             modeSelect.addEventListener('change', () => this._syncModeUI());
         }
 
+        const permissionSelect = document.getElementById('ai-permission-select');
+        if (permissionSelect && permissionSelect.dataset.aiBound !== 'true') {
+            permissionSelect.dataset.aiBound = 'true';
+            permissionSelect.addEventListener('change', () => this._syncPermissionUI());
+        }
+
         this._bindAgentAttachmentEvents();
     }
 
@@ -624,11 +640,13 @@ export class AIModule {
         const modeCaption = document.getElementById('ai-mode-caption');
         const promptLabel = document.getElementById('ai-prompt-label');
         const functionPanel = document.getElementById('ai-function-panel');
+        const permissionControl = document.getElementById('ai-permission-control');
         const executeLabel = document.getElementById('ai-execute-label')
             ?? document.querySelector('#ai-execute-btn span:last-child');
 
         agentPanel?.classList.toggle('hidden', !isAgent);
         attachmentControls?.classList.toggle('hidden', !isAgent);
+        permissionControl?.classList.toggle('hidden', !isAgent);
         functionPanel?.classList.toggle('hidden', isAgent);
         if (functionPanel) functionPanel.open = false;
         if (contextPanel) contextPanel.open = false;
@@ -646,6 +664,7 @@ export class AIModule {
             this._renderAgentConversation();
             this._renderArchivePanel();
             this._renderAgentAttachments();
+            this._syncPermissionUI();
         } else {
             if (contextSummary) contextSummary.textContent = 'Required for analysis and modify modes';
             if (modeCaption) modeCaption.textContent = mode === 'modify' ? 'Modify mode' : 'Analysis mode';
@@ -655,6 +674,40 @@ export class AIModule {
             if (promptInput) promptInput.rows = 3;
             if (executeLabel) executeLabel.textContent = 'Run';
         }
+    }
+
+    _syncPermissionUI() {
+        const permission = document.getElementById('ai-permission-select')?.value || 'standard';
+        const banner = document.getElementById('ai-permission-banner');
+        const select = document.getElementById('ai-permission-select');
+        const profiles = {
+            read_only: {
+                text: 'Read-only permission: the Agent can inspect and explain, but cannot create, run, update, or delete.',
+                title: 'Read only: no side effects',
+                classes: 'shrink-0 border-b border-sky-100 bg-sky-50 px-5 py-2 text-[10px] font-semibold text-sky-700',
+            },
+            safe: {
+                text: 'Safe actions: the Agent may run isolated processing and create new outputs, but cannot change or delete existing data.',
+                title: 'Safe actions: create new outputs, no updates or deletion',
+                classes: 'shrink-0 border-b border-emerald-100 bg-emerald-50 px-5 py-2 text-[10px] font-semibold text-emerald-700',
+            },
+            standard: {
+                text: 'Standard permission: task-matched changes; deletion must be explicit and specific.',
+                title: 'Standard: task-matched changes with explicit deletion',
+                classes: 'shrink-0 border-b border-slate-100 bg-slate-50 px-5 py-2 text-[10px] font-semibold text-slate-500',
+            },
+            full_control: {
+                text: 'Full control: the Agent may autonomously change or delete project data for this task. Source code and host files remain protected.',
+                title: 'Full control: autonomous project-data changes; source code remains protected',
+                classes: 'shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-[10px] font-semibold text-amber-800',
+            },
+        };
+        const profile = profiles[permission] || profiles.standard;
+        if (banner) {
+            banner.textContent = profile.text;
+            banner.className = profile.classes;
+        }
+        if (select) select.title = profile.title;
     }
 
     _syncModeButtons(mode) {
