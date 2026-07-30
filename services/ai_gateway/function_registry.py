@@ -345,7 +345,9 @@ class TimeSeriesAnalysisArgs(BaseModel):
         default=None,
         description=(
             "Optional acquisition dates in raster_ids order. Use YYYY-MM-DD, YYYY-MM, or YYYY. "
-            "When omitted, raster created_at dates are used."
+            "When omitted, stored acquisition metadata is used automatically. "
+            "Never substitute upload/created_at timestamps; missing dates are handled "
+            "by the operation's documented fallback."
         ),
     )
     moving_window_size: int = Field(default=3, ge=1, description="Temporal window for moving-window smoothing.")

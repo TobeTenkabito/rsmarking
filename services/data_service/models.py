@@ -35,6 +35,17 @@ class RasterMetadata(Base):
     resolution_x = Column(Float)
     resolution_y = Column(Float)
 
+    # temporal/product provenance; upload time is intentionally separate
+    acquired_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    acquired_at_end = Column(DateTime(timezone=True), nullable=True)
+    acquired_at_source = Column(String(32), nullable=False, default="unknown")
+    acquired_at_confidence = Column(Float, nullable=False, default=0.0)
+    platform = Column(String(100), nullable=True)
+    sensor = Column(String(100), nullable=True)
+    product_id = Column(String(255), nullable=True, index=True)
+    processing_level = Column(String(100), nullable=True)
+    tile_id = Column(String(100), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

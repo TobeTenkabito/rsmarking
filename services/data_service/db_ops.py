@@ -39,6 +39,41 @@ def resolve_raster_record_path(record: models.RasterMetadata) -> str | None:
     return None
 
 
+async def _ensure_temporal_metadata(
+    db: AsyncSession,
+    record: models.RasterMetadata,
+    file_path: str,
+) -> None:
+    """Lazily enrich legacy rows without treating upload time as acquisition."""
+    if record.acquired_at is not None:
+        return
+    metadata = RasterProcessor.extract_metadata(
+        file_path,
+        source_name=record.file_name,
+    )
+    temporal_fields = (
+        "acquired_at",
+        "acquired_at_end",
+        "acquired_at_source",
+        "acquired_at_confidence",
+        "platform",
+        "sensor",
+        "product_id",
+        "processing_level",
+        "tile_id",
+    )
+    changed = False
+    for field_name in temporal_fields:
+        value = metadata.get(field_name)
+        if value is None:
+            continue
+        if getattr(record, field_name, None) != value:
+            setattr(record, field_name, value)
+            changed = True
+    if changed:
+        await db.flush()
+
+
 def run_conversion(input_path: str, output_path: str):
     try:
         RasterProcessor.convert_to_cog(input_path, output_path)
@@ -59,7 +94,10 @@ async def save_to_db(
     bundle_id: str = None
 ):
     source_for_meta = metadata_source if metadata_source else cog_path
-    metadata = RasterProcessor.extract_metadata(source_for_meta)
+    metadata = RasterProcessor.extract_metadata(
+        source_for_meta,
+        source_name=new_name,
+    )
     final_bundle_id = bundle_id if bundle_id else f"{prefix}_{task_id[:8]}"
     bounds_wgs84 = None
     try:
@@ -94,7 +132,16 @@ async def save_to_db(
         "bands": bands_count,
         "data_type": metadata.get("data_type"),
         "resolution_x": metadata.get("resolution")[0] if metadata.get("resolution") else None,
-        "resolution_y": metadata.get("resolution")[1] if metadata.get("resolution") else None
+        "resolution_y": metadata.get("resolution")[1] if metadata.get("resolution") else None,
+        "acquired_at": metadata.get("acquired_at"),
+        "acquired_at_end": metadata.get("acquired_at_end"),
+        "acquired_at_source": metadata.get("acquired_at_source", "unknown"),
+        "acquired_at_confidence": metadata.get("acquired_at_confidence", 0.0),
+        "platform": metadata.get("platform"),
+        "sensor": metadata.get("sensor"),
+        "product_id": metadata.get("product_id"),
+        "processing_level": metadata.get("processing_level"),
+        "tile_id": metadata.get("tile_id"),
     }
 
     new_record = await RasterCRUD.create_raster(db, db_data)
@@ -810,10 +857,26 @@ async def process_time_series_task(
                 )
             input_paths.append(path)
 
-        date_values = dates if dates and dates.strip() else ",".join(
-            (record.created_at.date().isoformat() if record.created_at else "")
+        for record, path in zip(ordered_records, input_paths):
+            await _ensure_temporal_metadata(db, record, path)
+
+        explicit_dates = bool(dates and dates.strip())
+        date_values = dates if explicit_dates else [
+            record.acquired_at.isoformat()
+            if record.acquired_at is not None
+            else None
             for record in ordered_records
-        )
+        ]
+        date_source_counts: dict[str, int] = {}
+        low_confidence_count = 0
+        for record in ordered_records:
+            source = record.acquired_at_source or "unknown"
+            date_source_counts[source] = date_source_counts.get(source, 0) + 1
+            if (
+                record.acquired_at is not None
+                and float(record.acquired_at_confidence or 0.0) < 0.75
+            ):
+                low_confidence_count += 1
         prefix = f"time_series_{_safe_operation_name(operation)}"
 
         task_id = str(uuid.uuid4())
@@ -834,6 +897,16 @@ async def process_time_series_task(
             savgol_polyorder=savgol_polyorder,
             phenology_threshold_ratio=phenology_threshold_ratio,
         )
+        time_series_meta["date_sources"] = (
+            {"request": len(ordered_records)}
+            if explicit_dates
+            else date_source_counts
+        )
+        if low_confidence_count and not explicit_dates:
+            time_series_meta.setdefault("warnings", []).append(
+                f"{low_confidence_count} raster date(s) came from "
+                "low-confidence automatic filename inference."
+            )
         RasterProcessor.convert_to_cog(tmp_path, cog_path)
 
         with rasterio.open(tmp_path) as src:
@@ -852,6 +925,10 @@ async def process_time_series_task(
         )
         result["time_series"] = time_series_meta
         return result
+    except ValueError as e:
+        logger.warning("time-series analysis rejected invalid inputs: %s", e)
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"time-series analysis task failed: {str(e)}")
         await db.rollback()

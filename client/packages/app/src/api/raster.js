@@ -542,6 +542,26 @@ export const RasterAPI = {
     );
   },
 
+  async fetchTimeSeriesCandidates() {
+    return request(
+      `${BASE_URL}/time-series-candidates`,
+      {},
+      'Failed to discover time-series candidates'
+    );
+  },
+
+  async updateTemporalMetadata(rasterId, updates) {
+    return request(
+      `${BASE_URL}/raster/${rasterId}/temporal-metadata`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      },
+      'Failed to update raster temporal metadata'
+    );
+  },
+
   async calculateNDVI(redId, nirId, newName) {
     return postForm('/calculate-ndvi', buildIndexFields({ red_id: redId, nir_id: nirId }, newName), 'NDVI failed');
   },

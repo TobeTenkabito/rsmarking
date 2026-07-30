@@ -15,6 +15,7 @@ The repository is currently most useful as a local development stack for GeoTIFF
 - Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.
 - Vector tile service using PostGIS `ST_AsMVT`.
 - Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, rasterization, clipping, and change detection.
+- Automatic raster acquisition-time extraction and non-blocking time-series discovery with provenance, confidence, grid alignment, and documented fallbacks for undated imagery.
 - Extraction algorithms for vegetation, water, buildings, and clouds.
 - AI gateway built around LiteLLM with analyze/modify modes, a callable tool registry, conversation memory, safe attachments, and four per-request permission tiers.
 - Docker-isolated Python script executor with validated raster/vector inputs, bounded logs, resource limits, and restricted host-path access.
@@ -182,6 +183,36 @@ Important tile settings (all optional):
 | `TILE_PROFILE` | `false` | Logs per-stage tile timing for diagnosis |
 
 See `.env.example` for path-cache and engine-cache controls. Keep `per_request` for general development; use `thread_local` only after representative load testing because RasterIO dataset handles are thread-affine.
+
+## Temporal Metadata and Time-Series Analysis
+
+RSMarking stores acquisition time separately from upload time. `created_at` only records when a raster entered the project and is never treated as an observation date.
+
+During upload, temporal metadata is resolved automatically in confidence order:
+
+```text
+STAC / Landsat MTL / Sentinel SAFE
+  -> raster and GDAL metadata tags
+  -> sensor-specific standard filename
+  -> generic full-date filename
+  -> unknown
+```
+
+The raster record stores `acquired_at`, its source and confidence, optional acquisition end time, platform, sensor, product ID, processing level, and tile ID. Legacy rows are enriched lazily the first time they participate in time-series analysis. No confirmation dialog is required; expert corrections remain available through `PATCH /raster/{raster_id}/temporal-metadata`.
+
+`GET /time-series-candidates` groups and chronologically sorts compatible rasters automatically. Grouping uses platform, sensor, processing level, tile ID, band count, and spatial coverage; when tile metadata is absent, spatial coverage prevents unrelated regions with otherwise similar rasters from being merged. Candidate responses include date coverage, metadata-source counts, duplicate-date warnings, automatic-alignment requirements, and suggested operations. The browser initially selects the largest compatible candidate instead of treating every project raster as one series.
+
+Missing dates use operation-specific, visible fallbacks:
+
+| Operation | Automatic behavior when dates are missing |
+|---|---|
+| Maximum/median composite | Runs normally; calendar dates are not required |
+| Monthly/annual composite | Uses dated rasters and skips only undated inputs |
+| Moving-window/Savitzky-Golay | Uses ordered observation steps and warns about incomplete or irregular cadence |
+| Trend | Uses elapsed days when the date axis is complete and distinct; otherwise reports slope per observation step |
+| Seasonality/phenology | Reports day-of-year with complete dates; otherwise reports observation positions |
+
+Different but georeferenced grids are aligned to the first selected raster with mask-aware RasterIO reprojection. Results return `temporal_axis`, `date_coverage`, `date_sources`, `aligned_input_count`, and non-blocking `warnings`, and write temporal provenance tags into the output GeoTIFF.
 
 ## Prerequisites
 
@@ -414,6 +445,8 @@ Data service (`:8002`):
 - `POST /raster-transform-analysis`
 - `POST /texture-feature-analysis`
 - `POST /time-series-analysis`
+- `GET /time-series-candidates`
+- `PATCH /raster/{raster_id}/temporal-metadata`
 - `POST /classify-supervised`, `/classify-unsupervised`, `/segment-deep-learning`
 - `POST /clip-raster-by-vector`
 - `POST /raster-calculator`

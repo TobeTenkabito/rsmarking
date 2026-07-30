@@ -9,7 +9,13 @@ from typing import Any, Literal
 
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 from scipy import signal
+
+from functions.implement.raster_validity import (
+    grids_match,
+    read_masked_on_grid,
+)
 
 
 TimeSeriesOperation = Literal[
@@ -44,7 +50,7 @@ def time_series_analysis(
     output_path: str,
     operation: str,
     band_index: int = 1,
-    dates: list[str] | str | None = None,
+    dates: list[str | date | datetime | None] | str | None = None,
     moving_window_size: int = 3,
     savgol_window_length: int = 5,
     savgol_polyorder: int = 2,
@@ -58,53 +64,154 @@ def time_series_analysis(
     if band_index < 1:
         raise ValueError("band_index must be greater than zero")
 
-    stack, valid_mask, profile = _read_time_stack(input_paths, band_index)
+    stack, valid_mask, profile, aligned_input_count = _read_time_stack(
+        input_paths,
+        band_index,
+    )
     parsed_dates = _parse_dates(dates, len(input_paths))
-    if parsed_dates is not None:
-        order = np.argsort(np.asarray([item.toordinal() for item in parsed_dates]))
+    warnings_list: list[str] = []
+    original_input_count = int(stack.shape[0])
+
+    if parsed_dates is not None and any(item is not None for item in parsed_dates):
+        order = sorted(
+            range(len(parsed_dates)),
+            key=lambda index: (
+                parsed_dates[index] is None,
+                parsed_dates[index].toordinal()
+                if parsed_dates[index] is not None
+                else index,
+                index,
+            ),
+        )
         stack = stack[order]
         valid_mask = valid_mask[order]
-        parsed_dates = [parsed_dates[int(index)] for index in order]
+        parsed_dates = [parsed_dates[index] for index in order]
+
+    known_date_count = sum(
+        item is not None for item in (parsed_dates or [])
+    )
+    date_coverage = (
+        known_date_count / original_input_count
+        if original_input_count
+        else 0.0
+    )
+    if 0 < known_date_count < original_input_count:
+        warnings_list.append(
+            f"{original_input_count - known_date_count} raster(s) have no "
+            "acquisition date; date-sensitive operations use a documented "
+            "fallback."
+        )
+    if aligned_input_count:
+        warnings_list.append(
+            f"{aligned_input_count} raster(s) were automatically aligned to "
+            "the first raster grid."
+        )
+
+    complete_dates = _complete_dates_or_none(parsed_dates)
+    working_dates = [
+        item for item in (parsed_dates or []) if item is not None
+    ] or None
+    used_input_count = original_input_count
+    temporal_axis = "observation_index"
 
     if operation_name == "monthly_composite":
-        _require_dates(parsed_dates, operation_name)
+        stack, valid_mask, working_dates, excluded = _calendar_inputs(
+            stack,
+            valid_mask,
+            parsed_dates,
+            operation_name,
+        )
+        used_input_count = int(stack.shape[0])
+        temporal_axis = "calendar_month"
+        if excluded:
+            warnings_list.append(
+                f"{excluded} undated raster(s) were excluded from monthly "
+                "compositing."
+            )
         output, descriptions, meta = _grouped_composite(
             stack,
             valid_mask,
-            _month_labels(parsed_dates or []),
+            _month_labels(working_dates),
             statistic="mean",
         )
     elif operation_name == "annual_composite":
-        _require_dates(parsed_dates, operation_name)
+        stack, valid_mask, working_dates, excluded = _calendar_inputs(
+            stack,
+            valid_mask,
+            parsed_dates,
+            operation_name,
+        )
+        used_input_count = int(stack.shape[0])
+        temporal_axis = "calendar_year"
+        if excluded:
+            warnings_list.append(
+                f"{excluded} undated raster(s) were excluded from annual "
+                "compositing."
+            )
         output, descriptions, meta = _grouped_composite(
             stack,
             valid_mask,
-            _year_labels(parsed_dates or []),
+            _year_labels(working_dates),
             statistic="mean",
         )
     elif operation_name == "maximum_composite":
         output = _single_composite(stack, valid_mask, "max")
         descriptions = ["Maximum value composite"]
         meta = {"composite_statistic": "max"}
+        temporal_axis = "not_applicable"
     elif operation_name == "median_composite":
         output = _single_composite(stack, valid_mask, "median")
         descriptions = ["Median composite"]
         meta = {"composite_statistic": "median"}
+        temporal_axis = "not_applicable"
     elif operation_name == "moving_window_smoothing":
         output = _moving_window_smoothing(stack, valid_mask, moving_window_size)
-        descriptions = _time_descriptions("Moving window smooth", output.shape[0], parsed_dates)
+        descriptions = _time_descriptions(
+            "Moving window smooth",
+            output.shape[0],
+            parsed_dates,
+        )
         meta = {"moving_window_size": _normalize_odd_window(moving_window_size, minimum=1)}
+        _append_cadence_warning(warnings_list, complete_dates, operation_name)
     elif operation_name == "savitzky_golay":
         output, meta = _savitzky_golay(stack, valid_mask, savgol_window_length, savgol_polyorder)
-        descriptions = _time_descriptions("Savitzky-Golay smooth", output.shape[0], parsed_dates)
+        descriptions = _time_descriptions(
+            "Savitzky-Golay smooth",
+            output.shape[0],
+            parsed_dates,
+        )
+        _append_cadence_warning(warnings_list, complete_dates, operation_name)
     elif operation_name == "trend":
-        output, meta = _trend(stack, valid_mask, parsed_dates)
+        trend_dates = _dates_with_distinct_axis(complete_dates)
+        if complete_dates and trend_dates is None:
+            warnings_list.append(
+                "Acquisition dates are not sufficiently distinct; trend was "
+                "computed per observation step."
+            )
+        elif complete_dates is None:
+            warnings_list.append(
+                "Trend was computed per observation step because a complete "
+                "acquisition-date axis is unavailable."
+            )
+        output, meta = _trend(stack, valid_mask, trend_dates)
         descriptions = ["Trend slope", "Trend intercept", "Trend R2"]
+        temporal_axis = "days" if trend_dates else "observation_index"
     elif operation_name == "seasonality":
-        output, meta = _seasonality(stack, valid_mask, parsed_dates)
+        output, meta = _seasonality(stack, valid_mask, complete_dates)
         descriptions = ["Seasonal mean", "Seasonal amplitude", "Peak timing", "Trough timing"]
+        temporal_axis = "day_of_year" if complete_dates else "observation_index"
+        if complete_dates is None:
+            warnings_list.append(
+                "Seasonal peak and trough timing use observation positions "
+                "because a complete acquisition-date axis is unavailable."
+            )
     elif operation_name == "phenology":
-        output, meta = _phenology(stack, valid_mask, parsed_dates, phenology_threshold_ratio)
+        output, meta = _phenology(
+            stack,
+            valid_mask,
+            complete_dates,
+            phenology_threshold_ratio,
+        )
         descriptions = [
             "Start of season",
             "End of season",
@@ -112,20 +219,43 @@ def time_series_analysis(
             "Season length",
             "Seasonal amplitude",
         ]
+        temporal_axis = "day_of_year" if complete_dates else "observation_index"
+        if complete_dates is None:
+            warnings_list.append(
+                "Phenology timing uses observation positions because a "
+                "complete acquisition-date axis is unavailable."
+            )
     else:
         raise ValueError(f"Unsupported time-series operation: {operation}")
 
     output = _prepare_float_stack(output)
-    _write_stack(output_path, profile, output, descriptions, operation_name)
+    _write_stack(
+        output_path,
+        profile,
+        output,
+        descriptions,
+        operation_name,
+        dates=working_dates,
+        temporal_axis=temporal_axis,
+        warnings_list=warnings_list,
+    )
     return {
         "operation": "time_series_analysis",
         "time_series_operation": operation_name,
         "band_index": int(band_index),
-        "input_count": int(stack.shape[0]),
+        "input_count": original_input_count,
+        "used_input_count": used_input_count,
         "width": int(output.shape[2]),
         "height": int(output.shape[1]),
         "bands": int(output.shape[0]),
-        "dates": [item.isoformat() for item in parsed_dates] if parsed_dates else None,
+        "dates": [
+            item.isoformat() if item is not None else None
+            for item in parsed_dates
+        ] if parsed_dates else None,
+        "date_coverage": float(date_coverage),
+        "temporal_axis": temporal_axis,
+        "aligned_input_count": int(aligned_input_count),
+        "warnings": warnings_list,
         **meta,
     }
 
@@ -165,60 +295,90 @@ def _normalize_operation(operation: str) -> TimeSeriesOperation:
 def _read_time_stack(
     input_paths: list[str],
     band_index: int,
-) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any], int]:
     arrays: list[np.ndarray] = []
     masks: list[np.ndarray] = []
     profile: dict[str, Any] | None = None
-    reference_shape: tuple[int, int] | None = None
-    reference_transform = None
-    reference_crs = None
+    aligned_input_count = 0
 
-    for path in input_paths:
-        with rasterio.open(path) as src:
-            if band_index > src.count:
-                raise ValueError(f"Raster {path} has {src.count} bands; band_index {band_index} is out of range")
+    with rasterio.open(input_paths[0]) as reference:
+        if band_index > reference.count:
+            raise ValueError(
+                f"Raster {input_paths[0]} has {reference.count} bands; "
+                f"band_index {band_index} is out of range"
+            )
+        profile = reference.profile.copy()
 
-            if profile is None:
-                profile = src.profile.copy()
-                reference_shape = (src.height, src.width)
-                reference_transform = src.transform
-                reference_crs = src.crs
-            elif (
-                (src.height, src.width) != reference_shape
-                or src.transform != reference_transform
-                or src.crs != reference_crs
-            ):
-                raise ValueError("All time-series rasters must share dimensions, transform, and CRS")
+        for index, path in enumerate(input_paths):
+            with rasterio.open(path) as src:
+                if band_index > src.count:
+                    raise ValueError(
+                        f"Raster {path} has {src.count} bands; band_index "
+                        f"{band_index} is out of range"
+                    )
 
-            data = src.read(band_index, masked=True).astype("float32")
-            band = np.asarray(data.filled(np.nan), dtype="float32")
-            valid = ~np.ma.getmaskarray(data) & np.isfinite(band)
-            arrays.append(band)
-            masks.append(valid)
+                if index == 0 or grids_match(src, reference):
+                    data = src.read(
+                        band_index,
+                        masked=True,
+                    ).astype("float32")
+                else:
+                    data = read_masked_on_grid(
+                        src,
+                        reference,
+                        band_index,
+                        resampling=Resampling.bilinear,
+                        zero_is_invalid=False,
+                    ).astype("float32")
+                    aligned_input_count += 1
+
+                band = np.asarray(data.filled(np.nan), dtype="float32")
+                valid = ~np.ma.getmaskarray(data) & np.isfinite(band)
+                arrays.append(band)
+                masks.append(valid)
 
     stack = np.stack(arrays, axis=0)
     valid_mask = np.stack(masks, axis=0)
     if not np.any(valid_mask):
         raise ValueError("The selected time series has no valid pixels")
-    return stack, valid_mask, profile or {}
+    return stack, valid_mask, profile or {}, aligned_input_count
 
 
-def _parse_dates(values: list[str] | str | None, expected_count: int) -> list[date] | None:
+def _parse_dates(
+    values: list[str | date | datetime | None] | str | None,
+    expected_count: int,
+) -> list[date | None] | None:
     if values is None:
         return None
     if isinstance(values, str):
-        parts = [part.strip() for part in re.split(r"[\n,;]+", values) if part.strip()]
+        text = values.strip()
+        if not text:
+            return None
+        if text.startswith("["):
+            import json
+
+            decoded = json.loads(text)
+            if not isinstance(decoded, list):
+                raise ValueError("dates JSON must be an array")
+            parts = decoded
+        else:
+            parts = [part.strip() for part in re.split(r"[\n,;]", text)]
     else:
-        parts = [str(item).strip() for item in values if str(item).strip()]
-    if not parts:
-        return None
+        parts = list(values)
     if len(parts) != expected_count:
         raise ValueError(f"dates must contain {expected_count} values")
-    return [_parse_date(item) for item in parts]
+    return [
+        None if _missing_date_value(item) else _parse_date(item)
+        for item in parts
+    ]
 
 
-def _parse_date(value: str) -> date:
-    text = value.strip()
+def _parse_date(value: str | date | datetime) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d", "%Y-%m", "%Y/%m", "%Y"):
         try:
             parsed = datetime.strptime(text, fmt)
@@ -231,9 +391,87 @@ def _parse_date(value: str) -> date:
         raise ValueError(f"Invalid date value: {value}") from exc
 
 
-def _require_dates(values: list[date] | None, operation: str) -> None:
-    if not values:
-        raise ValueError(f"{operation} requires acquisition dates")
+def _missing_date_value(value: Any) -> bool:
+    if value is None:
+        return True
+    return str(value).strip().lower() in {
+        "",
+        "?",
+        "none",
+        "null",
+        "unknown",
+        "n/a",
+    }
+
+
+def _complete_dates_or_none(
+    values: list[date | None] | None,
+) -> list[date] | None:
+    if not values or any(item is None for item in values):
+        return None
+    return [item for item in values if item is not None]
+
+
+def _calendar_inputs(
+    stack: np.ndarray,
+    valid_mask: np.ndarray,
+    dates: list[date | None] | None,
+    operation: str,
+) -> tuple[np.ndarray, np.ndarray, list[date], int]:
+    if not dates:
+        raise ValueError(
+            f"{operation} requires at least one identifiable acquisition "
+            "date. Use maximum/median compositing when dates are unavailable."
+        )
+    indices = [
+        index
+        for index, item in enumerate(dates)
+        if item is not None
+    ]
+    if not indices:
+        raise ValueError(
+            f"{operation} requires at least one identifiable acquisition "
+            "date. Use maximum/median compositing when dates are unavailable."
+        )
+    known_dates = [dates[index] for index in indices]
+    return (
+        stack[indices],
+        valid_mask[indices],
+        [item for item in known_dates if item is not None],
+        len(dates) - len(indices),
+    )
+
+
+def _dates_with_distinct_axis(values: list[date] | None) -> list[date] | None:
+    if not values or len({item.toordinal() for item in values}) < 2:
+        return None
+    return values
+
+
+def _append_cadence_warning(
+    warnings_list: list[str],
+    dates: list[date] | None,
+    operation: str,
+) -> None:
+    if not dates:
+        warnings_list.append(
+            f"{operation} used observation order because a complete "
+            "acquisition-date axis is unavailable."
+        )
+        return
+    if len(dates) < 3:
+        return
+    gaps = [
+        (dates[index] - dates[index - 1]).days
+        for index in range(1, len(dates))
+    ]
+    positive_gaps = [gap for gap in gaps if gap > 0]
+    if len(positive_gaps) != len(gaps) or len(set(positive_gaps)) > 1:
+        warnings_list.append(
+            f"{operation} currently uses equally spaced observation steps; "
+            "the supplied acquisition dates have irregular or duplicate "
+            "intervals."
+        )
 
 
 def _month_labels(values: list[date]) -> list[str]:
@@ -516,9 +754,16 @@ def _phenology(
     }
 
 
-def _time_descriptions(prefix: str, count: int, dates: list[date] | None) -> list[str]:
+def _time_descriptions(
+    prefix: str,
+    count: int,
+    dates: list[date | None] | None,
+) -> list[str]:
     if dates:
-        return [f"{prefix} {item.isoformat()}" for item in dates]
+        return [
+            f"{prefix} {item.isoformat() if item else f'T{index + 1}'}"
+            for index, item in enumerate(dates)
+        ]
     return [f"{prefix} T{index + 1}" for index in range(count)]
 
 
@@ -534,6 +779,10 @@ def _write_stack(
     stack: np.ndarray,
     descriptions: list[str],
     operation: str,
+    *,
+    dates: list[date] | None = None,
+    temporal_axis: str = "observation_index",
+    warnings_list: list[str] | None = None,
 ) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     profile.update(
@@ -547,4 +796,14 @@ def _write_stack(
         dst.write(stack.astype("float32"))
         for band_index, description in enumerate(descriptions, start=1):
             dst.set_band_description(band_index, description)
-        dst.update_tags(TIME_SERIES_ANALYSIS="true", TIME_SERIES_OPERATION=operation)
+        tags = {
+            "TIME_SERIES_ANALYSIS": "true",
+            "TIME_SERIES_OPERATION": operation,
+            "TIME_SERIES_AXIS": temporal_axis,
+        }
+        if dates:
+            tags["TIME_SERIES_START"] = min(dates).isoformat()
+            tags["TIME_SERIES_END"] = max(dates).isoformat()
+        if warnings_list:
+            tags["TIME_SERIES_WARNING_COUNT"] = str(len(warnings_list))
+        dst.update_tags(**tags)

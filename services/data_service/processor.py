@@ -13,7 +13,6 @@ from shapely.ops import transform as shapely_transform
 
 from functions.implement.clip_ops import (
     clip_raster_by_vector,
-    clip_vector_by_raster,
 )
 from functions.implement.spatial_ops import (
     get_wgs84_bounds,
@@ -41,6 +40,7 @@ from functions.implement.dem_analysis import dem_analysis
 from functions.implement.raster_transforms import raster_transform_analysis
 from functions.implement.texture_features import texture_feature_analysis
 from functions.implement.time_series_analysis import time_series_analysis
+from functions.implement.temporal_metadata import extract_temporal_metadata
 from functions.implement.classification import (
     supervised_classification,
     unsupervised_classification,
@@ -70,7 +70,7 @@ MaskArray: TypeAlias = np.ndarray
 P = ParamSpec("P")
 
 
-class MetadataDict(TypedDict):
+class MetadataDict(TypedDict, total=False):
     file_name: str
     crs: str
     bounds: list[float]
@@ -81,16 +81,33 @@ class MetadataDict(TypedDict):
     bands: int
     data_type: str
     resolution: tuple[float, float]
+    acquired_at: Any
+    acquired_at_end: Any
+    acquired_at_source: str
+    acquired_at_confidence: float
+    platform: str | None
+    sensor: str | None
+    product_id: str | None
+    processing_level: str | None
+    tile_id: str | None
 
 
 class RasterProcessor:
     @staticmethod
-    def extract_metadata(file_path: str) -> MetadataDict:
+    def extract_metadata(
+        file_path: str,
+        source_name: str | None = None,
+    ) -> MetadataDict:
         with rasterio.open(file_path) as src:
             crs_str: str = src.crs.to_string() if src.crs else "EPSG:4326"
 
             bounds_wgs84 = get_wgs84_bounds(src.crs, src.bounds)
             center = compute_center_from_bounds(bounds_wgs84)
+            temporal = extract_temporal_metadata(
+                file_path,
+                source_name=source_name,
+                dataset=src,
+            )
 
             return {
                 "file_name": os.path.basename(file_path),
@@ -103,6 +120,7 @@ class RasterProcessor:
                 "bands": src.count,
                 "data_type": src.dtypes[0],
                 "resolution": src.res,
+                **temporal,
             }
 
     @staticmethod
@@ -501,7 +519,6 @@ class RasterProcessor:
             'where','pi','e','expm1','log1p','real','imag','conj',
             'complex'
         }
-        pattern = re.compile(r'\b([A-Za-z][A-Za-z0-9]*)(?:_(\d+(?:_\d+)*))?(?=\s*[^(]|$)')
         tokens = {}
         for m in re.finditer(r'\b([A-Za-z][A-Za-z0-9]*(?:_\d+)*)\b', expression):
             token = m.group(1)

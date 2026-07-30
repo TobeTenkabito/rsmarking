@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 
 rasterio = pytest.importorskip("rasterio")
-from rasterio.transform import from_origin
+from rasterio.transform import from_origin  # noqa: E402
 
-from functions.implement.time_series_analysis import time_series_analysis
+from functions.implement.time_series_analysis import time_series_analysis  # noqa: E402
 
 
 def _write_raster(path, data, dtype="float32"):
@@ -159,3 +159,90 @@ def test_seasonality_and_phenology_extract_timing_parameters(tmp_path):
         assert phenology[2, 0, 0] == pytest.approx(3.0)
         assert phenology[3, 0, 0] == pytest.approx(2.0)
         assert phenology[4, 0, 0] == pytest.approx(4.0)
+
+
+def test_monthly_composite_skips_undated_inputs_without_confirmation(tmp_path):
+    paths = _write_series(tmp_path, [1, 100, 5])
+    output = tmp_path / "partial-monthly.tif"
+
+    result = time_series_analysis(
+        paths,
+        str(output),
+        operation="monthly_composite",
+        dates=["2024-01-01", None, "2024-01-20"],
+    )
+
+    with rasterio.open(output) as ds:
+        assert ds.count == 1
+        np.testing.assert_allclose(
+            ds.read(1),
+            np.full((2, 2), 3, dtype=np.float32),
+        )
+    assert result["input_count"] == 3
+    assert result["used_input_count"] == 2
+    assert result["date_coverage"] == pytest.approx(2 / 3)
+    assert result["temporal_axis"] == "calendar_month"
+    assert any("excluded" in warning for warning in result["warnings"])
+
+
+def test_trend_without_dates_degrades_to_observation_axis(tmp_path):
+    paths = _write_series(tmp_path, [1, 3, 5])
+    output = tmp_path / "index-trend.tif"
+
+    result = time_series_analysis(
+        paths,
+        str(output),
+        operation="trend",
+        dates=None,
+    )
+
+    with rasterio.open(output) as ds:
+        assert ds.read(1)[0, 0] == pytest.approx(2.0)
+        assert ds.tags()["TIME_SERIES_AXIS"] == "observation_index"
+    assert result["temporal_axis"] == "observation_index"
+    assert any("observation step" in warning for warning in result["warnings"])
+
+
+def test_time_series_automatically_aligns_compatible_crs_grids(tmp_path):
+    reference = tmp_path / "reference.tif"
+    shifted = tmp_path / "shifted.tif"
+    output = tmp_path / "aligned.tif"
+    _write_raster(reference, np.full((2, 2), 2, dtype=np.float32))
+    with rasterio.open(
+        shifted,
+        "w",
+        driver="GTiff",
+        height=4,
+        width=4,
+        count=1,
+        dtype="float32",
+        crs="EPSG:3857",
+        transform=from_origin(0, 2, 0.5, 0.5),
+    ) as dst:
+        dst.write(np.full((1, 4, 4), 4, dtype=np.float32))
+
+    result = time_series_analysis(
+        [str(reference), str(shifted)],
+        str(output),
+        operation="median_composite",
+    )
+
+    with rasterio.open(output) as ds:
+        np.testing.assert_allclose(
+            ds.read(1),
+            np.full((2, 2), 3, dtype=np.float32),
+        )
+    assert result["aligned_input_count"] == 1
+    assert any("automatically aligned" in warning for warning in result["warnings"])
+
+
+def test_calendar_composite_without_any_dates_suggests_alternative(tmp_path):
+    paths = _write_series(tmp_path, [1, 2])
+
+    with pytest.raises(ValueError, match="maximum/median"):
+        time_series_analysis(
+            paths,
+            str(tmp_path / "invalid.tif"),
+            operation="annual_composite",
+            dates=[None, None],
+        )

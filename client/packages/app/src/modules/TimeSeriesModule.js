@@ -55,6 +55,8 @@ export class TimeSeriesModule {
     constructor(app) {
         this.app = app;
         this.currentOperation = 'monthly_composite';
+        this.orderedRasters = [];
+        this.autoDatesText = '';
     }
 
     openModal(operation = 'monthly_composite') {
@@ -68,9 +70,11 @@ export class TimeSeriesModule {
 
         const select = document.getElementById('time-series-raster-select');
         if (select) {
+            this.orderedRasters = this._orderedRasters(Store.state.rasters);
             select.innerHTML = this._renderRasterOptions();
+            const automaticIds = this._automaticSelectionIds(this.orderedRasters);
             Array.from(select.options).forEach((option) => {
-                option.selected = true;
+                option.selected = automaticIds.has(String(option.value));
             });
         }
 
@@ -116,10 +120,10 @@ export class TimeSeriesModule {
         this._renderSelectionHint();
         const datesInput = document.getElementById('time-series-dates-input');
         if (datesInput) {
-            datesInput.value = this._selectedRasters()
-                .map((raster) => this._inferDate(raster))
-                .filter(Boolean)
-                .join(', ');
+            this.autoDatesText = this._selectedRasters()
+                .map((raster) => this._dateInfo(raster)?.date || '?')
+                .join('\n');
+            datesInput.value = this.autoDatesText;
         }
         this.handleInputChange();
     }
@@ -144,9 +148,21 @@ export class TimeSeriesModule {
 
         this.app.ui.showGlobalLoader(true);
         try {
-            await RasterAPI.timeSeriesAnalysis(payload);
+            const result = await RasterAPI.timeSeriesAnalysis(payload);
             this.closeModal();
             await this.app.raster.refreshData();
+            const warnings = result?.time_series?.warnings || [];
+            if (warnings.length) {
+                const suffix = warnings.length > 1
+                    ? ` (+${warnings.length - 1} more)`
+                    : '';
+                this.app.ui.showToast(`${warnings[0]}${suffix}`, 'warning');
+            } else {
+                this.app.ui.showToast(
+                    `${TIME_SERIES_OPERATIONS[this.currentOperation].title} completed.`,
+                    'success'
+                );
+            }
         } catch (error) {
             console.error('[TimeSeriesModule] analysis failed:', error);
             alert(`${TIME_SERIES_OPERATIONS[this.currentOperation].title} failed: ${error.message}`);
@@ -156,11 +172,16 @@ export class TimeSeriesModule {
     }
 
     _readPayload() {
+        const datesText = document.getElementById('time-series-dates-input')?.value || '';
         return {
             rasterIds: this._selectedRasters().map((raster) => Number(raster.index_id)),
             operation: this.currentOperation,
             bandIndex: this._integer('time-series-band-index', 1),
-            dates: document.getElementById('time-series-dates-input')?.value?.trim() || '',
+            // Unedited automatic dates are resolved from persisted backend
+            // metadata so client filename guesses never become authoritative.
+            dates: datesText.trim() === this.autoDatesText.trim()
+                ? ''
+                : datesText.trim(),
             movingWindowSize: this._integer('time-series-moving-window-size', 3),
             savgolWindowLength: this._integer('time-series-savgol-window-length', 5),
             savgolPolyorder: this._integer('time-series-savgol-polyorder', 2),
@@ -205,11 +226,17 @@ export class TimeSeriesModule {
     }
 
     _renderRasterOptions() {
-        return Store.state.rasters.map((raster) => {
+        const rasters = this.orderedRasters.length
+            ? this.orderedRasters
+            : this._orderedRasters(Store.state.rasters);
+        return rasters.map((raster) => {
             const label = raster.file_name || raster.name || `Raster ${raster.index_id}`;
-            const date = this._inferDate(raster);
-            const suffix = date ? ` | ${date}` : '';
-            return `<option value="${raster.index_id}">${label}${suffix}</option>`;
+            const dateInfo = this._dateInfo(raster);
+            const suffix = dateInfo
+                ? ` | ${dateInfo.date} · ${dateInfo.source}`
+                : ' | date unknown';
+            const safeSuffix = this._escapeHtml(suffix);
+            return `<option value="${this._escapeHtml(raster.index_id)}">${this._escapeHtml(label)}${safeSuffix}</option>`;
         }).join('');
     }
 
@@ -223,42 +250,155 @@ export class TimeSeriesModule {
         }
 
         const bandCounts = [...new Set(selected.map((raster) => Number(raster.bands)))].sort((a, b) => a - b);
-        hint.textContent = `${selected.length} raster(s) selected | band counts: ${bandCounts.join(', ')}`;
+        const datedCount = selected.filter((raster) => this._dateInfo(raster)).length;
+        hint.textContent = `${selected.length} raster(s) selected | ${datedCount} dated, ${selected.length - datedCount} unknown | band counts: ${bandCounts.join(', ')}`;
     }
 
     _selectedRasters() {
         const select = document.getElementById('time-series-raster-select');
         if (!select) return [];
         const ids = Array.from(select.selectedOptions).map((option) => Number(option.value));
+        const rasters = this.orderedRasters.length
+            ? this.orderedRasters
+            : Store.state.rasters;
         return ids
-            .map((id) => Store.state.rasters.find((raster) => Number(raster.index_id) === id))
+            .map((id) => rasters.find((raster) => Number(raster.index_id) === id))
             .filter(Boolean);
     }
 
-    _inferDate(raster) {
+    _dateInfo(raster) {
+        const acquired = raster.acquired_at || raster.acquiredAt;
+        if (acquired) {
+            return {
+                date: String(acquired).slice(0, 10),
+                source: raster.acquired_at_source || 'metadata',
+                confidence: Number(raster.acquired_at_confidence || 0),
+            };
+        }
+
         const source = `${raster.file_name || raster.name || ''}`;
-        const ymd = source.match(/(19|20)\d{2}[-_./]?(0[1-9]|1[0-2])[-_./]?([0-2]\d|3[01])/);
+        const ymd = source.match(/((?:19|20)\d{2})[-_./]?(0[1-9]|1[0-2])[-_./]?([0-2]\d|3[01])/);
         if (ymd) {
-            const text = ymd[0].replace(/[_.\/]/g, '-');
-            if (/^\d{8}$/.test(text)) return `${text.slice(0, 4)}-${text.slice(4, 6)}-${text.slice(6, 8)}`;
-            return text;
+            const year = Number(ymd[1]);
+            const month = Number(ymd[2]);
+            const day = Number(ymd[3]);
+            const parsed = new Date(Date.UTC(year, month - 1, day));
+            if (
+                parsed.getUTCFullYear() !== year
+                || parsed.getUTCMonth() !== month - 1
+                || parsed.getUTCDate() !== day
+            ) {
+                return null;
+            }
+            return {
+                date: [
+                    String(year).padStart(4, '0'),
+                    String(month).padStart(2, '0'),
+                    String(day).padStart(2, '0'),
+                ].join('-'),
+                source: 'filename',
+                confidence: 0.55,
+            };
         }
-        const ym = source.match(/(19|20)\d{2}[-_./]?(0[1-9]|1[0-2])/);
-        if (ym) {
-            const text = ym[0].replace(/[_.\/]/g, '-');
-            if (/^\d{6}$/.test(text)) return `${text.slice(0, 4)}-${text.slice(4, 6)}-01`;
-            return `${text}-01`;
-        }
-        const created = raster.created_at || raster.createdAt;
-        if (created) return String(created).slice(0, 10);
-        return '';
+        return null;
     }
 
     _dateParts(value) {
-        return String(value || '')
-            .split(/[\n,;]+/)
-            .map((part) => part.trim())
-            .filter(Boolean);
+        const text = String(value || '').trim();
+        if (!text) return [];
+        return text
+            .split(/[\n,;]/)
+            .map((part) => part.trim());
+    }
+
+    _orderedRasters(rasters) {
+        return [...rasters]
+            .map((raster, index) => ({ raster, index, info: this._dateInfo(raster) }))
+            .sort((left, right) => {
+                if (left.info && right.info) {
+                    const comparison = left.info.date.localeCompare(right.info.date);
+                    return comparison || left.index - right.index;
+                }
+                if (left.info) return -1;
+                if (right.info) return 1;
+                return left.index - right.index;
+            })
+            .map((entry) => entry.raster);
+    }
+
+    _automaticSelectionIds(rasters) {
+        const groups = new Map();
+        rasters.forEach((raster) => {
+            const key = this._seriesKey(raster);
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(raster);
+        });
+        const candidates = [...groups.values()].sort((left, right) => {
+            if (right.length !== left.length) return right.length - left.length;
+            const rightDated = right.filter((raster) => this._dateInfo(raster)).length;
+            const leftDated = left.filter((raster) => this._dateInfo(raster)).length;
+            return rightDated - leftDated;
+        });
+        const selected = candidates[0] || rasters;
+        return new Set(selected.map((raster) => String(raster.index_id)));
+    }
+
+    _seriesKey(raster) {
+        const productKey = [
+            raster.platform || '',
+            raster.sensor || '',
+            raster.processing_level || '',
+            raster.tile_id || '',
+        ].join('|').toLowerCase();
+        const spatialKey = this._spatialKey(raster);
+        const gridKey = [
+            raster.crs || '',
+            raster.width || '',
+            raster.height || '',
+            Number(raster.resolution_x || 0).toPrecision(8),
+            Number(raster.resolution_y || 0).toPrecision(8),
+            ...(Array.isArray(raster.bounds)
+                ? raster.bounds.map((value) => Number(value).toPrecision(10))
+                : []),
+            raster.bands || '',
+        ].join('|').toLowerCase();
+        if (productKey.replace(/\|/g, '')) {
+            const tileId = String(raster.tile_id || '').trim();
+            return tileId
+                ? `${productKey}|${raster.bands || ''}`
+                : `${productKey}|${spatialKey || gridKey}|${raster.bands || ''}`;
+        }
+        return spatialKey ? `${spatialKey}|${raster.bands || ''}` : gridKey;
+    }
+
+    _spatialKey(raster) {
+        const bounds = Array.isArray(raster.bounds_wgs84)
+            ? raster.bounds_wgs84.map(Number)
+            : [];
+        if (bounds.length >= 4 && bounds.slice(0, 4).every(Number.isFinite)) {
+            const [west, south, east, north] = bounds;
+            return [
+                'wgs84',
+                ((west + east) / 2).toFixed(3),
+                ((south + north) / 2).toFixed(3),
+                Math.abs(east - west).toFixed(3),
+                Math.abs(north - south).toFixed(3),
+            ].join('|');
+        }
+        const center = Array.isArray(raster.center) ? raster.center.map(Number) : [];
+        if (center.length >= 2 && center.slice(0, 2).every(Number.isFinite)) {
+            return `center|${center[0].toFixed(3)}|${center[1].toFixed(3)}`;
+        }
+        return '';
+    }
+
+    _escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     _normalizeOperation(operation) {

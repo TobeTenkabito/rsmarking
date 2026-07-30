@@ -39,7 +39,10 @@ async def save_and_process_file(
         with open(raw_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        metadata = RasterProcessor.extract_metadata(raw_path)
+        metadata = RasterProcessor.extract_metadata(
+            raw_path,
+            source_name=file.filename,
+        )
         result = await db_ops.save_to_db(
             db, file_id, file.filename, raw_path, cog_filename, cog_path,
             "upload", bundle_id=bundle_id,

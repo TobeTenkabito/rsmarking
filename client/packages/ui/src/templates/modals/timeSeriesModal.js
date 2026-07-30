@@ -52,8 +52,12 @@ export const timeSeriesModal = `
                     <label class="mb-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">Acquisition Dates</label>
                     <textarea id="time-series-dates-input"
                               rows="8"
+                              placeholder="Automatically resolved; ? means unknown"
                               oninput="RS.handleTimeSeriesInputChange()"
                               class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10"></textarea>
+                    <p class="mt-1 text-[10px] leading-4 text-slate-400">
+                        Dates are resolved automatically. Unknown dates do not require confirmation; operations use a documented fallback or skip only undated inputs when calendar grouping is required.
+                    </p>
                 </div>
             </div>
 

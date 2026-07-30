@@ -38,7 +38,16 @@ class RasterCRUD:
             bands=metadata_dict.get("bands"),
             data_type=metadata_dict.get("data_type"),
             resolution_x=res_x,
-            resolution_y=res_y
+            resolution_y=res_y,
+            acquired_at=metadata_dict.get("acquired_at"),
+            acquired_at_end=metadata_dict.get("acquired_at_end"),
+            acquired_at_source=metadata_dict.get("acquired_at_source") or "unknown",
+            acquired_at_confidence=metadata_dict.get("acquired_at_confidence") or 0.0,
+            platform=metadata_dict.get("platform"),
+            sensor=metadata_dict.get("sensor"),
+            product_id=metadata_dict.get("product_id"),
+            processing_level=metadata_dict.get("processing_level"),
+            tile_id=metadata_dict.get("tile_id"),
         )
         db.add(db_obj)
         await db.flush()
