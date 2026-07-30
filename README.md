@@ -1,21 +1,23 @@
 # RSMarking
 
-RSMarking is a remote-sensing annotation and raster analysis workspace. It combines a browser map UI, FastAPI microservices, PostGIS-backed vector storage, GDAL/rasterio processing utilities, an AI gateway, and an optional Celery worker layer for longer-running jobs.
+RSMarking is a remote-sensing annotation and raster analysis workspace. It combines a Leaflet/Cesium browser map, FastAPI microservices, PostGIS-backed vector storage, GDAL/rasterio processing, a permission-aware AI agent, and an optional Celery worker layer for longer-running jobs.
 
-The repository is currently most useful as a local development stack for GeoTIFF upload, raster metadata management, on-the-fly map tiles, vector annotation, raster/vector analysis tools, AI-assisted analysis or metadata edits, and Docker-isolated custom Python scripts.
+The repository is currently most useful as a local development stack for GeoTIFF upload, raster metadata management, on-the-fly map tiles, vector annotation, raster/vector analysis tools, AI-assisted project operations, and Docker-isolated custom Python scripts.
+
+> Documentation status: updated against the repository on 2026-07-28. The PowerShell launcher, service entry points, `.env.example`, and tests remain the operational sources of truth.
 
 ## Features
 
-- Browser map client with Leaflet and Cesium-based 2D/3D viewing.
+- Browser map client with synchronized Leaflet and Cesium 2D/3D viewing, including antimeridian, polar, and repeated-world geometry normalization.
 - Chinese, English, Japanese, and Spanish interface and AI response languages.
 - GeoTIFF metadata ingestion with raw and COG storage directories.
-- On-the-fly raster tile rendering from stored raster records.
+- On-the-fly raster tile rendering with bounded requests, L1/L2 caching, concurrent-miss coalescing, HTTP ETags, and optional Cython acceleration.
 - Vector projects, layers, features, attribute fields, shapefile import, and PostGIS spatial indexes.
 - Vector tile service using PostGIS `ST_AsMVT`.
 - Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, rasterization, clipping, and change detection.
 - Extraction algorithms for vegetation, water, buildings, and clouds.
-- AI gateway built around LiteLLM with analyze/modify modes and a callable function registry for analysis tools.
-- Docker-isolated Python script executor with shared access to `storage/raw`.
+- AI gateway built around LiteLLM with analyze/modify modes, a callable tool registry, conversation memory, safe attachments, and four per-request permission tiers.
+- Docker-isolated Python script executor with validated raster/vector inputs, bounded logs, resource limits, and restricted host-path access.
 - Optional Celery worker cluster for offline preprocessing, index calculation, and GeoJSON export jobs.
 
 ## Frontend Tool Placement Standards
@@ -80,10 +82,11 @@ client/index.html
 +----------------------+      +-----------------------+
 | executor_service     |      | ai_gateway            |
 | :8004                |      | :8006                 |
-| Docker sandbox       |      | LiteLLM + validators  |
+| Docker sandbox       |      | LiteLLM + policy gate |
 +----------------------+      +-----------------------+
 
 PostgreSQL/PostGIS, Redis, and RabbitMQ are provided by infrastructure/docker/docker-compose.yml.
+The Compose file provides infrastructure; the launcher starts the application services on the host.
 worker_cluster is optional and consumes RabbitMQ tasks while reporting status through Redis.
 ```
 
@@ -94,6 +97,8 @@ client/                         Static browser client
   index.html                    Main app shell
   packages/app/src/             App modules, API adapters, state, i18n
   packages/core/src/map.js      Leaflet/Cesium map engine
+  packages/core/src/geo/geometryRender.js
+                                Shared 2D/3D geometry normalization
   packages/ui/src/              Modal and sidebar templates/components
 
 services/
@@ -125,8 +130,58 @@ resources/                      README screenshots and benchmark images
 | Data service | 8002 | `services.data_service.main:app` | Raster metadata, uploads, spectral indices, extraction, clipping, scripts |
 | Vector tile service | 8003 | `services.vtile_service.main:app` | MVT tiles from PostGIS |
 | Executor service | 8004 | `services.executor_service.main:app` | Docker-isolated Python script execution |
-| Tile service | 8005 | `services.tile_service.main:app` | Raster XYZ PNG tiles |
-| AI gateway | 8006 | `services.ai_gateway.main:app` | AI analyze/modify requests and callable algorithm tools |
+| Tile service | 8005 | `services.tile_service.main:app` | Cached RasterIO XYZ PNG rendering and HTTP revalidation |
+| AI gateway | 8006 | `services.ai_gateway.main:app` | AI analyze/modify requests, agent policy enforcement, and callable tools |
+
+## Rendering Architecture
+
+### Browser 2D/3D rendering
+
+Source GeoJSON remains unchanged in application state. Before display, the shared geometry pipeline unwraps longitudes, splits antimeridian and polar crossings, and generates renderer-specific copies for Leaflet and Cesium. This prevents a 2D/3D switch from feeding one renderer's clipped coordinates back into the other and supports features that cross the dateline or wrap around the globe more than once.
+
+Raster layers use the tile service below in both modes. The map engine reconciles renderer state when switching modes; it does not change raster pixels or source metadata.
+
+### Raster tile request path
+
+```text
+GET /tile/{index_id}/{z}/{x}/{y}.png
+  -> validate XYZ and requested bands
+  -> resolve the current raster path/version
+  -> run blocking cache, RasterIO, and PNG work in a worker thread
+  -> coalesce concurrent misses for the same tile
+  -> L1 memory cache / L2 disk cache
+  -> CRS-aware RasterIO masked window read and resampling
+  -> stretch + RGBA render + PNG encode
+  -> ETag and Cache-Control response
+```
+
+The source file modification time and size are part of the internal cache key, so a replaced raster does not reuse an old rendered tile. Browser/proxy revalidation uses a content-derived ETag. Missing files return a transparent tile with `Cache-Control: no-store`.
+
+The tile service loads compiled Cython rendering helpers when the local extension is available and otherwise uses the NumPy implementation. `GET :8005/health` reports the active renderer instead of assuming acceleration.
+
+To rebuild the optional extension for the active Python environment:
+
+```powershell
+cd services/tile_service
+python setup.py build_ext --inplace
+cd ../..
+```
+
+Important tile settings (all optional):
+
+| Setting | Default | Purpose |
+|---|---:|---|
+| `TILE_MAX_BANDS` | `4` | Bounds client-controlled RasterIO and render work |
+| `TILE_MAX_ZOOM` | `24` | Rejects invalid or unreasonable XYZ requests |
+| `TILE_RASTER_OPEN_MODE` | `per_request` | Uses isolated RasterIO handles; `thread_local` is an opt-in reuse mode |
+| `TILE_RESAMPLING_MODE` | `quality` | Selects the configured resampling policy |
+| `TILE_ALPHA_MODE` | `auto` | Chooses data/mask alpha behavior |
+| `TILE_PNG_COMPRESS_LEVEL` | `1` | Balances PNG CPU cost and response size |
+| `TILE_HTTP_CACHE_MAX_AGE_SECONDS` | `60` | Browser/proxy freshness lifetime |
+| `TILE_HTTP_CACHE_STALE_WHILE_REVALIDATE_SECONDS` | `300` | Allows stale tiles during background revalidation |
+| `TILE_PROFILE` | `false` | Logs per-stage tile timing for diagnosis |
+
+See `.env.example` for path-cache and engine-cache controls. Keep `per_request` for general development; use `thread_local` only after representative load testing because RasterIO dataset handles are thread-affine.
 
 ## Prerequisites
 
@@ -241,6 +296,8 @@ docker compose up -d
 cd ../..
 ```
 
+This Compose stack starts PostgreSQL/PostGIS, RabbitMQ, and Redis only. Start the six FastAPI application services separately with the commands below, or use the one-click launcher.
+
 The compose file creates the `rsmarking` database. The annotation and vector tile services default to a separate `vector_db` database, so create it once:
 
 ```powershell
@@ -292,11 +349,10 @@ The AI gateway loads `.env` from the repository root and calls LiteLLM. A minima
 
 ```env
 AI_MODEL=deepseek/deepseek-chat
-AI_NAME=deepseek/deepseek-chat
 DEEPSEEK_API_KEY=sk-...
 ```
 
-Use any LiteLLM-supported provider by changing `AI_MODEL`/`AI_NAME` and setting the provider-specific API key expected by LiteLLM.
+Use any LiteLLM-supported provider by changing `AI_MODEL` and setting the provider-specific API key expected by LiteLLM. `AI_NAME` and `AI_MODEL_NAME` remain compatibility fallbacks, but `AI_MODEL` is the preferred setting.
 
 The agent can create persistent downloadable documents, SVG images, and CSV/XLSX/JSON tables. To enable provider-backed raster image generation as well, configure a LiteLLM-compatible image model separately:
 
@@ -315,7 +371,10 @@ Core endpoints:
 | `GET` | `/ai/functions?format=openai` | Return callable tools in OpenAI tool schema format |
 | `GET` | `/ai/functions?format=catalog` | Return a readable function catalog |
 | `POST` | `/ai/functions/invoke` | Invoke a registered algorithm function directly |
-| `POST` | `/ai/agent` | Run a minimal tool-using agent over the registered function catalog |
+| `POST` | `/ai/agent` | Run the permission-aware tool-using agent |
+| `GET/POST/DELETE` | `/ai/conversations` | List, save, or clear archived agent conversations |
+| `GET/DELETE` | `/ai/conversations/{archive_id}` | Read or delete one archived conversation |
+| `POST` | `/ai/conversations/{archive_id}/restore` | Restore an archive into an agent session |
 | `GET` | `/ai/artifacts/{artifact_id}` | Preview an AI-generated image artifact |
 | `GET` | `/ai/artifacts/{artifact_id}/download` | Export an AI-generated artifact |
 
@@ -325,7 +384,18 @@ In modify mode, the Pydantic layer only accepts currently modifiable fields such
 
 Registered AI-callable functions include downloadable document/table generation, optional AI image generation, raster discovery/metadata/statistics/spectrum and field management, processing-status lookup, spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
 
-`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, and `max_steps`. It also supports conversational agent sessions with `history_limit` and `reset_session`. By default it injects a compact workspace overview of current rasters, vector projects, and layers; set `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, a compact `steps` trace, and an `artifacts` array containing safe preview/export URLs for generated files.
+`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, bounded `attachments`, and step/tool-call budgets. It supports conversational sessions (`history_limit`, `reset_session`) and compact saved-conversation memory (`include_archive_memory`, `archive_memory_limit`). By default it injects a bounded overview of current rasters, vector projects, and layers; use `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, a compact `steps` trace, and safe preview/export URLs for generated artifacts.
+
+Agent permissions are a per-request capability ceiling:
+
+| `permission_level` | Allowed behavior |
+|---|---|
+| `read_only` | Inspect and explain project data; no execution or mutation |
+| `safe` | Inspect, run isolated processing, and create new outputs; no update/delete |
+| `standard` | Task-scoped execution and creation; update/delete require explicit current-turn authorization |
+| `full_control` | Autonomously operate on project data for an actionable task, while respecting explicit exclusions |
+
+Every tier retains hard boundaries: the agent cannot modify repository source code, sandbox policy, host files, or service controls. Tool authorization is derived from the current user task, not from model reasoning, conversation history, workspace metadata, attachments, or tool output. Those context sources are marked as untrusted data, which prevents embedded prompt text from granting itself permission.
 
 ## API Quick Reference
 
@@ -397,6 +467,7 @@ Python unit tests:
 ```powershell
 python -m pytest tests/unit/functions
 python -m pytest tests/unit/services
+python -m pytest tests/unit/services/tile_rendering -m "not benchmark"
 ```
 
 Service communication tests:
@@ -418,14 +489,14 @@ Benchmarks are opt-in:
 
 ```powershell
 $env:RS_RUN_BENCHMARKS = "1"
-python -m pytest tests/benchmark -m benchmark
+python -m pytest tests/unit/services/tile_rendering/benchmark -m benchmark
 ```
 
 Frontend unit tests:
 
 ```powershell
 npm install
-npm run test -- --config vitest.config.js
+npm test
 ```
 
 ## Screenshots
@@ -452,10 +523,14 @@ npm run test -- --config vitest.config.js
 
 ## Current Caveats
 
-- Some older comments and docs in the repository are mojibaked. This README is ASCII-only to avoid adding more encoding damage.
-- The frontend does not currently ship a package-managed dev server workflow; use the Docker stack or the static client entry points above while developing the app.
+- Some older comments and auxiliary docs in the repository are mojibaked; edited text files should be kept as UTF-8.
+- The frontend does not currently ship a package-managed dev server workflow; use the data-service static mount or another static server while developing the app.
+- The infrastructure Compose file does not containerize the six application services.
 - The helper start scripts under `services/` are not the most reliable source of truth. Prefer the explicit `uvicorn` commands above while developing.
-- `worker_cluster` is optional until the synchronous `data_service` processing paths are replaced with Celery submissions.
+- The Cython tile renderer is optional. Builds without the extension use the tested NumPy fallback and may have lower throughput.
+- `TILE_RASTER_OPEN_MODE=thread_local` trades fewer dataset opens for more lifecycle complexity; benchmark it with the deployment's actual server/thread model before enabling it.
+- Very large vector layers are still transferred as GeoJSON in several annotation workflows; the PostGIS MVT service is available, but not every browsing path has migrated to it.
+- `worker_cluster` is optional; processing can still run inline according to `RS_PROCESSING_BACKEND` and fallback settings.
 - Do not commit real `.env` API keys.
 
 ## License

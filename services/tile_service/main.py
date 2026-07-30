@@ -10,8 +10,9 @@ BASE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from services.tile_service.core.config import settings
-from services.tile_service.router import router as tile_router
+from services.tile_service.core.config import settings  # noqa: E402
+from services.tile_service.engine.tiler import HAS_FAST_TILER  # noqa: E402
+from services.tile_service.router import router as tile_router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tile_service_init")
@@ -37,12 +38,14 @@ async def health():
     return {
         "status": "ready",
         "service": "tile_service",
-        "engine": "cython-accelerated"
+        "renderer": "cython" if HAS_FAST_TILER else "numpy",
+        "raster_open_mode": settings.TILE_RASTER_OPEN_MODE,
+        "tile_size": settings.TILE_SIZE,
     }
 
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "=" * 50)
-    print(f"### [SERVER] TILE SERVICE IS STARTING ON PORT 8005 ###")
+    print("### [SERVER] TILE SERVICE IS STARTING ON PORT 8005 ###")
     print("=" * 50 + "\n")
     uvicorn.run("main:app", host="0.0.0.0", port=8005, reload=True)

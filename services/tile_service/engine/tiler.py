@@ -405,6 +405,12 @@ class TileEngine:
         if alpha_mode == "data" or not self._has_explicit_mask(src, valid_bands):
             return valid
 
+        # rasterio's masked read has already applied nodata, alpha, and GDAL
+        # mask-band validity. Reading the same mask again doubles GDAL I/O for
+        # every uncached tile without adding information.
+        if read_valid_mask is not None:
+            return valid
+
         try:
             masks = src.read_masks(
                 valid_bands,

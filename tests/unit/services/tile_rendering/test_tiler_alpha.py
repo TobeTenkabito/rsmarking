@@ -58,6 +58,20 @@ class MaskedReadDataset(FakeDataset):
         return selected
 
 
+class MaskedExplicitDataset(MaskedReadDataset):
+    def __init__(self, data, invalid_mask):
+        super().__init__(data, invalid_mask)
+        self.mask_flag_enums = [
+            [FakeMaskFlag("per_dataset")]
+            for _ in range(self.count)
+        ]
+        self.read_masks_calls = 0
+
+    def read_masks(self, bands, **kwargs):
+        self.read_masks_calls += 1
+        return super().read_masks(bands, **kwargs)
+
+
 class NodataDataset(FakeDataset):
     def __init__(self, data, nodata):
         super().__init__(data)
@@ -145,6 +159,29 @@ def test_masked_boundless_pixels_are_transparent_and_not_rendered(mocker):
     assert np.all(tile[:, :64, :3] == 0)
     assert np.all(tile[:, :64, 3] == 0)
     assert np.all(tile[:, 64:, 3] == 255)
+
+
+def test_masked_read_reuses_explicit_validity_without_second_gdal_mask_read(mocker):
+    data = np.ones((3, 256, 256), dtype=np.float32)
+    invalid_mask = np.zeros_like(data, dtype=bool)
+    invalid_mask[:, :, :32] = True
+    dataset = MaskedExplicitDataset(data, invalid_mask)
+
+    mocker.patch("services.tile_service.engine.tiler.HAS_FAST_TILER", False)
+    mocker.patch("services.tile_service.engine.tiler.fast_stretch_and_stack", None)
+    mocker.patch("services.tile_service.engine.tiler.get_tile_window", return_value=None)
+    mocker.patch("services.tile_service.engine.tiler.os.path.exists", return_value=True)
+    mocker.patch(
+        "services.tile_service.engine.tiler.rasterio.open",
+        return_value=dataset,
+    )
+
+    tile = TileEngine("fake.tif").read_tile(0, 0, 0, bands=[1, 2, 3])
+
+    assert tile is not None
+    assert dataset.read_masks_calls == 0
+    assert np.all(tile[:, :32, 3] == 0)
+    assert np.all(tile[:, 32:, 3] == 255)
 
 
 def test_nodata_pixels_are_zeroed_before_rendering(mocker):

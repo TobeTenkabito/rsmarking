@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     CACHE_L2_DIR: str = os.path.join(os.path.dirname(__file__), "../../.tile_cache")
     CACHE_L2_SIZE_LIMIT: int = 5 * 1024 * 1024 * 1024
     DEFAULT_BANDS: str = "1,2,3"
+    TILE_MAX_BANDS: int = 4
+    TILE_MAX_ZOOM: int = 24
     TILE_SIZE: int = 256
     TILE_PROFILE: bool = False
     TILE_ALPHA_MODE: str = "auto"
@@ -19,6 +21,8 @@ class Settings(BaseSettings):
     TILE_RASTER_OPEN_MODE: str = "per_request"
     TILE_RESAMPLING_MODE: str = "quality"
     TILE_PNG_COMPRESS_LEVEL: int = 1
+    TILE_HTTP_CACHE_MAX_AGE_SECONDS: int = 60
+    TILE_HTTP_CACHE_STALE_WHILE_REVALIDATE_SECONDS: int = 300
 
 
 settings = Settings()

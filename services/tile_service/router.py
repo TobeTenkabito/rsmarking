@@ -1,17 +1,22 @@
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from functools import lru_cache
+import hashlib
 import io
 import logging
 import os
+from threading import Lock, RLock
 import time
-from functools import lru_cache
 
 import mercantile
 import rasterio
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from PIL import Image
 from rasterio.enums import Resampling
 from rasterio.windows import from_bounds
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from services.data_service.database import get_db
 from services.tile_service.core.cache import tile_cache
@@ -25,6 +30,51 @@ logger = logging.getLogger("tile_service.control")
 router = APIRouter()
 
 RENDER_CACHE_VERSION = "render_v5_mask_propagation"
+
+
+@dataclass
+class _RenderLockEntry:
+    lock: Lock = field(default_factory=Lock)
+    references: int = 0
+
+
+class _KeyedRenderLocks:
+    """Bounded-lifetime locks that collapse identical concurrent tile misses."""
+
+    def __init__(self):
+        self._guard = RLock()
+        self._entries: dict[str, _RenderLockEntry] = {}
+
+    @contextmanager
+    def hold(self, key: str):
+        with self._guard:
+            entry = self._entries.get(key)
+            if entry is None:
+                entry = _RenderLockEntry()
+                self._entries[key] = entry
+            entry.references += 1
+
+        entry.lock.acquire()
+        try:
+            yield
+        finally:
+            entry.lock.release()
+            with self._guard:
+                entry.references -= 1
+                if entry.references == 0:
+                    self._entries.pop(key, None)
+
+
+@dataclass
+class _TileRenderResult:
+    content: bytes
+    file_version: str | None
+    cache_hit: bool
+    missing_source: bool
+    timings: dict[str, float]
+
+
+_TILE_RENDER_LOCKS = _KeyedRenderLocks()
 
 
 def _profile_enabled() -> bool:
@@ -48,8 +98,17 @@ def _empty_png_bytes() -> bytes:
     return buf.getvalue()
 
 
-def _png_response(content: bytes, status_code: int = 200) -> Response:
-    return Response(content=content, media_type="image/png", status_code=status_code)
+def _png_response(
+    content: bytes,
+    status_code: int = 200,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    return Response(
+        content=content,
+        media_type="image/png",
+        status_code=status_code,
+        headers=headers,
+    )
 
 
 def _encode_png(tile_data) -> bytes:
@@ -64,14 +123,27 @@ def _encode_png(tile_data) -> bytes:
 
 def _parse_bands(bands: str):
     parsed = []
-    for part in (bands or settings.DEFAULT_BANDS).split(","):
+    seen = set()
+    max_bands = max(1, int(getattr(settings, "TILE_MAX_BANDS", 4) or 4))
+    raw_bands = bands if isinstance(bands, str) else settings.DEFAULT_BANDS
+    if len(raw_bands) > 128:
+        raise HTTPException(status_code=400, detail="Band selection is too long")
+
+    for part in (raw_bands or settings.DEFAULT_BANDS).split(","):
         part = part.strip()
         if not part:
             continue
         try:
-            parsed.append(int(part))
+            band = int(part)
         except ValueError:
             logger.warning("Ignoring invalid band value: %s", part)
+            continue
+        if band < 1 or band in seen:
+            continue
+        seen.add(band)
+        parsed.append(band)
+        if len(parsed) >= max_bands:
+            break
 
     return parsed or [int(part) for part in settings.DEFAULT_BANDS.split(",")]
 
@@ -107,69 +179,99 @@ def _safe_basename(file_path: str | None) -> str:
     return os.path.basename(file_path)
 
 
-@router.get("/tile/{index_id}/{z}/{x}/{y}.png")
-async def get_tile(
+def _validate_tile_coordinates(z: int, x: int, y: int) -> None:
+    max_zoom = max(0, int(getattr(settings, "TILE_MAX_ZOOM", 24) or 24))
+    if z < 0 or z > max_zoom:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Zoom must be between 0 and {max_zoom}",
+        )
+    axis_size = 1 << z
+    if x < 0 or y < 0 or x >= axis_size or y >= axis_size:
+        raise HTTPException(
+            status_code=400,
+            detail="Tile coordinates are outside the requested zoom level",
+        )
+
+
+def _render_lock_key(
+    file_path: str | None,
     index_id: str,
     z: int,
     x: int,
     y: int,
-    bands: str = settings.DEFAULT_BANDS,
-    db: AsyncSession = Depends(get_db),
-):
-    profile = _profile_enabled()
-    total_start = time.perf_counter()
+    band_key: str,
+) -> str:
+    return "\0".join(
+        (str(file_path or ""), str(index_id), str(z), str(x), str(y), band_key)
+    )
+
+
+def _render_tile_sync(
+    file_path: str | None,
+    index_id: str,
+    z: int,
+    x: int,
+    y: int,
+    requested_bands: list[int],
+    band_key: str,
+    alpha_strategy: str,
+    render_options: dict,
+) -> _TileRenderResult:
     timings = {
-        "db_path": 0.0,
+        "singleflight_wait": 0.0,
         "file_stat": 0.0,
         "cache_get": 0.0,
         "engine_read": 0.0,
         "png_encode": 0.0,
         "cache_set": 0.0,
     }
-    cache_hit = False
-    response_len = 0
-    file_version = 0
-    file_path = None
-    alpha_strategy = _alpha_strategy()
-    render_options = _render_options()
+    wait_start = time.perf_counter()
+    lock_key = _render_lock_key(file_path, index_id, z, x, y, band_key)
 
-    try:
-        start = time.perf_counter()
-        file_path = await logic.get_raster_path(db, index_id)
-        timings["db_path"] = (time.perf_counter() - start) * 1000.0
+    with _TILE_RENDER_LOCKS.hold(lock_key):
+        timings["singleflight_wait"] = (time.perf_counter() - wait_start) * 1000.0
 
         start = time.perf_counter()
         file_exists = bool(file_path and os.path.exists(file_path))
-        if file_exists:
-            file_version = _file_version(file_path)
+        file_version = _file_version(file_path) if file_exists else None
         timings["file_stat"] = (time.perf_counter() - start) * 1000.0
 
         if not file_exists:
-            content = _empty_png_bytes()
-            response_len = len(content)
-            return _png_response(content)
-
-        requested_bands = _parse_bands(bands)
-        band_key = ",".join(str(b) for b in requested_bands)
+            return _TileRenderResult(
+                content=_empty_png_bytes(),
+                file_version=None,
+                cache_hit=False,
+                missing_source=True,
+                timings=timings,
+            )
 
         start = time.perf_counter()
-        cached_tile = tile_cache.get_tile(
-            index_id,
-            z,
-            x,
-            y,
-            band_key,
-            file_version=file_version,
-            tile_size=settings.TILE_SIZE,
-            renderer_version=RENDER_CACHE_VERSION,
-            alpha_strategy=alpha_strategy,
-            render_options=render_options,
-        )
+        try:
+            cached_tile = tile_cache.get_tile(
+                index_id,
+                z,
+                x,
+                y,
+                band_key,
+                file_version=file_version,
+                tile_size=settings.TILE_SIZE,
+                renderer_version=RENDER_CACHE_VERSION,
+                alpha_strategy=alpha_strategy,
+                render_options=render_options,
+            )
+        except Exception:
+            cached_tile = None
+            logger.exception("Tile cache read failed; rendering without cache")
         timings["cache_get"] = (time.perf_counter() - start) * 1000.0
         if cached_tile is not None:
-            cache_hit = True
-            response_len = len(cached_tile)
-            return _png_response(cached_tile)
+            return _TileRenderResult(
+                content=cached_tile,
+                file_version=file_version,
+                cache_hit=True,
+                missing_source=False,
+                timings=timings,
+            )
 
         engine = get_tile_engine(file_path)
         start = time.perf_counter()
@@ -184,25 +286,141 @@ async def get_tile(
         start = time.perf_counter()
         content = _encode_png(tile_data)
         timings["png_encode"] = (time.perf_counter() - start) * 1000.0
-        response_len = len(content)
 
         start = time.perf_counter()
-        tile_cache.set_tile(
+        try:
+            tile_cache.set_tile(
+                index_id,
+                z,
+                x,
+                y,
+                band_key,
+                content,
+                file_version=file_version,
+                tile_size=settings.TILE_SIZE,
+                renderer_version=RENDER_CACHE_VERSION,
+                alpha_strategy=alpha_strategy,
+                render_options=render_options,
+            )
+        except Exception:
+            logger.exception("Tile cache write failed; returning rendered tile")
+        timings["cache_set"] = (time.perf_counter() - start) * 1000.0
+        return _TileRenderResult(
+            content=content,
+            file_version=file_version,
+            cache_hit=False,
+            missing_source=False,
+            timings=timings,
+        )
+
+
+def _tile_http_headers(
+    content: bytes,
+    file_version: str | None,
+) -> dict[str, str]:
+    if file_version is None:
+        return {
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+
+    etag = hashlib.sha256(content).hexdigest()[:32]
+    max_age = max(
+        0,
+        int(getattr(settings, "TILE_HTTP_CACHE_MAX_AGE_SECONDS", 60) or 0),
+    )
+    stale = max(
+        0,
+        int(
+            getattr(
+                settings,
+                "TILE_HTTP_CACHE_STALE_WHILE_REVALIDATE_SECONDS",
+                300,
+            )
+            or 0
+        ),
+    )
+    cache_control = f"public, max-age={max_age}"
+    if stale:
+        cache_control += f", stale-while-revalidate={stale}"
+    return {
+        "Cache-Control": cache_control,
+        "ETag": f'"{etag}"',
+        "X-Content-Type-Options": "nosniff",
+    }
+
+
+def _etag_matches(if_none_match: str | None, etag: str | None) -> bool:
+    if not if_none_match or not etag:
+        return False
+    expected = etag.removeprefix("W/")
+    return any(
+        candidate.strip().removeprefix("W/") in {"*", expected}
+        for candidate in if_none_match.split(",")
+    )
+
+
+@router.get("/tile/{index_id}/{z}/{x}/{y}.png")
+async def get_tile(
+    index_id: str,
+    z: int,
+    x: int,
+    y: int,
+    bands: str = settings.DEFAULT_BANDS,
+    if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    db: AsyncSession = Depends(get_db),
+):
+    profile = _profile_enabled()
+    total_start = time.perf_counter()
+    timings = {
+        "db_path": 0.0,
+        "singleflight_wait": 0.0,
+        "file_stat": 0.0,
+        "cache_get": 0.0,
+        "engine_read": 0.0,
+        "png_encode": 0.0,
+        "cache_set": 0.0,
+    }
+    cache_hit = False
+    response_len = 0
+    file_version = None
+    file_path = None
+    alpha_strategy = _alpha_strategy()
+    render_options = _render_options()
+
+    try:
+        _validate_tile_coordinates(z, x, y)
+        start = time.perf_counter()
+        file_path = await logic.get_raster_path(db, index_id)
+        timings["db_path"] = (time.perf_counter() - start) * 1000.0
+
+        requested_bands = _parse_bands(bands)
+        band_key = ",".join(str(b) for b in requested_bands)
+        result = await run_in_threadpool(
+            _render_tile_sync,
+            file_path,
             index_id,
             z,
             x,
             y,
+            requested_bands,
             band_key,
-            content,
-            file_version=file_version,
-            tile_size=settings.TILE_SIZE,
-            renderer_version=RENDER_CACHE_VERSION,
-            alpha_strategy=alpha_strategy,
-            render_options=render_options,
+            alpha_strategy,
+            render_options,
         )
-        timings["cache_set"] = (time.perf_counter() - start) * 1000.0
-        return _png_response(content)
+        timings.update(result.timings)
+        cache_hit = result.cache_hit
+        file_version = result.file_version
+        response_len = len(result.content)
+        headers = _tile_http_headers(result.content, file_version)
+        request_etag = if_none_match if isinstance(if_none_match, str) else None
+        if _etag_matches(request_etag, headers.get("ETag")):
+            response_len = 0
+            return Response(status_code=304, headers=headers)
+        return _png_response(result.content, headers=headers)
 
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Tile generation failed: %s, Z=%s, X=%s, Y=%s", index_id, z, x, y)
         return Response(status_code=500)
@@ -211,7 +429,7 @@ async def get_tile(
             total_ms = (time.perf_counter() - total_start) * 1000.0
             logger.info(
                 "tile_route_profile index=%s z=%s x=%s y=%s bands=%s "
-                "db_path=%.2fms file_stat=%.2fms cache_get=%.2fms "
+                "db_path=%.2fms wait=%.2fms file_stat=%.2fms cache_get=%.2fms "
                 "engine=%.2fms encode=%.2fms cache_set=%.2fms total=%.2fms "
                 "cache_hit=%s bytes=%s alpha=%s renderer=%s file_version=%s path=%s",
                 index_id,
@@ -220,6 +438,7 @@ async def get_tile(
                 y,
                 bands,
                 timings["db_path"],
+                timings["singleflight_wait"],
                 timings["file_stat"],
                 timings["cache_get"],
                 timings["engine_read"],
@@ -246,26 +465,31 @@ async def debug_render_first(db: AsyncSession = Depends(get_db)):
 
     index_id, file_path = row
     try:
-        z, x, y = 2, 2, 1
-        with rasterio.open(file_path) as src:
-            tile_bounds = mercantile.xy_bounds(x, y, z)
-            window = from_bounds(
-                tile_bounds.left,
-                tile_bounds.bottom,
-                tile_bounds.right,
-                tile_bounds.top,
-                src.transform,
-            )
-            band_indices = list(range(1, min(3, src.count) + 1))
-            tile_data = src.read(
-                band_indices,
-                window=window,
-                out_shape=(len(band_indices), settings.TILE_SIZE, settings.TILE_SIZE),
-                resampling=Resampling.bilinear,
-                boundless=True,
-            )
-            img_rgba = logic.process_tile_pixels_fallback(tile_data)
-            return _png_response(_encode_png(img_rgba))
+        content = await run_in_threadpool(_render_debug_tile_sync, file_path)
+        return _png_response(content, headers={"Cache-Control": "no-store"})
     except Exception as e:
         logger.exception("Debug render failed")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _render_debug_tile_sync(file_path: str) -> bytes:
+    z, x, y = 2, 2, 1
+    with rasterio.open(file_path) as src:
+        tile_bounds = mercantile.xy_bounds(x, y, z)
+        window = from_bounds(
+            tile_bounds.left,
+            tile_bounds.bottom,
+            tile_bounds.right,
+            tile_bounds.top,
+            src.transform,
+        )
+        band_indices = list(range(1, min(3, src.count) + 1))
+        tile_data = src.read(
+            band_indices,
+            window=window,
+            out_shape=(len(band_indices), settings.TILE_SIZE, settings.TILE_SIZE),
+            resampling=Resampling.bilinear,
+            boundless=True,
+        )
+        img_rgba = logic.process_tile_pixels_fallback(tile_data)
+        return _encode_png(img_rgba)
