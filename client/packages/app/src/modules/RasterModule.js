@@ -40,7 +40,9 @@ export class RasterModule {
     async handleClearDatabase({ confirmUser = true, reload = true } = {}) {
         if (confirmUser && !confirm(t('raster.confirm.clearDatabase'))) return false;
 
-        await RasterAPI.clearDB();
+        const adminToken = prompt(t('raster.prompt.adminToken'));
+        if (!adminToken?.trim()) return false;
+        await RasterAPI.clearDB(adminToken);
         Store.clearRasterState();
 
         if (reload) window.location.reload();

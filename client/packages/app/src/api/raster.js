@@ -713,8 +713,16 @@ export const RasterAPI = {
     );
   },
 
-  async clearDB() {
-    return request(`${BASE_URL}/debug/clear-db`, {}, 'Failed to clear raster database');
+  async clearDB(adminToken) {
+    if (!adminToken?.trim()) throw new Error('Administrator token is required');
+    return request(`${BASE_URL}/admin/rasters/clear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken.trim()}`,
+      },
+      body: JSON.stringify({ confirmation: 'DELETE_ALL_RASTERS' }),
+    }, 'Failed to clear raster database');
   },
 
   async exportWorkspaceFile(payload) {

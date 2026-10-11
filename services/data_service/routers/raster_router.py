@@ -1,14 +1,17 @@
 import logging
 import os
+from typing import Literal
 
 import rasterio
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
 import services.data_service.db_ops as db_ops
 from services.data_service.crud.raster_crud import RasterCRUD
 from services.data_service.database import get_db
+from services.data_service.admin_security import require_raster_admin
 from services.data_service.processor import RasterProcessor
 from services.data_service.raster_statistics import compute_raster_statistics
 
@@ -55,8 +58,12 @@ async def delete_raster(raster_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "success"}
 
 
-@router.get("/debug/clear-db")
-async def clear_database(db: AsyncSession = Depends(get_db)):
+class ClearRastersRequest(BaseModel):
+    confirmation: Literal["DELETE_ALL_RASTERS"]
+
+
+@router.post("/admin/rasters/clear", dependencies=[Depends(require_raster_admin)])
+async def clear_database(payload: ClearRastersRequest, db: AsyncSession = Depends(get_db)):
     await RasterCRUD.clear_all_rasters(db)
     return {"message": "Database cleared"}
 

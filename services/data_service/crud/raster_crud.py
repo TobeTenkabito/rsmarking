@@ -1,12 +1,15 @@
 import os
 import logging
+import asyncio
+from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from typing import List, Optional
 from services.data_service.models import RasterMetadata
 
 logger = logging.getLogger("data_service.crud")
+STORAGE_DIR = Path(__file__).resolve().parents[3] / "storage"
 
 
 class RasterCRUD:
@@ -77,33 +80,95 @@ class RasterCRUD:
     @staticmethod
     async def delete_raster(db: AsyncSession, raster_id: int) -> bool:
         """delete a single imagery item"""
+        await RasterCRUD.lock_raster_writes(db)
         stmt = select(RasterMetadata).where(RasterMetadata.id == raster_id)
         result = await db.execute(stmt)
         raster = result.scalar_one_or_none()
         if not raster:
+            await db.rollback()
             return False
-        RasterCRUD._delete_physical_files(raster)
+        paths = RasterCRUD._physical_paths(raster.file_path, raster.cog_path)
         await db.delete(raster)
         await db.commit()
+        await RasterCRUD._cleanup_unreferenced_files(db, paths)
         return True
 
     @staticmethod
     async def clear_all_rasters(db: AsyncSession) -> bool:
         """clear the database and delete all files"""
+        await RasterCRUD.lock_raster_writes(db)
         stmt = select(RasterMetadata.file_path, RasterMetadata.cog_path)
         result = await db.execute(stmt)
         rows = result.all()
+        paths = set()
         for file_path, cog_path in rows:
-            RasterCRUD._delete_file(file_path)
-            if cog_path:
-                cog_filename = os.path.basename(cog_path)
-                cog_dir = os.path.dirname(file_path).replace(os.sep + "raw", os.sep + "cog")
-                full_cog_path = os.path.join(cog_dir, cog_filename)
-                RasterCRUD._delete_file(full_cog_path)
+            paths.update(RasterCRUD._physical_paths(file_path, cog_path))
         await db.execute(delete(RasterMetadata))
         await db.commit()
-        logger.info("Database and physical files cleared.")
+        await RasterCRUD._cleanup_unreferenced_files(db, paths)
+        logger.info("Raster metadata cleared; unreferenced managed files cleaned up.")
         return True
+
+    @staticmethod
+    async def lock_raster_writes(db: AsyncSession):
+        """Serialize deletion/cleanup and shared-file copies with all table writes.
+
+        PostgreSQL inserts and updates acquire ROW EXCLUSIVE locks, which conflict
+        with this lock. It is released when the caller commits or rolls back.
+        """
+        await db.execute(text("LOCK TABLE raster_metadata IN SHARE ROW EXCLUSIVE MODE"))
+
+    @staticmethod
+    def _physical_paths(file_path: str | None, cog_path: str | None) -> set[Path]:
+        """Resolve public COG URLs and restrict cleanup to managed storage roots."""
+        roots = [(STORAGE_DIR / name).resolve() for name in ("raw", "cog")]
+        paths = set()
+        for value in (file_path, cog_path):
+            if not value:
+                continue
+            normalized = str(value).replace("\\", "/")
+            if normalized.startswith("/data/"):
+                path = STORAGE_DIR / "cog" / normalized[len("/data/"):]
+            else:
+                path = Path(value)
+                if not path.is_absolute():
+                    path = STORAGE_DIR.parent / path
+            path = path.resolve()
+            if any(path.is_relative_to(root) and path != root for root in roots):
+                paths.add(path)
+        return paths
+
+    @staticmethod
+    async def _cleanup_unreferenced_files(db: AsyncSession, paths: set[Path]):
+        if not paths:
+            return
+        try:
+            # The metadata deletion is already committed. Recheck references while
+            # holding a write lock so an insert cannot race the filesystem cleanup.
+            await RasterCRUD.lock_raster_writes(db)
+            result = await db.execute(select(RasterMetadata.file_path, RasterMetadata.cog_path))
+            referenced = set()
+            for file_path, cog_path in result.all():
+                referenced.update(RasterCRUD._physical_paths(file_path, cog_path))
+            cleanup = asyncio.create_task(asyncio.to_thread(RasterCRUD._delete_paths, paths - referenced))
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                # Cancelling a request does not stop its filesystem thread. Keep
+                # the write lock until that thread finishes, then propagate it.
+                await cleanup
+                raise
+        except Exception:
+            # Failed cleanup must leave files intact rather than undoing a
+            # successful metadata deletion or deleting files without checking.
+            logger.exception("Unable to clean up unreferenced raster files")
+        finally:
+            await db.rollback()  # Release the cleanup transaction's table lock.
+
+    @staticmethod
+    def _delete_paths(paths: set[Path]):
+        for path in paths:
+            RasterCRUD._delete_file(str(path))
 
     @staticmethod
     def _delete_file(path: str):
@@ -117,16 +182,6 @@ class RasterCRUD:
             pass
         except Exception as e:
             logger.error(f"Failed to delete file {path}: {e}")
-
-    @staticmethod
-    def _delete_physical_files(raster: RasterMetadata):
-        """delete source file andCOG"""
-        RasterCRUD._delete_file(raster.file_path)
-        if raster.cog_path:
-            cog_filename = os.path.basename(raster.cog_path)
-            cog_dir = os.path.dirname(raster.file_path).replace(os.sep + "raw", os.sep + "cog")
-            full_cog_path = os.path.join(cog_dir, cog_filename)
-            RasterCRUD._delete_file(full_cog_path)
 
     @staticmethod
     async def update_raster(db: AsyncSession, raster_id: int, update_dict: dict) -> Optional[RasterMetadata]:

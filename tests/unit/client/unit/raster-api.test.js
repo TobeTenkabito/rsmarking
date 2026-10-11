@@ -9,6 +9,22 @@ describe('RasterAPI errors', () => {
         global.fetch.mockReset();
     });
 
+    it('clears rasters with an authenticated POST and explicit confirmation', async () => {
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ message: 'Database cleared' }) });
+        await RasterAPI.clearDB(' admin-token ');
+        const [url, options] = global.fetch.mock.calls[0];
+        expect(url).toContain('/admin/rasters/clear');
+        expect(options.method).toBe('POST');
+        expect(options.headers.Authorization).toBe('Bearer admin-token');
+        expect(JSON.parse(options.body)).toEqual({ confirmation: 'DELETE_ALL_RASTERS' });
+        expect(url).not.toContain('admin-token');
+    });
+
+    it('requires an administrator token before sending any clear request', async () => {
+        await expect(RasterAPI.clearDB('  ')).rejects.toThrow('Administrator token is required');
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
     it('throws FastAPI detail text for failed script requests', async () => {
         global.fetch.mockResolvedValueOnce({
             ok: false,

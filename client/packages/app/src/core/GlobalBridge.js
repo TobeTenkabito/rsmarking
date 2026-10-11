@@ -14,14 +14,13 @@ export class GlobalBridge {
                 if (!confirm(t('data.confirm.clearAll'))) return;
                 this.app.ui.showGlobalLoader(true);
                 try {
-                    await Promise.all([
-                        this.app.raster.handleClearDatabase({ confirmUser: false, reload: false }),
-                        this.app.project.handleDeleteAllProjects({
-                            confirmUser: false,
-                            refresh: false,
-                            showLoader: false,
-                        }),
-                    ]);
+                    const cleared = await this.app.raster.handleClearDatabase({ confirmUser: false, reload: false });
+                    if (!cleared) return;
+                    await this.app.project.handleDeleteAllProjects({
+                        confirmUser: false,
+                        refresh: false,
+                        showLoader: false,
+                    });
                     window.location.reload();
                 } catch (err) {
                     console.error('[GlobalBridge] Failed to clear data:', err);

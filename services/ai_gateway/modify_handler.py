@@ -105,6 +105,9 @@ async def handle_modify(
 
     else:
         if payload.data_type == DataType.RASTER:
+            # Recheck the source under the same lock used by deletion and cleanup.
+            # The copy and its shared-file references are committed before unlock.
+            await RasterCRUD.lock_raster_writes(db)
             original = await RasterCRUD.get_raster_by_index_id(
                 db, int(payload.target_id)
             )

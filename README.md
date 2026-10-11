@@ -58,6 +58,19 @@ Current RASTER FUNCTIONS actions:
 
 When adding a new tool, place it in **Imagery Processing Center** by default if it produces a new analytical output or needs a parameter form. Place it in **RASTER FUNCTIONS** only when the action is fundamentally tied to the opened raster row and is primarily inspect/manage/delete behavior. If a Processing Center workflow benefits from a selected raster shortcut, pass that raster into the modal as a preselected source rather than duplicating the workflow in RASTER FUNCTIONS.
 
+## Destructive raster administration
+
+Bulk raster clearing is disabled by default. To enable it, set
+`RS_ENABLE_ADMIN_OPERATIONS=true` and a private, random `RS_ADMIN_TOKEN` in `.env`
+or the data-service environment, then restart the service. The browser asks for
+this token when clearing data; it is not saved in browser storage or frontend configuration.
+
+The endpoint is `POST /admin/rasters/clear`, with `Authorization: Bearer <token>`
+and JSON body `{"confirmation":"DELETE_ALL_RASTERS"}`. The old
+`GET /debug/clear-db` endpoint has been removed. Raster deletion commits metadata
+first and only removes managed raw/COG files that no remaining raster references.
+Filesystem cleanup failures are logged and leave orphaned files for later cleanup.
+
 ## Architecture
 
 ```text
