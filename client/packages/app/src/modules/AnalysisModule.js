@@ -1,6 +1,7 @@
 import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { Store } from '../store/index.js';
+import { esc } from '../../../ui/src/components/modal/utils.js';
 
 /**
  * AnalysisModule - EnglishIndex CalculationEnglish
@@ -142,7 +143,7 @@ export class AnalysisModule {
                 <button data-spectrum-close="true"
                     style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:16px">✕</button>
             </div>
-            <p style="color:#f87171;margin:0">${errorMsg}</p>`;
+            <p style="color:#f87171;margin:0">${esc(errorMsg)}</p>`;
         return;
     }
 
@@ -173,7 +174,7 @@ export class AnalysisModule {
         return `
             <div style="margin-bottom:6px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:2px">
-                    <span style="color:#cbd5e1;font-size:11px">${b.name}</span>
+                    <span style="color:#cbd5e1;font-size:11px">${esc(b.name)}</span>
                     <span style="color:#a78bfa;font-size:11px;font-weight:600">${displayVal}</span>
                 </div>
                 <div style="background:#2d2d44;border-radius:3px;height:6px;overflow:hidden">

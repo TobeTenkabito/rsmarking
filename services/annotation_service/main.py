@@ -6,6 +6,7 @@ from sqlalchemy import text
 
 from services.annotation_service.database import engine
 from services.annotation_service.router import layers_router, projects_router, spatial_router
+from services.annotation_service.upload_limits import ShapefileUploadLimitMiddleware
 
 
 @asynccontextmanager
@@ -24,6 +25,10 @@ app = FastAPI(
     description="Microservice for RS remote sensing vector data management",
     version="1.0.0",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    ShapefileUploadLimitMiddleware,
 )
 
 app.add_middleware(

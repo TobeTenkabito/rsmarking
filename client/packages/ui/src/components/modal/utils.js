@@ -15,6 +15,11 @@ export function esc(str) {
         .replace(/>/g, '&gt;');
 }
 
+/** Encode one JavaScript string argument inside a quoted HTML event attribute. */
+export function jsArg(value) {
+    return esc(JSON.stringify(String(value ?? '')));
+}
+
 /** Return badge CSS class by field type */
 export function attrBadgeCls(type) {
     return { string: 'badge-str', number: 'badge-num',
@@ -32,9 +37,9 @@ export function attrFmtVal(val, type) {
         return '<span class="text-slate-300 select-none">—</span>';
     if (type === 'boolean') return val ? '✅' : '❌';
     if (type === 'date') {
-        try { return new Date(val).toLocaleDateString(getDateLocale()); } catch { return String(val); }
+        try { return esc(new Date(val).toLocaleDateString(getDateLocale())); } catch { return esc(val); }
     }
-    return String(val);
+    return esc(val);
 }
 
 /** Render shared dropdown <option> English */
@@ -42,7 +47,7 @@ export function renderSelectOptions(rasters) {
     if (!rasters || rasters.length === 0)
         return `<option value="">${t('modal.selectRasterFirst')}</option>`;
     return rasters.map(r =>
-        `<option value="${r.index_id}">${r.file_name} (${t('modal.bandSuffix', { count: r.bands })})</option>`
+        `<option value="${esc(r.index_id)}">${esc(r.file_name)} (${esc(t('modal.bandSuffix', { count: r.bands }))})</option>`
     ).join('');
 }
 
@@ -51,7 +56,7 @@ export function renderActionLoading(message = t('script.validation.running')) {
     return `
         <div class="flex flex-col items-center justify-center py-12">
             <div class="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p class="text-xs font-bold text-slate-600">${message}</p>
+            <p class="text-xs font-bold text-slate-600">${esc(message)}</p>
             <p class="text-[9px] text-slate-400 mt-2 tracking-widest uppercase">${t('ui.loading.serverHint')}</p>
         </div>
     `;

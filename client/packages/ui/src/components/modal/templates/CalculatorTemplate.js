@@ -1,3 +1,5 @@
+import { esc } from '../utils.js';
+
 /**
  * CalculatorTemplate.js
  * Raster calculator variable mapping list
@@ -17,10 +19,10 @@ export const CalculatorTemplate = {
                         rounded-xl hover:border-purple-200 transition-all">
                 <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center
                             justify-center font-mono font-bold text-xs shadow-sm">
-                    ${v}
+                    ${esc(v)}
                 </div>
                 <div class="flex-1">
-                    <select data-var="${v}"
+                    <select data-var="${esc(v)}"
                             class="calc-var-select w-full bg-transparent text-[11px] font-bold
                                    text-slate-600 outline-none cursor-pointer">
                         <option value="">Bind imagery layer...</option>
@@ -28,7 +30,7 @@ export const CalculatorTemplate = {
                             const bandCount   = r.bands ?? 1;
                             const bandLabel   = bandCount > 1 ? ` · ${bandCount} bands` : ' · single-band';
                             const displayName = r.file_name || r.name || r.index_id || r.id;
-                            return `<option value="${r.index_id}">${displayName}${bandLabel}</option>`;
+                            return `<option value="${r.index_id}">${esc(displayName)}${esc(bandLabel)}</option>`;
                         }).join('')}
                     </select>
                 </div>

@@ -2,7 +2,7 @@
  * RasterAttrTemplate.js
  * Raster layer field management table：English / English（System FieldsEnglish + user field section）
  */
-import { esc, attrBadgeCls, attrTypeIcon } from '../utils.js';
+import { esc, jsArg, attrBadgeCls, attrTypeIcon } from '../utils.js';
 
 export const RasterAttrTemplate = {
 
@@ -51,9 +51,9 @@ export const RasterAttrTemplate = {
                 <td class="attr-td ${isSystem ? '' : 'cursor-text'}"
                     data-field-id="${f.id}"
                     data-field-alias="${esc(f.field_alias || f.field_name)}"
-                    ${isSystem ? '' : `ondblclick="RS.attrrenameRasterField('${f.id}','${esc(f.field_alias || f.field_name)}')"`}>
+                    ${isSystem ? '' : `ondblclick="RS.attrrenameRasterField(${jsArg(f.id)},${jsArg(f.field_alias || f.field_name)})"`}>
                     <div class="flex items-center gap-1">
-                        <span class="type-badge ${attrBadgeCls(f.field_type)}" title="${f.field_type}">
+                        <span class="type-badge ${attrBadgeCls(f.field_type)}" title="${esc(f.field_type)}">
                             ${attrTypeIcon(f.field_type)}
                         </span>
                         <span class="truncate max-w-[120px]" title="${esc(f.field_alias || f.field_name)}">
@@ -67,12 +67,12 @@ export const RasterAttrTemplate = {
                     <span class="type-badge ${attrBadgeCls(f.field_type)}">
                         ${attrTypeIcon(f.field_type)}
                     </span>
-                    <span class="ml-1">${f.field_type}</span>
+                    <span class="ml-1">${esc(f.field_type)}</span>
                 </td>
 
                 <td class="attr-td ${isSystem ? '' : 'cursor-text'}"
                     data-field-id="${f.id}"
-                    data-field-type="${f.field_type}"
+                    data-field-type="${esc(f.field_type)}"
                     data-default-val="${esc(String(f.default_val ?? ''))}"
                     ${isSystem ? '' : `ondblclick="RS.attreditRasterDefault(this)"`}>
                     <span class="cell-val">
@@ -85,7 +85,7 @@ export const RasterAttrTemplate = {
                 <td class="attr-td text-center">
                     ${isSystem
                         ? '<span class="text-[10px] text-slate-200" title="System fields cannot be deleted">🔒</span>'
-                        : `<button onclick="RS.attrdeleteRasterField('${f.id}','${esc(f.field_name)}')"
+                        : `<button onclick="RS.attrdeleteRasterField(${jsArg(f.id)},${jsArg(f.field_name)})"
                                    class="text-slate-300 hover:text-red-500 transition-colors text-xs"
                                    title="Delete field">✕</button>`}
                 </td>

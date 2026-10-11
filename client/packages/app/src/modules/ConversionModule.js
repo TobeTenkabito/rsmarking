@@ -390,7 +390,7 @@ export class ConversionModule {
             >
                 <span class="w-2 h-2 rounded-full bg-indigo-400 flex-shrink-0"></span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-slate-700 truncate">${layer.name ?? layer.id}</p>
+                    <p class="text-sm font-medium text-slate-700 truncate">${esc(layer.name ?? layer.id)}</p>
                     <p class="text-xs text-slate-400">${layer.feature_count ?? '?'} features</p>
                 </div>
             </div>
@@ -410,9 +410,9 @@ export class ConversionModule {
             >
                 <span class="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0"></span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-slate-700 truncate">${r.name ?? r.index_id}</p>
+                    <p class="text-sm font-medium text-slate-700 truncate">${esc(r.file_name ?? r.name ?? r.index_id)}</p>
                     <p class="text-xs text-slate-400">${r.width ?? '?'} × ${r.height ?? '?'} px
-                       · ${r.crs ?? 'CRSUnknown'}</p>
+                       · ${esc(r.crs ?? 'CRSUnknown')}</p>
                 </div>
             </div>
         `).join('');

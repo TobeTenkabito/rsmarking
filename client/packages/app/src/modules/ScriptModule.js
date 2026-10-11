@@ -1,3 +1,4 @@
+import { esc } from '../../../ui/src/components/modal/utils.js';
 import { Store } from '../store/index.js';
 import { RasterAPI } from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
@@ -144,7 +145,7 @@ export class ScriptModule {
                     templates.map(t => {
                         // Use Unicode-safe Base64 encoding
                         const encodedCode = this.encodeBase64(t.code);
-                        return `<option value="${encodedCode}">${t.name} - ${t.description}</option>`;
+                        return `<option value="${encodedCode}">${esc(t.name)} - ${esc(t.description)}</option>`;
                     }).join('');
                 applyTranslations(selector);
 
@@ -426,7 +427,7 @@ export class ScriptModule {
 
         historyDiv.innerHTML = this.scriptHistory.map(h => `
             <div class="border rounded p-2 mb-2 hover:bg-gray-50 cursor-pointer" onclick="RS.loadScriptFromHistory('${h.id}')">
-                <div class="text-xs font-bold">${h.outputName}</div>
+                <div class="text-xs font-bold">${esc(h.outputName)}</div>
                 <div class="text-xs text-gray-500">${new Date(h.timestamp).toLocaleString()}</div>
             </div>
         `).join('');

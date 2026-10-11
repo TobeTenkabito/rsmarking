@@ -2,7 +2,7 @@
  * VectorAttrTemplate.js
  * Vector layer attribute table：Header, rows, and loading state
  */
-import { esc, attrBadgeCls, attrTypeIcon, attrFmtVal } from '../utils.js';
+import { esc, jsArg, attrBadgeCls, attrTypeIcon, attrFmtVal } from '../utils.js';
 
 export const VectorAttrTemplate = {
 
@@ -12,14 +12,14 @@ export const VectorAttrTemplate = {
             ...fields.map(f => `
                 <th class="attr-th"
                     data-field-id="${f.id}"
-                    ondblclick="RS.attrRenameColumn('${esc(f.id)}','${esc(f.field_alias || f.field_name)}')"
-                    oncontextmenu="RS.attrColumnMenu(event,'${esc(f.id)}','${esc(f.field_alias || f.field_name)}',${!!f.is_system})">
+                    ondblclick="RS.attrRenameColumn(${jsArg(f.id)},${jsArg(f.field_alias || f.field_name)})"
+                    oncontextmenu="RS.attrColumnMenu(event,${jsArg(f.id)},${jsArg(f.field_alias || f.field_name)},${!!f.is_system})">
                     <div class="flex items-center gap-1 select-none">
-                        <span class="type-badge ${attrBadgeCls(f.field_type)}" title="${f.field_type}">
+                        <span class="type-badge ${attrBadgeCls(f.field_type)}" title="${esc(f.field_type)}">
                             ${attrTypeIcon(f.field_type)}
                         </span>
                         <span class="truncate max-w-[140px]" title="${esc(f.field_alias || f.field_name)}">
-                            ${f.field_alias || f.field_name}
+                            ${esc(f.field_alias || f.field_name)}
                         </span>
                         ${f.is_system
                             ? '<span class="ml-1 text-[9px] text-slate-300" title="Imported field; cannot be deleted">System</span>'
@@ -57,7 +57,7 @@ export const VectorAttrTemplate = {
                         <td class="attr-td cursor-text"
                             data-feature-id="${feat.id}"
                             data-field-name="${esc(f.field_name)}"
-                            data-field-type="${f.field_type}"
+                            data-field-type="${esc(f.field_type)}"
                             data-raw="${esc(String(raw))}"
                             ondblclick="RS.attrEditCell(this)">
                             <span class="cell-val">${display}</span>

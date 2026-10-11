@@ -8,6 +8,8 @@ from services.annotation_service.crud.feature_crud import FeatureCRUD
 from services.annotation_service.crud.layer_crud import LayerCRUD
 from services.annotation_service.crud.layer_field_crud import LayerFieldCRUD
 from services.annotation_service.utils.shapefile_importer import parse_shapefile_bytes
+from services.annotation_service.utils.shapefile_importer import read_shapefile_uploads, ShapefileLimitError
+from starlette.concurrency import run_in_threadpool
 from services.annotation_service.schemas.geojson import (
     FeatureCreate,
     FeatureUpdate,
@@ -187,12 +189,11 @@ async def import_shapefile(
     files: List[UploadFile] = File(..., description="Upload .shp/.shx/.dbf (required) plus .prj/.cpg (recommended)"),
     db: AsyncSession = Depends(get_db)
 ):
-    file_bytes: dict[str, bytes] = {}
-    for f in files:
-        content = await f.read()
-        file_bytes[f.filename] = content
     try:
-        feature_list, field_defs = parse_shapefile_bytes(file_bytes)
+        file_bytes = await read_shapefile_uploads(files)
+        feature_list, field_defs = await run_in_threadpool(parse_shapefile_bytes, file_bytes)
+    except ShapefileLimitError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

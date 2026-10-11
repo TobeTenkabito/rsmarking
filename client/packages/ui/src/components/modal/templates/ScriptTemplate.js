@@ -1,3 +1,5 @@
+import { esc } from '../utils.js';
+
 /**
  * ScriptTemplate.js
  * Python script editor panel
@@ -29,7 +31,7 @@ export const ScriptTemplate = {
                                     ${selectedIds.includes(r.index_id) ? 'checked' : ''}
                                 >
                                 <div class="flex-1 overflow-hidden">
-                                    <div class="text-xs font-bold text-slate-700 truncate">${r.file_name}</div>
+                                    <div class="text-xs font-bold text-slate-700 truncate">${esc(r.file_name)}</div>
                                     <div class="text-[10px] text-slate-400">
                                         ${r.width} × ${r.height} | ${r.bands} bands
                                     </div>
@@ -45,7 +47,7 @@ export const ScriptTemplate = {
                             </div>
                             ${selectedFeatures.map((feature, index) => `
                                 <div class="mt-1 text-[10px] text-emerald-700 break-all">
-                                    feature_${index}: ${feature.id} (${feature.geometryType})
+                                    feature_${index}: ${esc(feature.id)} (${esc(feature.geometryType)})
                                 </div>
                             `).join('')}
                         </div>
@@ -103,7 +105,7 @@ export const ScriptTemplate = {
                                    focus:outline-none focus:bg-white"
                             placeholder="# Available rasters: input_0, input_1, ...&#10;# Available selected vectors: feature_0, features, feature_by_id&#10;# Helpers: feature_geometry(), feature_shape(), read_geojson()&#10;# Container paths: /data/inputs/ and /data/outputs/&#10;# Output raster path: OUTPUT_FILE&#10;&#10;import rasterio&#10;import numpy as np&#10;&#10;with rasterio.open(input_0) as src:&#10;    data = src.read(1)&#10;    profile = src.profile&#10;&#10;processed_data = data&#10;&#10;with rasterio.open(OUTPUT_FILE, 'w', **profile) as dst:&#10;    dst.write(processed_data, 1)"
                             spellcheck="false"
-                        >${currentScript}</textarea>
+                        >${esc(currentScript)}</textarea>
                     </div>
 
                     <pre id="script-execution-logs"

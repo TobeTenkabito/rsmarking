@@ -1,3 +1,4 @@
+import { esc } from '../../../ui/src/components/modal/utils.js';
 /**
  * ChangeDetectionModule - Change DetectionEnglish
  */
@@ -193,7 +194,7 @@ export class ChangeDetectionModule {
     const opts = rasters.length
       ? rasters.map(r =>
           `<option value="${r.index_id ?? r.id}">
-             ${r.file_name ?? r.name}
+             ${esc(r.file_name ?? r.name)}
              ${r.bands ? `（${r.bands} bands）` : ''}
            </option>`
         ).join('')

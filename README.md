@@ -71,6 +71,14 @@ and JSON body `{"confirmation":"DELETE_ALL_RASTERS"}`. The old
 first and only removes managed raw/COG files that no remaining raster references.
 Filesystem cleanup failures are logged and leave orphaned files for later cleanup.
 
+## Shapefile import limits
+
+Shapefile imports accept one dataset with `.shp`, `.shx`, `.dbf` and optional
+`.prj`/`.cpg` components, up to 64 MiB combined and 100,000 features. Oversized
+imports return HTTP 413. The annotation service also bounds the streamed
+multipart request body before upload spooling. ZIP parsing applies the same
+decompressed-size limit and accepts at most 100 archive members.
+
 ## Architecture
 
 ```text

@@ -1,3 +1,5 @@
+import { esc } from '../utils.js';
+
 /**
  * DetailTemplate.js
  * Imagery metadata detail panel
@@ -19,7 +21,7 @@ export const DetailTemplate = {
                     ${stats.map(s => `
                         <div class="bg-slate-50/80 p-3 rounded-xl border border-slate-100 ${s.full ? 'col-span-2' : ''}">
                             <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-1">${s.label}</p>
-                            <p class="text-[11px] font-bold text-slate-700 truncate ${s.mono ? 'font-mono' : ''}">${s.value}</p>
+                            <p class="text-[11px] font-bold text-slate-700 truncate ${s.mono ? 'font-mono' : ''}">${esc(s.value)}</p>
                         </div>`
                     ).join('')}
                 </div>

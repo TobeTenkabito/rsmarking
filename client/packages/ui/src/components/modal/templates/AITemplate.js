@@ -2,7 +2,7 @@
  * AITemplate.js
  * AI assistant target and backend-function rendering helpers.
  */
-import { esc } from '../utils.js';
+import { esc, jsArg } from '../utils.js';
 
 const CATEGORY_LABELS = {
     artifact_generation: 'Generated Files & Images',
@@ -116,7 +116,7 @@ export const AITemplate = {
                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50';
             return `
                 <button type="button"
-                    onclick="RS.aiSelectFunctionCategory('${esc(group.category)}')"
+                    onclick="RS.aiSelectFunctionCategory(${jsArg(group.category)})"
                     class="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-all ${activeClass}">
                     <span class="min-w-0 truncate text-[11px] font-black">${esc(group.label)}</span>
                     <span class="shrink-0 rounded-md ${isActive ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500'} px-1.5 py-0.5 text-[9px] font-black">
@@ -134,7 +134,7 @@ export const AITemplate = {
             const requiredMeta = required.length ? `${required.length} required` : 'no required args';
             return `
                 <button type="button"
-                    onclick="RS.aiSelectFunction('${esc(fn.name)}')"
+                    onclick="RS.aiSelectFunction(${jsArg(fn.name)})"
                     title="${esc(fn.description ?? '')}"
                     class="flex w-full min-w-0 items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${selectedClass}">
                     <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isSelected ? 'bg-sky-600 text-white' : 'bg-slate-100 text-slate-400'}">

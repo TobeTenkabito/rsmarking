@@ -89,11 +89,8 @@ async def merge_raster_bands_task(raster_ids: str, new_name: str, db: AsyncSessi
 
     upload_id = str(uuid.uuid4())
     tmp_tiff = os.path.join(UPLOAD_DIR, f"{upload_id}_merged.tif")
-    cog_filename = (
-        f"{upload_id}_{new_name}.tif"
-        if not new_name.endswith('.tif')
-        else f"{upload_id}_{new_name}"
-    )
+    # Display names must never determine a filesystem path.
+    cog_filename = f"{upload_id}_merged.tif"
     cog_output = os.path.join(COG_DIR, cog_filename)
 
     RasterProcessor.merge_bands(input_paths, tmp_tiff)
@@ -137,11 +134,7 @@ async def extract_raster_bands_task(raster_id: int, band_indices: str, new_name:
 
     upload_id = str(uuid.uuid4())
     tmp_tiff = os.path.join(UPLOAD_DIR, f"{upload_id}_extracted.tif")
-    cog_filename = (
-        f"{upload_id}_{new_name}.tif"
-        if not new_name.endswith('.tif')
-        else f"{upload_id}_{new_name}"
-    )
+    cog_filename = f"{upload_id}_extracted.tif"
     cog_output = os.path.join(COG_DIR, cog_filename)
 
     RasterProcessor.extract_bands(input_path, tmp_tiff, indices)

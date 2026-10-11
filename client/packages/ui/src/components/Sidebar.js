@@ -1,11 +1,6 @@
 import { t } from '../../../app/src/i18n/index.js';
 
-const esc = (str) => String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/'/g, '&#39;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+import { esc, jsArg } from './modal/utils.js';
 
 export const SidebarComponent = {
     render(data) {
@@ -62,7 +57,7 @@ export const SidebarComponent = {
             `;
         }
 
-        const groups = {};
+        const groups = Object.create(null);
         rasters.forEach((raster) => {
             const bundleId = raster.bundle_id || 'unclassed';
             if (!groups[bundleId]) groups[bundleId] = [];
@@ -74,7 +69,7 @@ export const SidebarComponent = {
                 <div class="px-3 py-2 bg-slate-100 border-b border-slate-200 text-[9px] font-black text-slate-500 flex justify-between items-center uppercase tracking-wider">
                     <div class="flex items-center">
                         <span class="w-1.5 h-1.5 rounded-full bg-slate-400 mr-2"></span>
-                        ${t('sidebar.raster.bundle', { id: bundleId.substring(0, 8) })}
+                        ${esc(t('sidebar.raster.bundle', { id: bundleId.substring(0, 8) }))}
                     </div>
                     <span class="bg-white px-1.5 py-0.5 rounded border border-slate-300">${t('sidebar.raster.members', { count: items.length })}</span>
                 </div>
@@ -120,7 +115,7 @@ export const SidebarComponent = {
 
                 <div class="flex-1 min-w-0 cursor-pointer item-info" data-id="${raster.id}">
                     <div class="text-sm font-bold ${activeTextClass} truncate">
-                      ${raster.file_name}
+                      ${esc(raster.file_name)}
                     </div>
                     <div class="flex items-center space-x-2 mt-1">
                         <span class="text-[9px] font-mono font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
@@ -141,7 +136,6 @@ export const SidebarComponent = {
     },
 
     renderRasterActions(raster) {
-        const indexId = esc(raster.index_id);
         const rasterId = esc(raster.id);
         const fileName = esc(raster.file_name);
         const actions = [
@@ -150,21 +144,21 @@ export const SidebarComponent = {
                 title: t('sidebar.raster.spectrumTitle'),
                 tone: 'violet',
                 icon: this.renderActionIcon('spectrum'),
-                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.showSpectrumMode('${indexId}')`,
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.showSpectrumMode(${jsArg(raster.index_id)})`,
             },
             {
                 label: 'Raster Statistics',
                 title: t('sidebar.raster.statsTitle'),
                 tone: 'sky',
                 icon: this.renderActionIcon('stats'),
-                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openRasterStatistics('${indexId}')`,
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openRasterStatistics(${jsArg(raster.index_id)})`,
             },
             {
                 label: 'Attribute Table',
                 title: t('sidebar.raster.attrTitle'),
                 tone: 'indigo',
                 icon: this.renderActionIcon('table'),
-                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster('${indexId}','${fileName}')`,
+                onclick: `event.stopPropagation(); this.closest('details')?.removeAttribute('open'); RS.openAttriRaster(${jsArg(raster.index_id)},${jsArg(raster.file_name)})`,
             },
             {
                 label: 'Remove Raster',
@@ -288,16 +282,16 @@ export const SidebarComponent = {
             <div class="mx-2">
                 <select onchange="RS.selectProject(this.value)" class="w-full mb-3 p-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-600 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all">
                     <option value="">${t('sidebar.vector.selectProject')}</option>
-                    ${projects.map((project) => `<option value="${project.id}" ${activeProject?.id === project.id ? 'selected' : ''}>${project.name}</option>`).join('')}
+                    ${projects.map((project) => `<option value="${project.id}" ${activeProject?.id === project.id ? 'selected' : ''}>${esc(project.name)}</option>`).join('')}
                 </select>
 
                 ${activeProject ? `
                     <div class="bg-emerald-50/30 rounded-xl border border-emerald-100 overflow-hidden shadow-sm">
                         <div class="px-3 py-2 bg-emerald-100/50 border-b border-emerald-100 flex justify-between items-center">
-                            <span class="text-[9px] font-black text-emerald-700 uppercase tracking-wider">📂 ${t('sidebar.vector.projectTag', { name: activeProject.name })}</span>
+                            <span class="text-[9px] font-black text-emerald-700 uppercase tracking-wider">📂 ${esc(t('sidebar.vector.projectTag', { name: activeProject.name }))}</span>
                             <div class="flex items-center gap-1">
                                 <button onclick="event.stopPropagation();
-                                                 document.getElementById('shapefile-upload-input').dataset.layerId='${activeProject.id}';
+                                                 document.getElementById('shapefile-upload-input').dataset.layerId=${jsArg(activeProject.id)};
                                                  document.getElementById('shapefile-upload-input').click()"
                                         class="w-5 h-5 flex items-center justify-center bg-white rounded border border-amber-200 text-amber-500 hover:bg-amber-50 transition-colors"
                                         title="${t('sidebar.vector.importTitle')}">
@@ -357,7 +351,7 @@ export const SidebarComponent = {
                 </div>
 
                 <div class="flex-1 min-w-0 cursor-pointer" onclick="RS.setActiveVectorLayer('${layer.id}')">
-                    <div class="text-sm font-bold ${nameClass} truncate">${layer.name}</div>
+                    <div class="text-sm font-bold ${nameClass} truncate">${esc(layer.name)}</div>
                     <div class="text-[9px] text-slate-400 mt-0.5 tracking-tight font-mono">
                         ${isActive
                             ? `<span class="text-emerald-600 font-bold">${t('sidebar.vector.currentEditing')}</span>`
@@ -366,7 +360,7 @@ export const SidebarComponent = {
                 </div>
 
                 <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <button onclick="event.stopPropagation(); RS.openAttriVector('${layer.id}', '${esc(layer.name)}')"
+                    <button onclick="event.stopPropagation(); RS.openAttriVector(${jsArg(layer.id)}, ${jsArg(layer.name)})"
                             class="p-1.5 text-slate-300 hover:text-indigo-500 hover:bg-indigo-50 rounded-lg transition-colors"
                             title="${t('sidebar.vector.attrTitle')}">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

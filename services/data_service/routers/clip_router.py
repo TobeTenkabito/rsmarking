@@ -64,7 +64,7 @@ async def clip_raster_by_vector(
         body.new_name if body.new_name.endswith(".tif") else f"{body.new_name}.tif"
     )
     tmp_path = os.path.join(UPLOAD_DIR, f"{output_id}_clip.tif")
-    cog_filename = f"{output_id}_{output_name}"
+    cog_filename = f"{output_id}_clip.tif"
     cog_path = os.path.join(COG_DIR, cog_filename)
 
     try:

@@ -1,3 +1,4 @@
+import { esc, jsArg } from '../../../ui/src/components/modal/utils.js';
 import { VectorAPI }      from '../api/vector.js';
 import { RasterAPI }      from '../api/raster.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
@@ -118,7 +119,7 @@ export class AttributeTable {
                 this._tbody.innerHTML = `
                     <tr><td colspan="99"
                         class="py-8 text-center text-xs text-red-400">
-                        Load failed：${err.message}
+                        Load failed：${esc(err.message)}
                     </td></tr>`;
             }
         } finally {
@@ -396,14 +397,14 @@ export class AttributeTable {
         menu.style.top  = `${event.clientY}px`;
         menu.innerHTML  = `
             <button class="ctx-item"
-                onclick="RS.attrRenameColumn('${fieldId}','${fieldName}')">
+                onclick="RS.attrRenameColumn(${jsArg(fieldId)},${jsArg(fieldName)})">
                 Rename
             </button>
             ${isSystem
                 ? `<div class="ctx-disabled">🔒 System fields cannot be deleted</div>`
                 : `<hr class="ctx-sep"/>
                    <button class="ctx-item ctx-danger"
-                       onclick="RS.attrDeleteColumn('${fieldId}','${fieldName}')">
+                       onclick="RS.attrDeleteColumn(${jsArg(fieldId)},${jsArg(fieldName)})">
                        Delete Column
                    </button>`
             }`;

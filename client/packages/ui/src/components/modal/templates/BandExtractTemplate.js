@@ -1,3 +1,5 @@
+import { esc } from '../utils.js';
+
 /**
  * BandExtractTemplate.js
  * Band Extraction：source imagery selection and band checkbox list
@@ -46,12 +48,12 @@ export const BandExtractTemplate = {
                         </div>
                         <div class="flex flex-col overflow-hidden">
                             <span class="text-xs font-bold text-slate-700">Band ${bandIndex}</span>
-                            <span class="text-[9px] text-slate-400 font-mono uppercase">${raster.data_type || 'FLOAT32'}</span>
+                            <span class="text-[9px] text-slate-400 font-mono uppercase">${esc(raster.data_type || 'FLOAT32')}</span>
                         </div>
                     </div>
                     <div class="shrink-0">
                         <span class="text-[9px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">
-                            ${raster.file_name}
+                            ${esc(raster.file_name)}
                         </span>
                     </div>
                 </div>`;
@@ -92,8 +94,8 @@ export const BandExtractTemplate = {
                                 : ''}
                         </div>
                         <div class="flex flex-col overflow-hidden">
-                            <span class="text-xs font-bold text-slate-700 truncate">${raster.file_name}</span>
-                            <span class="text-[9px] text-slate-400 font-mono uppercase">${raster.data_type || 'FLOAT32'}</span>
+                            <span class="text-xs font-bold text-slate-700 truncate">${esc(raster.file_name)}</span>
+                            <span class="text-[9px] text-slate-400 font-mono uppercase">${esc(raster.data_type || 'FLOAT32')}</span>
                         </div>
                     </div>
                     <div class="shrink-0">
