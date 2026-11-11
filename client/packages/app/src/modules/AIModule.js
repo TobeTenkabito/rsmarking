@@ -381,6 +381,7 @@ export class AIModule {
             }
             this._conversationArchives = this._conversationArchives
                 .filter(item => item.archive_id !== archiveId);
+            if (this._archiveEdit?.id === archiveId) this._archiveEdit = null;
             this._renderArchivePanel();
             this._showSuccess('Conversation archive deleted.');
         } catch (err) {
@@ -388,6 +389,60 @@ export class AIModule {
         } finally {
             this._conversationSwitching = false;
         }
+    }
+
+    editConversationDetails(archiveId) {
+        if (this._archiveEdit?.saving) return;
+        const archive = this._conversationArchives.find(item => item.archive_id === archiveId);
+        if (!archive) return;
+        this._archiveEdit = { id: archiveId, title: archive.title || '', note: archive.note || '', saving: false, error: '' };
+        this._renderArchivePanel();
+        document.getElementById('ai-history-edit-title')?.focus();
+    }
+
+    async saveConversationDetails() {
+        const draft = this._archiveEdit;
+        if (!draft || draft.saving) return;
+        if (!draft.title.trim()) {
+            draft.error = t('Please enter a conversation title.');
+            this._renderArchivePanel();
+            document.getElementById('ai-history-edit-title')?.focus();
+            return;
+        }
+        draft.saving = true;
+        draft.error = '';
+        this._renderArchivePanel();
+        const save = async () => {
+            try {
+                const { conversation } = await AIAPI.updateConversation(draft.id, { title: draft.title.trim(), note: draft.note.trim() });
+                this._conversationArchives = this._conversationArchives.map(item => item.archive_id === draft.id ? conversation : item);
+                this._archiveEdit = null;
+                this._renderArchivePanel();
+                this._focusHistoryEditButton(draft.id);
+                return true;
+            } catch (_error) {
+                draft.saving = false;
+                draft.error = t('Could not save. Your edits are kept; please retry.');
+                this._renderArchivePanel();
+                document.getElementById('ai-history-edit-title')?.focus();
+                return false;
+            }
+        };
+        // Use the same queue as message autosaves to avoid stale sidebar updates.
+        this._saveTail = this._saveTail.catch(() => {}).then(save);
+        return this._saveTail;
+    }
+
+    cancelConversationDetails() {
+        if (this._archiveEdit?.saving) return;
+        const id = this._archiveEdit?.id;
+        this._archiveEdit = null;
+        this._renderArchivePanel();
+        this._focusHistoryEditButton(id);
+    }
+
+    _focusHistoryEditButton(id) {
+        Array.from(document.querySelectorAll('[data-ai-edit-chat]')).find(button => button.dataset.aiEditChat === id)?.focus();
     }
 
     async clearConversationArchives() {
@@ -665,6 +720,31 @@ export class AIModule {
             this._syncKeyboardHint();
         });
         document.getElementById('ai-history-search')?.addEventListener('input', () => this._renderArchivePanel());
+        const history = document.getElementById('ai-agent-archive-list');
+        history?.addEventListener('input', event => {
+            if (this._archiveEdit && event.target.dataset.aiEditField) {
+                this._archiveEdit[event.target.dataset.aiEditField] = event.target.value;
+            }
+        });
+        history?.addEventListener('submit', event => {
+            if (!event.target.matches('[data-ai-edit-form]')) return;
+            event.preventDefault();
+            void this.saveConversationDetails();
+        });
+        history?.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && this._archiveEdit) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.cancelConversationDetails();
+            }
+        });
+        const collapseNote = event => {
+            const row = event.target.closest('.ai-history-item');
+            if (!row || row.contains(event.relatedTarget)) return;
+            row.querySelector('[data-ai-note]')?.setAttribute('aria-expanded', 'false');
+        };
+        history?.addEventListener('pointerout', collapseNote);
+        history?.addEventListener('focusout', collapseNote);
         modal.addEventListener('click', async event => {
             const button = event.target.closest('button');
             if (!button) return;
@@ -673,6 +753,9 @@ export class AIModule {
             if (button.hasAttribute('data-ai-save-chat')) await this._saveConversation();
             if (button.dataset.aiOpenChat) await this.loadConversationArchive(button.dataset.aiOpenChat);
             if (button.dataset.aiDeleteChat) await this.deleteConversationArchive(button.dataset.aiDeleteChat);
+            if (button.dataset.aiEditChat) this.editConversationDetails(button.dataset.aiEditChat);
+            if (button.hasAttribute('data-ai-cancel-edit')) this.cancelConversationDetails();
+            if (button.hasAttribute('data-ai-note')) button.setAttribute('aria-expanded', String(button.getAttribute('aria-expanded') !== 'true'));
             if (button.dataset.aiSuggestion && input) {
                 input.value = t(button.dataset.aiSuggestion);
                 input.focus();
@@ -1571,24 +1654,45 @@ export class AIModule {
         const list = document.getElementById('ai-agent-archive-list');
         if (!list) return;
         const query = (document.getElementById('ai-history-search')?.value || '').trim().toLocaleLowerCase();
-        const items = this._conversationArchives.filter(item => String(item.title || '').toLocaleLowerCase().includes(query));
+        const items = this._conversationArchives.filter(item => item.archive_id === this._archiveEdit?.id || `${item.title || ''} ${item.note || ''}`.toLocaleLowerCase().includes(query));
         if (!items.length) {
             const label = this._archivesLoading ? 'Loading conversations…' : this._historyError || (query ? 'No matching conversations' : 'Your conversations will appear here');
             list.innerHTML = `<p class="ai-history-note">${this._escapeHTML(t(label))}</p>`;
             return;
         }
+        const focused = list.contains(document.activeElement) && document.activeElement.dataset.aiEditField
+            ? { id: document.activeElement.id, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
+        const label = text => this._escapeHTML(t(text));
         list.innerHTML = items.map(archive => {
             const id = this._escapeHTML(archive.archive_id);
             const active = archive.archive_id === this._activeArchiveId;
             const title = this._escapeHTML(archive.title || 'Agent conversation');
             const date = archive.updated_at ? new Date(archive.updated_at).toLocaleDateString() : '';
+            if (this._archiveEdit?.id === archive.archive_id) {
+                const draft = this._archiveEdit;
+                return `<div class="ai-history-item ai-history-editing"><form data-ai-edit-form class="ai-history-editor">
+                    <label for="ai-history-edit-title">${label('Conversation title')}</label>
+                    <input id="ai-history-edit-title" data-ai-edit-field="title" value="${this._escapeHTML(draft.title)}" maxlength="120" required ${draft.saving ? 'disabled' : ''}>
+                    <label for="ai-history-edit-note">${label('Conversation note')}</label>
+                    <textarea id="ai-history-edit-note" data-ai-edit-field="note" rows="4" maxlength="4000" placeholder="${label('Add a note (optional)')}" ${draft.saving ? 'disabled' : ''}>${this._escapeHTML(draft.note)}</textarea>
+                    ${draft.error ? `<p class="ai-history-edit-error" role="alert">${this._escapeHTML(draft.error)}</p>` : ''}
+                    <div class="ai-history-edit-actions"><button type="button" data-ai-cancel-edit ${draft.saving ? 'disabled' : ''}>${label('Cancel')}</button><button type="submit" ${draft.saving ? 'disabled' : ''}>${label(draft.saving ? 'Saving…' : 'Save')}</button></div>
+                </form></div>`;
+            }
+            const note = archive.note ? `<button type="button" class="ai-history-annotation" data-ai-note aria-expanded="false" title="${label('Click to expand or collapse note')}">${this._escapeHTML(archive.note)}</button>` : '';
             return `<div class="ai-history-item ${active ? 'active' : ''}">
                 <button type="button" class="ai-history-open" data-ai-open-chat="${id}" ${active ? 'aria-current="page"' : ''} title="${title}">
-                    <strong>${title}</strong><small>${this._escapeHTML(date)}</small>
+                    <strong>${title}</strong>
                 </button>
-                <button type="button" class="ai-history-delete" data-ai-delete-chat="${id}" aria-label="${this._escapeHTML(t('Delete this conversation?'))}" title="${this._escapeHTML(t('Delete archive'))}">×</button>
+                <div class="ai-history-actions"><button type="button" class="ai-history-edit" data-ai-edit-chat="${id}" aria-label="${label('Edit title and note')}" title="${label('Edit title and note')}">✎</button><button type="button" class="ai-history-delete" data-ai-delete-chat="${id}" aria-label="${label('Delete this conversation?')}" title="${label('Delete archive')}">×</button></div>
+                ${note}<small class="ai-history-date">${this._escapeHTML(date)}</small>
             </div>`;
         }).join('');
+        if (focused) {
+            const field = document.getElementById(focused.id);
+            field?.focus();
+            field?.setSelectionRange(focused.start, focused.end);
+        }
     }
 
     _renderAgentMessage(message) {

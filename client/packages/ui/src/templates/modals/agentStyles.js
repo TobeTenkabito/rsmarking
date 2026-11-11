@@ -13,10 +13,19 @@ export const agentStyles = `
 .ai-history-search {width:100%;border:1px solid #e3e7ec;border-radius:8px;background:white;padding:7px 10px;font-size:12px!important;box-sizing:border-box}
 .ai-history-heading {display:flex;align-items:center;justify-content:space-between;padding:0 6px;font-size:11px;color:#778398}
 #ai-agent-archive-list {flex:1;min-height:0;overflow-y:auto}
-.ai-history-item {display:flex;align-items:center;border-radius:8px;margin-bottom:4px}.ai-history-item:hover {background:#edf0f3}.ai-history-item.active {background:#e5ede9;color:#24483b}
+.ai-history-item {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;border-radius:8px;margin-bottom:4px;padding-bottom:8px}.ai-history-item:hover {background:#edf0f3}.ai-history-item.active {background:#e5ede9;color:#24483b}
 .ai-history-open {flex:1;min-width:0;text-align:left;padding:10px 9px;border:0;background:none}
 .ai-history-open strong {display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500}.ai-history-open small {display:block;font-size:10px;color:#8992a0;margin-top:2px}
-.ai-history-delete {border:0;background:none;color:#94a0ad;padding:7px;opacity:0}.ai-history-item:hover .ai-history-delete,.ai-history-item:focus-within .ai-history-delete {opacity:1}.ai-history-delete:hover {color:#b91c1c}
+.ai-history-actions {display:flex;padding-top:8px}
+.ai-history-delete,.ai-history-edit {border:0;background:none;color:#7b8796;padding:3px 5px;opacity:0}.ai-history-item:hover .ai-history-actions button,.ai-history-item:focus-within .ai-history-actions button {opacity:1}.ai-history-delete:hover {color:#b91c1c}.ai-history-edit:hover {color:#24483b}
+.ai-history-annotation {grid-column:1/-1;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere;white-space:pre-wrap;text-align:left;font-size:10px!important;line-height:1.6!important;color:#6d7885;border:0;background:none;margin:0 9px 4px;padding:0}
+.ai-history-annotation:hover {color:#24483b}.ai-history-annotation[aria-expanded="true"] {display:block;-webkit-line-clamp:unset}
+.ai-history-date {grid-column:1/-1;font-size:10px;color:#8992a0;padding:0 9px}
+.ai-history-editor {grid-column:1/-1;min-width:0;padding:8px;display:flex;flex-direction:column;gap:6px}.ai-history-editor label {font-size:11px;color:#65736b}
+#ai-window .ai-history-editor input,#ai-window .ai-history-editor textarea {box-sizing:border-box;width:100%;min-width:0;border:1px solid #cbd8d0;border-radius:6px;padding:6px;background:white;font-size:12px;resize:vertical}
+.ai-history-edit-actions {display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.ai-history-edit-actions button {font-size:11px!important;border:1px solid #d4ded8;border-radius:6px;padding:4px 8px;background:white}.ai-history-edit-actions button[type="submit"] {background:#294e3e;color:white;border-color:#294e3e}
+.ai-history-edit-error {font-size:11px;color:#ad3428;overflow-wrap:anywhere}
+@media(hover:none) {.ai-history-actions button {opacity:1}}
 .ai-history-note {font-size:11px;color:#8b95a3;line-height:1.7;padding:0 6px}
 .ai-main {min-width:0;flex:1;display:flex;flex-direction:column;position:relative}
 .ai-header {display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #eef0f3;padding:14px 24px;flex-shrink:0}.ai-header h2 {font-size:14px;font-weight:600;margin:0}

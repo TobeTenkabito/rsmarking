@@ -10,10 +10,10 @@ function resolveAIURL(value) {
     return '';
 }
 
-async function requestAI(path, payload, fallbackMessage) {
+async function requestAI(path, payload, fallbackMessage, method = 'POST') {
     try {
         const response = await fetch(`${BASE_URL}${path}`, {
-            method: 'POST',
+            method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
@@ -129,6 +129,10 @@ export const AIAPI = {
 
     async getConversation(archiveId) {
         return requestAIGet(`/ai/conversations/${encodeURIComponent(archiveId)}`, 'Failed to load AI conversation');
+    },
+
+    async updateConversation(archiveId, details) {
+        return requestAI(`/ai/conversations/${encodeURIComponent(archiveId)}`, details, 'Failed to update conversation', 'PATCH');
     },
 
     async restoreConversation(archiveId, sessionId = null) {

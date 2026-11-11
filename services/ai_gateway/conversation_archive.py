@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +37,19 @@ class ConversationArchiveRequest(BaseModel):
     )
 
 
+class ConversationDetailsRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    note: str = Field(default="", max_length=4000)
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Conversation title cannot be blank")
+        return value
+
+
 class ConversationRestoreRequest(BaseModel):
     session_id: str | None = Field(
         default=None,
@@ -64,7 +77,9 @@ def archive_conversation(payload: ConversationArchiveRequest) -> dict[str, Any]:
     record = {
         "archive_id": archive_id,
         "session_id": payload.session_id or f"archive-{archive_id}",
-        "title": _archive_title(payload.title, messages),
+        "title": previous["title"] if previous and previous.get("title_edited") else _archive_title(payload.title, messages),
+        "title_edited": bool(previous and previous.get("title_edited")),
+        "note": previous.get("note", "") if previous else "",
         "created_at": previous["created_at"] if previous else now,
         "updated_at": now,
         "message_count": len(messages),
@@ -90,6 +105,13 @@ def list_conversation_archives() -> list[dict[str, Any]]:
 
 def get_conversation_archive(archive_id: str) -> dict[str, Any]:
     return _read_archive(archive_id)
+
+
+def update_conversation_details(archive_id: str, payload: ConversationDetailsRequest) -> dict[str, Any]:
+    record = _read_archive(archive_id)
+    record.update(title=payload.title, title_edited=True, note=payload.note.strip(), updated_at=_timestamp())
+    _write_archive(record)
+    return _summary(record)
 
 
 def delete_conversation_archive(archive_id: str) -> dict[str, Any]:
@@ -250,6 +272,7 @@ def _summary(record: dict[str, Any]) -> dict[str, Any]:
         "archive_id": record["archive_id"],
         "session_id": record.get("session_id"),
         "title": record.get("title") or "Agent conversation",
+        "note": record.get("note", ""),
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),
         "message_count": record.get("message_count", len(record.get("messages", []))),

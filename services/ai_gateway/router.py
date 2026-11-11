@@ -15,6 +15,8 @@ from .agent_handler import (
 )
 from .artifacts import ArtifactNotFoundError, get_artifact
 from .conversation_archive import (
+    ConversationDetailsRequest,
+    update_conversation_details,
     ConversationArchiveRequest,
     ConversationRestoreRequest,
     archive_conversation,
@@ -169,6 +171,17 @@ async def get_ai_conversation(archive_id: str):
         return {"status": "success", "conversation": get_conversation_archive(archive_id)}
     except FileNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+
+@router.patch("/conversations/{archive_id}", summary="Edit a conversation title and note")
+async def update_ai_conversation(archive_id: str, payload: ConversationDetailsRequest):
+    try:
+        return {"status": "success", "conversation": update_conversation_details(archive_id, payload)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+    except Exception:
+        logger.exception("[router] update conversation details failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Conversation update failed")
 
 
 @router.delete("/conversations/{archive_id}", summary="Delete an archived AI agent conversation")

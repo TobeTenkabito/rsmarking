@@ -77,6 +77,53 @@ describe('Agent workspace interactions', () => {
         expect(ai._conversationArchives).toHaveLength(1);
     });
 
+    it('edits titles and notes without changing the active chat, retaining drafts on failure', async () => {
+        const id = 'a'.repeat(32);
+        ai._conversationArchives = [{ archive_id: id, title: 'Old', note: 'Existing' }];
+        const session = ai._sessionId;
+        ai.editConversationDetails(id);
+        const title = document.getElementById('ai-history-edit-title');
+        const note = document.getElementById('ai-history-edit-note');
+        title.value = 'Renamed'; title.dispatchEvent(new Event('input', { bubbles: true }));
+        note.value = 'First line\nSecond line'; note.dispatchEvent(new Event('input', { bubbles: true }));
+        // A background render must not discard the editor's text or focus.
+        note.focus(); note.setSelectionRange(4, 4); ai._renderArchivePanel();
+        expect(document.activeElement.id).toBe('ai-history-edit-note');
+        expect(document.activeElement.selectionStart).toBe(4);
+        const update = vi.spyOn(AIAPI, 'updateConversation').mockRejectedValueOnce(new Error('offline'))
+            .mockResolvedValueOnce({ conversation: { archive_id: id, title: 'Renamed', note: 'First line\nSecond line' } });
+        expect(await ai.saveConversationDetails()).toBe(false);
+        expect(document.getElementById('ai-history-edit-note').value).toBe('First line\nSecond line');
+        expect(document.querySelector('.ai-history-edit-error')).not.toBeNull();
+        expect(await ai.saveConversationDetails()).toBe(true);
+        expect(update).toHaveBeenLastCalledWith(id, { title: 'Renamed', note: 'First line\nSecond line' });
+        expect(ai._sessionId).toBe(session);
+        expect(ai._conversationArchives[0].title).toBe('Renamed');
+        expect(document.querySelector('[data-ai-edit-form]')).toBeNull();
+    });
+
+    it('renders notes safely, expands on click, collapses on leaving, and searches notes', () => {
+        ai._conversationArchives = [{ archive_id: 'a'.repeat(32), title: 'Title', note: '<img src=x onerror=alert(1)>\nNeedle' }];
+        ai._renderArchivePanel();
+        const note = document.querySelector('[data-ai-note]');
+        const open = vi.spyOn(ai, 'loadConversationArchive');
+        expect(note.querySelector('img')).toBeNull();
+        expect(note.textContent).toContain('<img');
+        note.click(); expect(note.getAttribute('aria-expanded')).toBe('true');
+        expect(open).not.toHaveBeenCalled();
+        note.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }));
+        expect(note.getAttribute('aria-expanded')).toBe('false');
+        const search = document.getElementById('ai-history-search');
+        search.value = 'needle'; search.dispatchEvent(new Event('input'));
+        expect(document.querySelector('[data-ai-open-chat]')).not.toBeNull();
+        ai.editConversationDetails('a'.repeat(32));
+        ai._archiveEdit.title = '  ';
+        ai.saveConversationDetails();
+        expect(document.querySelector('.ai-history-edit-error')).not.toBeNull();
+        document.querySelector('[data-ai-cancel-edit]').click();
+        expect(ai._conversationArchives[0].title).toBe('Title');
+    });
+
     it('keeps unsaved messages when saving fails during a new-chat action', async () => {
         vi.spyOn(AIAPI, 'archiveConversation').mockRejectedValue(new Error('offline'));
         ai._agentConversation = [{ role: 'user', content: 'keep me' }];

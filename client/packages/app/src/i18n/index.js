@@ -1395,6 +1395,12 @@ literalPatterns.es = [
 ];
 
 Object.assign(literalCatalog.zh, {
+    'Edit title and note': '编辑标题与注释', 'Conversation title': '对话标题',
+    'Conversation note': '对话注释', 'Add a note (optional)': '添加注释（可选）',
+    'Click to expand or collapse note': '点击展开或收起注释',
+    'Please enter a conversation title.': '请输入对话标题。',
+    'Could not save. Your edits are kept; please retry.': '保存失败，已保留编辑内容，请重试。',
+    'Save': '保存',
     'Agent mode': '智能体模式', 'Send': '发送', 'Run': '执行',
     'Ask a question or describe a task': '提个问题，或描述你想完成的任务',
     'Spatial Assistant': '空间助手', 'Settings': '设置',
