@@ -16,6 +16,34 @@ describe('Agent workspace interactions', () => {
     afterEach(() => { vi.restoreAllMocks(); document.body.innerHTML = ''; });
     const key = (input, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...options }));
 
+    it('defaults to collaboration and sends the selected execution mode', () => {
+        const options = { prompt: 'Extract coastline', language: 'en', mode: 'agent' };
+        expect(ai._buildRequestPayload(options).execution_mode).toBe('collaborative');
+        document.getElementById('ai-execution-select').value = 'single';
+        expect(ai._buildRequestPayload(options).execution_mode).toBe('single');
+    });
+
+    it('shows acceptance status and safely preserves the workflow report in history', async () => {
+        vi.spyOn(ai, '_saveConversation').mockResolvedValue(true);
+        const workflow = {
+            stage: 'not_accepted', round: 1, model_calls: 8,
+            tasks: [{ title: 'Extract coastline', instruction: 'Extract lines from raster 42', inputs: ['raster 42'], expected_output: 'Coastline layer', tool_names: ['run_script_sandbox'] }],
+            events: [{ agent: 'verifier', status: 'rejected', summary: '<img src=x onerror=alert(1)> Output is a mask' }],
+        };
+        vi.spyOn(AIAPI, 'agent').mockResolvedValue({ status: 'not_accepted', answer: 'Needs repair', workflow, steps: [] });
+        await ai._runAgent({ user_prompt: 'Extract coastline', session_id: ai._sessionId });
+        const report = document.querySelector('.ai-workflow');
+        expect(report.textContent).toContain('Not accepted');
+        expect(report.textContent).toContain('Verifier');
+        expect(report.textContent).toContain('Extract lines from raster 42');
+        expect(report.textContent).toContain('Coastline layer');
+        expect(report.querySelector('img')).toBeNull();
+        expect(ai._archiveableAgentMessages().at(-1).workflow).toEqual(workflow);
+        vi.spyOn(AIAPI, 'restoreConversation').mockResolvedValue({});
+        await ai._activateArchivedConversation({ archive_id: 'a'.repeat(32), session_id: ai._sessionId, messages: ai._archiveableAgentMessages() });
+        expect(document.querySelector('.ai-workflow').textContent).toContain('Not accepted');
+    });
+
     it('sends on Enter, inserts Ctrl+Enter at the caret and respects IME/Shift/repeat', () => {
         const execute = vi.spyOn(ai, 'execute').mockResolvedValue();
         const input = document.getElementById('ai-prompt-input');

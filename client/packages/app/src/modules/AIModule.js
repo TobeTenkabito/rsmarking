@@ -214,6 +214,7 @@ export class AIModule {
                 assistantMessage.error = result.status === 'interrupted';
                 if (!assistantMessage.error) delete assistantMessage.retryPayload;
                 assistantMessage.steps = result.steps ?? [];
+                assistantMessage.workflow = result.workflow ?? null;
                 assistantMessage.artifacts = this._displayArtifacts(result.artifacts ?? []);
                 const answer = `${result.answer ?? ''}${assistantMessage.error && result.error ? `\n\n${result.error}` : ''}`;
                 await this._revealAgentResponse(assistantMessage, answer);
@@ -373,6 +374,7 @@ export class AIModule {
                 role: message.role,
                 content: message.content,
                 steps: Array.isArray(message.steps) ? message.steps : [],
+                workflow: message.workflow ?? null,
                 attachments: Array.isArray(message.attachments)
                     ? this._displayAttachments(message.attachments)
                     : [],
@@ -775,6 +777,7 @@ export class AIModule {
         };
 
         if (mode === 'agent') {
+            request.execution_mode = document.getElementById('ai-execution-select')?.value || 'collaborative';
             request.permission_level =
                 document.getElementById('ai-permission-select')?.value || 'standard';
             request.allow_task_steps = document.getElementById('ai-task-autonomy')?.checked ?? false;
@@ -993,6 +996,7 @@ export class AIModule {
         agentPanel?.classList.toggle('hidden', !isAgent);
         attachmentControls?.classList.toggle('hidden', !isAgent);
         permissionControl?.classList.toggle('hidden', !isAgent);
+        document.getElementById('ai-execution-control')?.classList.toggle('hidden', !isAgent);
         functionPanel?.classList.toggle('hidden', isAgent);
         if (functionPanel) functionPanel.open = false;
         if (contextPanel) contextPanel.open = false;
@@ -1038,8 +1042,8 @@ export class AIModule {
                 classes: 'shrink-0 border-b border-emerald-100 bg-emerald-50 px-5 py-2 text-[10px] font-semibold text-emerald-700',
             },
             standard: {
-                text: 'Standard permission: isolated sandbox processing is available; updates and deletion require explicit authorization.',
-                title: 'Standard: sandbox available, explicit changes to existing data',
+                text: 'Standard permission: sandbox available; changes follow user or validated task instructions.',
+                title: 'Standard: sandbox and validated task assignments',
                 classes: 'shrink-0 border-b border-slate-100 bg-slate-50 px-5 py-2 text-[10px] font-semibold text-slate-500',
             },
             full_control: {
@@ -1265,6 +1269,7 @@ export class AIModule {
                 role: message.role,
                 content: message.content || '',
                 steps: Array.isArray(message.steps) ? message.steps : [],
+                workflow: message.workflow ?? null,
                 attachments: this._archiveableAttachments(message.attachments ?? []),
                 artifacts: this._archiveableArtifacts(message.artifacts ?? []),
             }));
@@ -1879,7 +1884,7 @@ export class AIModule {
                 ${isUser ? '' : '<div class="ai-message-label">RS · Assistant</div>'}
                 ${content}${this._renderMessageAttachments(message.attachments ?? [], isUser)}
                 ${this._renderGeneratedArtifacts(message.artifacts ?? [])}
-                ${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}${retry}</div>
+                ${this._renderAgentWorkflow(message.workflow)}${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}${retry}</div>
             </div>
         </article>`;
     }
@@ -2049,6 +2054,38 @@ export class AIModule {
         return renderAgentMarkdown(markdown);
     }
 
+    _renderAgentWorkflow(workflow) {
+        if (!workflow || !Array.isArray(workflow.events)) return '';
+        const states = {
+            success: 'Completed', not_accepted: 'Not accepted', needs_input: 'Needs input',
+            budget_exhausted: 'Budget reached', planning: 'Planning', replanning: 'Replanning',
+            executing: 'Executing', reviewing: 'Reviewing',
+        };
+        const events = workflow.events.filter(event => event && typeof event === 'object').map(event => `
+            <li><strong>${this._escapeHTML(this._agentRoleLabel(event.agent))}${event.task_id ? ` · ${this._escapeHTML(event.task_id)}` : ''}</strong>
+            <span>${this._escapeHTML(t(event.status))}</span><p>${this._escapeHTML(event.summary || '')}</p></li>
+        `).join('');
+        const status = this._escapeHTML(t(states[workflow.stage] || 'Not accepted'));
+        const tasks = (Array.isArray(workflow.tasks) ? workflow.tasks : [])
+            .filter(task => task && typeof task === 'object')
+            .map(task => `<li>
+                <strong>${this._escapeHTML(task.title || '')}</strong>
+                <p>${this._escapeHTML(task.instruction || '')}</p>
+                <p>${this._escapeHTML(t('Task inputs'))}: ${this._escapeHTML((Array.isArray(task.inputs) ? task.inputs : []).join('; '))}</p>
+                <p>${this._escapeHTML(t('Expected output'))}: ${this._escapeHTML(task.expected_output || '')}</p>
+                <p>${this._escapeHTML(t('Assigned tools'))}: ${this._escapeHTML((Array.isArray(task.tool_names) ? task.tool_names : []).join(', '))}</p>
+            </li>`).join('');
+        return `<details class="ai-tool-trace ai-workflow"><summary>${this._escapeHTML(t('Agent workflow'))} · ${status}</summary>
+            <p>${Number(workflow.model_calls) || 0} ${this._escapeHTML(t('model calls'))} · ${Number(workflow.round) || 0} ${this._escapeHTML(t('repair rounds'))}</p>
+            ${tasks ? `<strong>${this._escapeHTML(t('Task assignments'))}</strong><ol>${tasks}</ol>` : ''}
+            <ol>${events}</ol></details>`;
+    }
+
+    _agentRoleLabel(role) {
+        const labels = { planner: 'Planner', executor: 'Executor', verifier: 'Verifier', coordinator: 'Coordinator' };
+        return t(labels[role] || 'Coordinator');
+    }
+
     _renderAgentToolTrace(steps) {
         if (!steps.length) return '';
 
@@ -2058,6 +2095,7 @@ export class AIModule {
                 ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                 : 'bg-red-50 text-red-700 border-red-100';
             const statusText = isSuccess ? 'ok' : 'error';
+            const roleLabel = step.agent_role ? `${this._escapeHTML(this._agentRoleLabel(step.agent_role))} · ` : '';
             const error = step.error
                 ? `<div class="mt-1 text-[10px] leading-relaxed text-red-600">${this._escapeHTML(step.error)}</div>`
                 : '';
@@ -2065,7 +2103,7 @@ export class AIModule {
             return `
                 <div class="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                     <div class="flex items-center justify-between gap-3">
-                        <span class="truncate font-mono text-[10px] font-bold text-slate-500">${this._escapeHTML(step.name)}</span>
+                        <span class="truncate font-mono text-[10px] font-bold text-slate-500">${roleLabel}${this._escapeHTML(step.name)}</span>
                         <span class="shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${statusClass}">${statusText}</span>
                     </div>
                     ${error}

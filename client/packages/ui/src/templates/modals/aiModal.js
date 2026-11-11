@@ -23,6 +23,8 @@ export const aiModal = `
       <div class="ai-settings-card">
        <label class="ai-setting">Task Mode<select id="ai-mode-select"><option value="agent">Agent mode</option><option value="analyze">Analysis Mode</option><option value="modify">Modify Mode</option></select></label>
        <label id="ai-permission-control" class="ai-setting">Agent permission<select id="ai-permission-select"><option value="read_only">Read only</option><option value="safe">Safe actions</option><option value="standard" selected>Standard</option><option value="full_control">Full control</option></select></label>
+       <label id="ai-execution-control" class="ai-setting">Agent workflow<select id="ai-execution-select"><option value="collaborative" selected>Plan, execute and verify</option><option value="single">Direct agent</option></select></label>
+       <p class="ai-setting-note">Collaboration shares one budget and allows one automatic repair.</p>
        <div id="ai-permission-banner" class="ai-setting-note"></div>
        <label class="ai-setting-check"><input id="ai-task-autonomy" type="checkbox" checked>Automatically complete task steps</label>
        <p class="ai-setting-note">Allow necessary processing and new outputs. Existing data changes follow the selected permission.</p>

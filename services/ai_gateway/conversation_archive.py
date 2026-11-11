@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+from services.ai_gateway.agent_collaboration import WorkflowReport
 
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -73,6 +74,7 @@ class ConversationBranchRequest(BaseModel):
 class TransferMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=100000)
+    workflow: WorkflowReport | None = None
     steps: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
     artifacts: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
@@ -285,6 +287,11 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         if isinstance(message.get("steps"), list):
             item["steps"] = message["steps"]
+        workflow = message.get("workflow")
+        if isinstance(workflow, dict):
+            if len(json.dumps(workflow, ensure_ascii=False)) > 200000:
+                raise ValueError("Workflow report exceeds the 200000-character storage limit")
+            item["workflow"] = WorkflowReport.model_validate(workflow).model_dump(exclude_none=True)
         if isinstance(message.get("attachments"), list):
             item["attachments"] = _normalize_attachments(message["attachments"])
         if isinstance(message.get("artifacts"), list):

@@ -68,13 +68,18 @@ def test_task_scope_preserves_permission_negation_and_destructive_boundaries():
         ("generate_ai_image", "分析影像", "standard"),
         ("unknown_remote_tool", "分析影像", "standard"),
     ):
-        assert not authorize_tool_call(name, {}, prompt, permission_level=permission, allow_task_steps=True).allowed
-    assert not authorize_tool_call("read_file", {"path": ".env"}, "分析影像", allow_task_steps=True).allowed
+        assert not authorize_tool_call(
+            name, {}, prompt, permission_level=permission, allow_task_steps=True
+        ).allowed
+    assert not authorize_tool_call(
+        "read_file", {"path": ".env"}, "分析影像", allow_task_steps=True
+    ).allowed
 
 
 def test_empty_tool_selection_disables_tools():
     from services.ai_gateway.agent_handler import AgentRequestPayload
-    payload = AgentRequestPayload(user_prompt="hello", tool_names=[])
+
+    payload = AgentRequestPayload(execution_mode="single", user_prompt="hello", tool_names=[])
     assert payload.tool_names == []
 
 
@@ -191,21 +196,21 @@ def test_negated_write_and_execution_intents_are_blocked():
 def test_agent_request_limits_session_context_and_attachment_entry_points():
     with pytest.raises(ValidationError):
         AgentRequestPayload(
+            execution_mode="single",
             user_prompt="Valid task",
             session_id="../shared-session",
         )
     with pytest.raises(ValidationError):
         AgentRequestPayload(
+            execution_mode="single",
             user_prompt="Valid task",
             map_context={"payload": "x" * 100_001},
         )
     with pytest.raises(ValidationError):
         AgentRequestPayload(
+            execution_mode="single",
             user_prompt="Valid task",
-            attachments=[
-                {"name": f"{index}.txt", "kind": "text"}
-                for index in range(9)
-            ],
+            attachments=[{"name": f"{index}.txt", "kind": "text"} for index in range(9)],
         )
 
 
@@ -241,7 +246,9 @@ def test_session_store_evicts_oldest_entries_at_capacity(monkeypatch):
         agent_session.append_session_turn(session_ids[2], "third", "answer")
 
         assert session_ids[0] not in agent_session._AGENT_SESSIONS
-        assert agent_session.get_session_messages(session_ids[0])  # durable history reloads after cache eviction
+        assert agent_session.get_session_messages(
+            session_ids[0]
+        )  # durable history reloads after cache eviction
         assert agent_session.get_session_messages(session_ids[1])
         assert agent_session.get_session_messages(session_ids[2])
     finally:
@@ -392,11 +399,7 @@ def test_full_control_still_respects_negation_and_source_code_hard_boundary():
     )
     source_script = authorize_tool_call(
         "run_script_sandbox",
-        {
-            "script": (
-                "open('services/ai_gateway/agent_handler.py', 'w').write('changed')"
-            )
-        },
+        {"script": ("open('services/ai_gateway/agent_handler.py', 'w').write('changed')")},
         "Take over and finish the project.",
         permission_level=AgentPermissionLevel.FULL_CONTROL,
     )
@@ -415,11 +418,14 @@ def test_full_control_still_respects_negation_and_source_code_hard_boundary():
 
 
 def test_permission_level_is_validated_and_defaults_to_standard():
-    payload = AgentRequestPayload(user_prompt="Inspect the current project.")
+    payload = AgentRequestPayload(
+        execution_mode="single", user_prompt="Inspect the current project."
+    )
 
     assert payload.permission_level == AgentPermissionLevel.STANDARD
     with pytest.raises(ValidationError):
         AgentRequestPayload(
+            execution_mode="single",
             user_prompt="Inspect the current project.",
             permission_level="unlimited",
         )
@@ -436,24 +442,74 @@ def test_non_expert_implementation_request_can_authorize_custom_sandbox_work():
     assert decision.allowed is True
 
 
-@pytest.mark.parametrize("prompt", ["请分析这幅影像", "Calculate a summary of these inputs.", "我已经开放沙箱权限，你继续吧", "允许使用沙箱"])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "请分析这幅影像",
+        "Calculate a summary of these inputs.",
+        "我已经开放沙箱权限，你继续吧",
+        "允许使用沙箱",
+    ],
+)
 def test_standard_sandbox_does_not_require_full_control_or_task_steps(prompt):
-    assert authorize_tool_call("run_script_sandbox", {"script": "print(1 + 1)"}, prompt, permission_level="standard", allow_task_steps=False).allowed
+    assert authorize_tool_call(
+        "run_script_sandbox",
+        {"script": "print(1 + 1)"},
+        prompt,
+        permission_level="standard",
+        allow_task_steps=False,
+    ).allowed
 
 
-@pytest.mark.parametrize("prompt", ["分析影像，不要使用沙箱", "不要运行脚本", "如何使用沙箱", "Explain Python scripts.", "Analyze the image without using sandbox code."])
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "分析影像，不要使用沙箱",
+        "不要运行脚本",
+        "如何使用沙箱",
+        "Explain Python scripts.",
+        "Analyze the image without using sandbox code.",
+    ],
+)
 def test_standard_sandbox_still_obeys_explicit_exclusions(prompt):
-    assert not authorize_tool_call("run_script_sandbox", {"script": "print(1)"}, prompt, allow_task_steps=True).allowed
+    assert not authorize_tool_call(
+        "run_script_sandbox", {"script": "print(1)"}, prompt, allow_task_steps=True
+    ).allowed
 
 
-@pytest.mark.parametrize("followup", ["继续吧", "好的，继续执行", "按刚才的方案执行", "我已经开放沙箱权限，你继续吧", "Please continue", "Proceed with the previous task."])
+@pytest.mark.parametrize(
+    "followup",
+    [
+        "继续吧",
+        "好的，继续执行",
+        "按刚才的方案执行",
+        "我已经开放沙箱权限，你继续吧",
+        "Please continue",
+        "Proceed with the previous task.",
+    ],
+)
 def test_live_task_continuation_allows_processing_but_not_destructive_history(followup):
     scope = resolve_task_scope(followup, "分析影像并创建分类结果，不要删除原始数据")
     assert "分析影像" in scope
     for tool in ("run_script_sandbox", "unsupervised_classification"):
-        assert authorize_tool_call(tool, {}, followup, task_scope=scope, allow_task_steps=True).allowed
-        assert not authorize_tool_call(tool, {}, followup, task_scope=scope, permission_level="read_only", allow_task_steps=True).allowed
-    assert not authorize_tool_call("delete_raster", {"raster_id": 42}, followup, task_scope=scope, permission_level="full_control").allowed
+        assert authorize_tool_call(
+            tool, {}, followup, task_scope=scope, allow_task_steps=True
+        ).allowed
+        assert not authorize_tool_call(
+            tool,
+            {},
+            followup,
+            task_scope=scope,
+            permission_level="read_only",
+            allow_task_steps=True,
+        ).allowed
+    assert not authorize_tool_call(
+        "delete_raster",
+        {"raster_id": 42},
+        followup,
+        task_scope=scope,
+        permission_level="full_control",
+    ).allowed
     assert not authorize_tool_call("update_vector_layer", {}, followup, task_scope=scope).allowed
 
 
@@ -461,7 +517,9 @@ def test_continuation_preserves_constraints_and_does_not_revive_unrelated_tasks(
     scope = resolve_task_scope("继续", "分析影像，不要使用沙箱")
     assert not authorize_tool_call("run_script_sandbox", {}, "继续", task_scope=scope).allowed
     scope = resolve_task_scope("继续，只解释", "分析影像")
-    assert not authorize_tool_call("run_script_sandbox", {}, "继续，只解释", task_scope=scope).allowed
+    assert not authorize_tool_call(
+        "run_script_sandbox", {}, "继续，只解释", task_scope=scope
+    ).allowed
     assert resolve_task_scope("继续执行") == ""
     scope = resolve_task_scope("如何使用沙箱", "分析影像")
     assert scope == "如何使用沙箱"

@@ -1,4 +1,23 @@
 import { test, expect } from '@playwright/test';
+
+test('collaboration: default mode, acceptance report, history and direct mode', async ({ page }) => {
+    await page.goto('/tests/ui/agent-preview.html');
+    await page.locator('#ai-prompt-input').fill('帮我提取海岸线');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect(page.locator('.ai-workflow summary')).toContainText('协作流程');
+    await page.locator('.ai-workflow summary').click();
+    await expect(page.locator('.ai-workflow')).toContainText('验收者');
+    expect(await page.evaluate(() => window.__calls[0].execution_mode)).toBe('collaborative');
+    await page.locator('[data-ai-new-chat]').click();
+    await page.locator('[data-ai-open-chat]').first().click();
+    await expect(page.locator('.ai-workflow summary')).toBeVisible();
+    await page.locator('#ai-context-panel > summary').click();
+    await page.locator('#ai-execution-select').selectOption('single');
+    await page.locator('#ai-context-panel > summary').click();
+    await page.locator('#ai-prompt-input').fill('解释结果');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect.poll(() => page.evaluate(() => window.__calls.at(-1).execution_mode)).toBe('single');
+});
 import { readFile } from 'node:fs/promises';
 
 test('desktop: visible history, Markdown, keyboard modes and autosave', async ({ page }) => {
