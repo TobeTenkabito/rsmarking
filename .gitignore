@@ -28,6 +28,8 @@ services/tile_service/build
 # =========================
 node_modules/
 npm-debug.log
+test-results/
+playwright-report/
 yarn-error.log
 
 # =========================

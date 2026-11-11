@@ -1,5 +1,6 @@
 from services.ai_gateway import conversation_archive
 from services.ai_gateway.conversation_archive import ConversationArchiveRequest
+import pytest
 
 
 def test_conversation_archive_roundtrip(tmp_path, monkeypatch):
@@ -91,3 +92,25 @@ def test_conversation_archive_preserves_generated_artifact_exports(tmp_path, mon
     assert artifact["name"] == "results.xlsx"
     assert artifact["download_url"] == f"/ai/artifacts/{artifact_id}/download"
     assert artifact["preview_url"] == f"/ai/artifacts/{artifact_id}"
+
+
+def test_autosave_updates_one_record_and_preserves_creation_time(tmp_path, monkeypatch):
+    monkeypatch.setattr(conversation_archive, "ARCHIVE_DIR", str(tmp_path))
+    payload = dict(archive_id="b" * 32, session_id="session-auto", messages=[{"role": "user", "content": "task"}])
+    first = conversation_archive.archive_conversation(ConversationArchiveRequest(**payload))
+    payload["messages"].append({"role": "assistant", "content": "done"})
+    updated = conversation_archive.archive_conversation(ConversationArchiveRequest(**payload))
+    assert first["archive_id"] == updated["archive_id"]
+    assert first["created_at"] == updated["created_at"]
+    assert updated["message_count"] == 2
+    assert len(conversation_archive.list_conversation_archives()) == 1
+    with pytest.raises(ValueError, match="another session"):
+        conversation_archive.archive_conversation(ConversationArchiveRequest(**{**payload, "session_id": "other"}))
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_history_keeps_more_than_twenty_turns(tmp_path, monkeypatch):
+    monkeypatch.setattr(conversation_archive, "ARCHIVE_DIR", str(tmp_path))
+    messages = [{"role": "user" if i % 2 == 0 else "assistant", "content": str(i)} for i in range(60)]
+    summary = conversation_archive.archive_conversation(ConversationArchiveRequest(messages=messages))
+    assert conversation_archive.get_conversation_archive(summary["archive_id"])["messages"] == messages

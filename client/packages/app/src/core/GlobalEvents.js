@@ -272,6 +272,7 @@ export class GlobalEvents {
         });
         // English
         document.addEventListener('keydown', (e) => {
+            if (this._isEditingOrDialog(e)) return;
             if (e.key === 'Escape') {
                 document
                     .querySelectorAll('.layer-action-menu[open]')
@@ -317,9 +318,16 @@ export class GlobalEvents {
 
     bindKeyboardEvents() {
         document.addEventListener('keydown', async (e) => {
+            if (this._isEditingOrDialog(e)) return;
             if ((e.key === 'Delete' || e.key === 'Backspace') && Store.state.selectedFeatureId) {
                 await this.app.project.handleDeleteSelectedFeature();
             }
         });
+    }
+
+    _isEditingOrDialog(event) {
+        return event.defaultPrevented || event.isComposing || Boolean(
+            event.target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"]')
+        );
     }
 }

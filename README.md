@@ -1,6 +1,8 @@
 # RSMarking
 
 AI / Agent configuration: see [multi-provider setup and troubleshooting](docs/ai-providers.md)
+
+Agent interface, keyboard shortcuts, conversation history, and tool permissions: see [Agent workspace guide](docs/agent-workspace.md).
 and the copyable provider blocks in [.env.example](.env.example).
 Offline diagnostics: `python -m services.ai_gateway.diagnose`.
 

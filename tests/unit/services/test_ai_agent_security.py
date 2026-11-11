@@ -50,6 +50,33 @@ def test_read_only_tools_do_not_require_mutation_authorization():
     assert decision.effect == "read"
 
 
+def test_task_scope_allows_intermediate_steps_without_naming_each_tool():
+    prompt = "请分析这幅影像的水体分布，并制作报告"
+    for tool in ("calculate_mndwi", "create_vector_layer", "create_generated_document"):
+        assert authorize_tool_call(tool, {}, prompt, allow_task_steps=True).allowed
+    assert not authorize_tool_call("calculate_mndwi", {}, prompt).allowed
+
+
+def test_task_scope_preserves_permission_negation_and_destructive_boundaries():
+    for name, prompt, permission in (
+        ("calculate_ndvi", "分析影像", "read_only"),
+        ("create_vector_layer", "分析影像，不要创建输出", "standard"),
+        ("run_script_sandbox", "如何分析影像", "standard"),
+        ("delete_raster", "分析影像", "standard"),
+        ("update_vector_layer", "分析影像", "safe"),
+        ("generate_ai_image", "分析影像", "standard"),
+        ("unknown_remote_tool", "分析影像", "standard"),
+    ):
+        assert not authorize_tool_call(name, {}, prompt, permission_level=permission, allow_task_steps=True).allowed
+    assert not authorize_tool_call("read_file", {"path": ".env"}, "分析影像", allow_task_steps=True).allowed
+
+
+def test_empty_tool_selection_disables_tools():
+    from services.ai_gateway.agent_handler import AgentRequestPayload
+    payload = AgentRequestPayload(user_prompt="hello", tool_names=[])
+    assert payload.tool_names == []
+
+
 def test_side_effect_requires_current_turn_action_intent():
     decision = authorize_tool_call(
         "calculate_ndvi",

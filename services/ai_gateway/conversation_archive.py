@@ -16,6 +16,7 @@ ARCHIVE_DIR = os.path.join(BASE_DIR, "storage", "ai_conversations")
 
 
 class ConversationArchiveRequest(BaseModel):
+    archive_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     session_id: str | None = Field(
         default=None,
         min_length=1,
@@ -26,7 +27,7 @@ class ConversationArchiveRequest(BaseModel):
     title: str | None = Field(default=None, max_length=120, description="Optional archive title.")
     messages: list[dict[str, Any]] = Field(
         default_factory=list,
-        max_length=40,
+        max_length=500,
         description="Conversation messages.",
     )
     metadata: dict[str, Any] = Field(
@@ -52,12 +53,19 @@ def archive_conversation(payload: ConversationArchiveRequest) -> dict[str, Any]:
         raise ValueError("Conversation archive requires at least one message")
 
     now = _timestamp()
-    archive_id = uuid.uuid4().hex
+    archive_id = payload.archive_id or uuid.uuid4().hex
+    previous = None
+    try:
+        previous = _read_archive(archive_id)
+    except FileNotFoundError:
+        pass
+    if previous and previous.get("session_id") != payload.session_id:
+        raise ValueError("Cannot replace a conversation from another session")
     record = {
         "archive_id": archive_id,
         "session_id": payload.session_id or f"archive-{archive_id}",
         "title": _archive_title(payload.title, messages),
-        "created_at": now,
+        "created_at": previous["created_at"] if previous else now,
         "updated_at": now,
         "message_count": len(messages),
         "messages": messages,
@@ -139,7 +147,7 @@ def build_archive_memory_context(limit: int = 5) -> str:
 
 def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     normalized = []
-    for message in messages[:40]:
+    for message in messages[-500:]:
         role = str(message.get("role") or "").strip()
         content = str(message.get("content") or "")
         if role not in {"user", "assistant", "system", "tool"} or not content:
@@ -251,10 +259,14 @@ def _summary(record: dict[str, Any]) -> dict[str, Any]:
 
 def _write_archive(record: dict[str, Any]) -> None:
     _ensure_archive_dir()
-    tmp_path = f"{_archive_path(record['archive_id'])}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as file:
-        json.dump(record, file, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, _archive_path(record["archive_id"]))
+    tmp_path = f"{_archive_path(record['archive_id'])}.{uuid.uuid4().hex}.tmp"
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as file:
+            json.dump(record, file, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _archive_path(record["archive_id"]))
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def _read_archive(archive_id: str) -> dict[str, Any]:

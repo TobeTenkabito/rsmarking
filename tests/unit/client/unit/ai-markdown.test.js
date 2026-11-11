@@ -152,48 +152,14 @@ describe('AIModule markdown rendering', () => {
         expect(html).toContain('Request failed &lt;unsafe&gt;');
     });
 
-    it('splits agent responses into sentence-sized reveal chunks', () => {
+    it('renders a complete response immediately without artificial typing', async () => {
         const ai = new AIModule({});
-
-        expect(ai._splitResponseIntoRevealChunks('First sentence. Second sentence! Third?')).toEqual([
-            'First sentence. ',
-            'Second sentence! ',
-            'Third?',
-        ]);
-        expect(ai._splitResponseIntoRevealChunks('Resolution is 3.14 meters. **Bold.** Done.')).toEqual([
-            'Resolution is 3.14 meters. ',
-            '**Bold.** ',
-            'Done.',
-        ]);
-    });
-
-    it('reveals agent responses progressively before finalizing', async () => {
-        document.body.innerHTML = '<div id="ai-agent-messages"></div>';
-        const ai = new AIModule({});
-        const message = {
-            role: 'assistant',
-            content: '',
-            visibleContent: '',
-            pending: false,
-            streaming: false,
-            steps: [],
-        };
-        const observed = [];
-        ai._agentConversation = [message];
-        vi.spyOn(ai, '_delayAgentReveal').mockImplementation(async () => {
-            observed.push(message.visibleContent);
-        });
-
-        await ai._revealAgentResponse(message, 'First sentence. Second sentence.');
-
-        expect(observed).toEqual([
-            'First sentence. ',
-            'First sentence. Second sentence.',
-        ]);
+        const message = { role: 'assistant' };
+        const render = vi.spyOn(ai, '_renderAgentConversation');
+        await ai._revealAgentResponse(message, '# Result\n\n**Done**.');
+        expect(message.content).toBe('# Result\n\n**Done**.');
         expect(message.streaming).toBe(false);
-        expect(message.content).toBe('First sentence. Second sentence.');
-        expect(message.visibleContent).toBe('First sentence. Second sentence.');
-        expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Second sentence.');
+        expect(render).toHaveBeenCalledTimes(1);
     });
 
     it('renders the user message before the agent request resolves', async () => {
@@ -204,7 +170,7 @@ describe('AIModule markdown rendering', () => {
             <div id="ai-agent-attachment-list"></div>
         `;
         const ai = new AIModule({});
-        vi.spyOn(ai, '_delayAgentReveal').mockResolvedValue();
+        vi.spyOn(ai, '_saveConversation').mockResolvedValue(true);
         vi.spyOn(AIAPI, 'agent').mockImplementation(async () => {
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Hello');
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Waiting for AI response');
@@ -234,7 +200,7 @@ describe('AIModule markdown rendering', () => {
         const ai = new AIModule({});
         let resolveFirst;
         let resolveSecond;
-        vi.spyOn(ai, '_delayAgentReveal').mockResolvedValue();
+        vi.spyOn(ai, '_saveConversation').mockResolvedValue(true);
         vi.spyOn(AIAPI, 'agent')
             .mockImplementationOnce(() => new Promise(resolve => { resolveFirst = resolve; }))
             .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
@@ -260,34 +226,4 @@ describe('AIModule markdown rendering', () => {
         expect(html).toContain('Second answer');
     });
 
-    it('keeps queued agent requests waiting until response reveal completes', async () => {
-        document.body.innerHTML = `
-            <textarea id="ai-prompt-input"></textarea>
-            <div id="ai-agent-messages"></div>
-            <div id="ai-agent-session-label"></div>
-            <div id="ai-agent-attachment-list"></div>
-        `;
-        const ai = new AIModule({});
-        let releaseReveal;
-        vi.spyOn(ai, '_delayAgentReveal')
-            .mockImplementationOnce(() => new Promise(resolve => { releaseReveal = resolve; }))
-            .mockResolvedValue();
-        vi.spyOn(AIAPI, 'agent')
-            .mockResolvedValueOnce({ session_id: 'session-a', answer: 'First answer.', steps: [], used_tools: [] })
-            .mockResolvedValueOnce({ session_id: 'session-a', answer: 'Second answer.', steps: [], used_tools: [] });
-
-        const first = ai._runAgent({ user_prompt: 'First', attachments: [] });
-        const second = ai._runAgent({ user_prompt: 'Second', attachments: [] });
-        await new Promise(resolve => setTimeout(resolve, 0));
-
-        expect(AIAPI.agent).toHaveBeenCalledTimes(1);
-        expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Queued');
-
-        releaseReveal();
-        await first;
-        await Promise.resolve();
-
-        expect(AIAPI.agent).toHaveBeenCalledTimes(2);
-        await second;
-    });
 });

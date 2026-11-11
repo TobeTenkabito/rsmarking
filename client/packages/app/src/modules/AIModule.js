@@ -3,6 +3,7 @@ import { Store } from '../store/index.js';
 import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
 import { getLanguage, t } from '../i18n/index.js';
+import { renderAgentMarkdown } from '../utils/agentMarkdown.js';
 
 const AGENT_ATTACHMENT_LIMIT = 6;
 const AGENT_TEXT_EXCERPT_CHARS = 12000;
@@ -14,7 +15,6 @@ const AGENT_IMAGE_MIME_TYPES = new Set([
     'image/webp',
     'image/gif',
 ]);
-const AGENT_RESPONSE_REVEAL_DELAY_MS = 90;
 
 export class AIModule {
     constructor(app) {
@@ -32,7 +32,12 @@ export class AIModule {
         this._functionsLoading = false;
         this._functionCatalogError = '';
         this._conversationArchives = [];
-        this._archivePanelOpen = false;
+        this._archivePanelOpen = true;
+        this._activeArchiveId = null;
+        this._saveTail = Promise.resolve();
+        this._conversationSwitching = false;
+        this._historyError = '';
+        this._sendMode = this._readPreference('send-mode', 'enter');
         this._archivesLoading = false;
         this._agentAttachments = [];
         this._agentQueueTail = Promise.resolve();
@@ -43,6 +48,7 @@ export class AIModule {
     openModal() {
         const modal = document.getElementById('ai-modal');
         if (!modal) return;
+        if (modal.classList.contains('hidden')) this._returnFocus = document.activeElement;
 
         // English Store English/VectorEnglish
         const rasters = Store.getRasters();
@@ -51,8 +57,6 @@ export class AIModule {
             ModalComponent.renderAITargetOptions(rasters, Layers);
         const modeSelect = document.getElementById('ai-mode-select');
         if (modeSelect) modeSelect.value = 'agent';
-        const permissionSelect = document.getElementById('ai-permission-select');
-        if (permissionSelect) permissionSelect.value = 'standard';
         const languageSelect = document.getElementById('ai-language-select');
         if (languageSelect) languageSelect.value = getLanguage();
 
@@ -64,14 +68,17 @@ export class AIModule {
         void this.loadConversationArchives();
 
         modal.classList.remove('hidden');
+        document.getElementById('ai-prompt-input')?.focus();
     }
 
     closeModal() {
         document.getElementById('ai-modal')?.classList.add('hidden');
         this._resetState();
+        this._returnFocus?.focus?.();
     }
 
     async execute() {
+        if (this._loadingDepth || this._conversationSwitching) return;
         const targetId  = document.getElementById('ai-target-select')?.value;
         const dataType  = document.getElementById('ai-datatype-select')?.value;   // 'raster' | 'vector'
         const mode      = document.getElementById('ai-mode-select')?.value;       // 'analyze' | 'modify' | 'agent'
@@ -122,7 +129,10 @@ export class AIModule {
 
         // English
         const reportEl = document.getElementById('ai-result-content');
-        if (reportEl) reportEl.textContent = result.report;
+        if (reportEl) {
+            reportEl.innerHTML = this._renderMarkdown(result.report);
+            reportEl.classList.add('ai-result-markdown');
+        }
 
         // English
         const downloadBtn = document.getElementById('ai-download-btn');
@@ -177,7 +187,9 @@ export class AIModule {
         this._agentConversation.push(userMessage, assistantMessage);
         this._renderAgentConversation();
         if (promptInput) promptInput.value = '';
+        this._resizeComposer();
         this._clearAgentAttachments();
+        void this._saveConversation();
 
         this._agentQueueDepth += 1;
         const runRequest = async () => {
@@ -205,6 +217,7 @@ export class AIModule {
                     await this._refreshSidebar('raster');
                 }
             } finally {
+                await this._saveConversation();
                 this._agentQueueDepth = Math.max(0, this._agentQueueDepth - 1);
             }
         };
@@ -215,77 +228,22 @@ export class AIModule {
     }
 
     async _revealAgentResponse(message, answer) {
-        const chunks = this._splitResponseIntoRevealChunks(answer);
+        // The API returns a complete answer. Artificial typing delayed interaction
+        // and reparsed the entire conversation for every sentence.
         message.content = answer;
-        message.visibleContent = '';
-        message.streaming = true;
-
-        if (!chunks.length) {
-            message.visibleContent = '';
-            message.streaming = false;
-            this._renderAgentConversation();
-            return;
-        }
-
-        for (const chunk of chunks) {
-            message.visibleContent += chunk;
-            this._renderAgentConversation();
-            await this._delayAgentReveal();
-        }
-
         message.visibleContent = answer;
         message.streaming = false;
         this._renderAgentConversation();
     }
 
-    _splitResponseIntoRevealChunks(text = '') {
-        const value = String(text);
-        if (!value) return [];
-
-        const chunks = [];
-        const sentenceEndings = new Set(['.', '!', '?', '\u3002', '\uff01', '\uff1f']);
-        const closingMarks = new Set([
-            '"', "'", ')', ']', '}', '*', '_', '~', '`',
-            '\u201d', '\u2019', '\uff09', '\u3011', '\u300b', '\u300d', '\u300f',
-        ]);
-        let start = 0;
-
-        const pushChunk = (end) => {
-            if (end > start) chunks.push(value.slice(start, end));
-            start = end;
-        };
-
-        for (let i = 0; i < value.length; i += 1) {
-            if (value[i] === '\n' && value[i + 1] === '\n') {
-                let end = i + 2;
-                while (value[end] === '\n') end += 1;
-                pushChunk(end);
-                i = end - 1;
-                continue;
-            }
-
-            if (!sentenceEndings.has(value[i])) continue;
-
-            let end = i + 1;
-            while (sentenceEndings.has(value[end])) end += 1;
-            while (closingMarks.has(value[end])) end += 1;
-
-            if (end < value.length && !/\s/.test(value[end])) continue;
-            while (end < value.length && /\s/.test(value[end])) end += 1;
-
-            pushChunk(end);
-        }
-
-        pushChunk(value.length);
-        return chunks.length ? chunks : [value];
-    }
-
-    _delayAgentReveal() {
-        return new Promise(resolve => setTimeout(resolve, AGENT_RESPONSE_REVEAL_DELAY_MS));
-    }
-
-    startNewAgentChat() {
+    async startNewAgentChat() {
+        if (this._agentQueueDepth || this._conversationSwitching) return;
+        this._conversationSwitching = true;
+        const saved = await this._saveConversation();
+        this._conversationSwitching = false;
+        if (!saved) return;
         this._sessionId = this._createSessionId();
+        this._activeArchiveId = null;
         this._agentConversation = [];
         this._pendingPayload = null;
         this._pendingResult = null;
@@ -295,31 +253,51 @@ export class AIModule {
         if (permissionSelect) permissionSelect.value = 'standard';
         this._syncPermissionUI();
         this._renderAgentConversation();
+        this._renderArchivePanel();
+        const input = document.getElementById('ai-prompt-input');
+        if (input) input.value = '';
+        this._resizeComposer();
         document.getElementById('ai-prompt-input')?.focus();
     }
 
     async archiveAgentConversation() {
-        if (!this._agentConversation.length) {
-            this._showError('No agent conversation to archive yet.');
-            return;
-        }
+        return this._saveConversation();
+    }
 
-        try {
-            const title = this._agentConversation.find(message => message.role === 'user')?.content?.slice(0, 80)
-                || `Agent chat ${new Date().toLocaleString()}`;
-            await AIAPI.archiveConversation({
-                session_id: this._sessionId,
-                title,
-                messages: this._archiveableAgentMessages(),
-                metadata: { source: 'agent-ui' },
-            });
-            this._showSuccess('Conversation archived.');
-            await this.loadConversationArchives({ force: true });
-            this._archivePanelOpen = true;
-            this._renderArchivePanel();
-        } catch (err) {
-            this._showError(err.message);
+    _saveConversation() {
+        const messages = this._archiveableAgentMessages().slice(-500);
+        if (!messages.length) return Promise.resolve(true);
+        const sessionId = this._sessionId;
+        // Stable client-generated identity makes retrying a failed save idempotent.
+        if (!this._activeArchiveId) {
+            const bytes = new Uint8Array(16);
+            globalThis.crypto.getRandomValues(bytes);
+            this._activeArchiveId = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
         }
+        const archiveId = this._activeArchiveId;
+        const title = messages.find(message => message.role === 'user')?.content.slice(0, 80) || 'Agent conversation';
+        const payload = { archive_id: archiveId, session_id: sessionId, title, messages, metadata: { source: 'agent-ui', autosaved: true } };
+        this._setSaveStatus('Saving…');
+        const save = async () => {
+            try {
+                const result = await AIAPI.archiveConversation(payload);
+                const summary = result.conversation;
+                this._conversationArchives = [summary, ...this._conversationArchives.filter(item => item.archive_id !== archiveId)];
+                this._setSaveStatus('Saved');
+                this._renderArchivePanel();
+                return true;
+            } catch (_error) {
+                this._setSaveStatus('Not saved · click to retry');
+                return false;
+            }
+        };
+        this._saveTail = this._saveTail.catch(() => {}).then(save);
+        return this._saveTail;
+    }
+
+    _setSaveStatus(label) {
+        const status = document.getElementById('ai-save-status');
+        if (status) status.textContent = t(label);
     }
 
     async loadConversationArchives({ force = false } = {}) {
@@ -334,8 +312,9 @@ export class AIModule {
         try {
             const result = await AIAPI.listConversations();
             this._conversationArchives = result.conversations ?? [];
+            this._historyError = '';
         } catch (err) {
-            console.warn('[AIModule] failed to load conversation archives:', err);
+            this._historyError = t('History unavailable. Click refresh to retry.');
         } finally {
             this._archivesLoading = false;
             this._renderArchivePanel();
@@ -343,24 +322,25 @@ export class AIModule {
     }
 
     async toggleArchivePanel() {
-        this._archivePanelOpen = !this._archivePanelOpen;
-        this._renderArchivePanel();
-        if (this._archivePanelOpen) {
-            await this.loadConversationArchives({ force: true });
-        }
+        await this.loadConversationArchives({ force: true });
     }
 
     async loadConversationArchive(archiveId) {
-        if (!archiveId) return;
+        if (!archiveId || this._agentQueueDepth || this._conversationSwitching) return;
+        if (archiveId === this._activeArchiveId) return;
+        this._conversationSwitching = true;
         try {
+            if (!await this._saveConversation()) return;
             const result = await AIAPI.getConversation(archiveId);
             const archive = result.conversation;
             const sessionId = archive.session_id || archive.archive_id || this._createSessionId();
             await AIAPI.restoreConversation(archiveId, sessionId);
             this._sessionId = sessionId;
+            this._activeArchiveId = archiveId;
             this._agentConversation = (archive.messages ?? [])
                 .filter(message => ['user', 'assistant'].includes(message.role))
                 .map(message => ({
+                    id: this._createMessageId(),
                     role: message.role,
                     content: message.content,
                     steps: Array.isArray(message.steps) ? message.steps : [],
@@ -371,42 +351,67 @@ export class AIModule {
                         ? this._displayArtifacts(message.artifacts)
                         : [],
                 }));
-            this._archivePanelOpen = false;
+            this._clearAgentAttachments();
+            const input = document.getElementById('ai-prompt-input');
+            if (input) input.value = '';
+            this._resizeComposer();
+            this.setMode('agent');
             this._renderArchivePanel();
             this._renderAgentConversation();
-            this._showSuccess('Conversation restored.');
+            this._setSaveStatus('Saved');
         } catch (err) {
             this._showError(err.message);
+        } finally {
+            this._conversationSwitching = false;
         }
     }
 
     async deleteConversationArchive(archiveId) {
-        if (!archiveId) return;
+        if (!archiveId || this._agentQueueDepth || this._conversationSwitching) return;
+        if (!window.confirm(t('Delete this conversation?'))) return;
+        this._conversationSwitching = true;
         try {
+            await this._saveTail;
             await AIAPI.deleteConversation(archiveId);
+            if (this._activeArchiveId === archiveId) {
+                this._activeArchiveId = null;
+                this._sessionId = this._createSessionId();
+                this._agentConversation = [];
+                this._renderAgentConversation();
+            }
             this._conversationArchives = this._conversationArchives
                 .filter(item => item.archive_id !== archiveId);
             this._renderArchivePanel();
             this._showSuccess('Conversation archive deleted.');
         } catch (err) {
             this._showError(err.message);
+        } finally {
+            this._conversationSwitching = false;
         }
     }
 
     async clearConversationArchives() {
+        if (this._agentQueueDepth || this._conversationSwitching) return;
         if (!this._conversationArchives.length) {
             this._showSuccess('No saved conversations to clear.');
             return;
         }
         if (!window.confirm('Clear all saved AI conversation archives?')) return;
-
+        this._conversationSwitching = true;
         try {
+            await this._saveTail;
             const result = await AIAPI.clearConversations();
             this._conversationArchives = [];
+            this._activeArchiveId = null;
+            this._sessionId = this._createSessionId();
+            this._agentConversation = [];
+            this._renderAgentConversation();
             this._renderArchivePanel();
             this._showSuccess(`Cleared ${result.deleted ?? 0} archived conversation(s).`);
         } catch (err) {
             this._showError(err.message);
+        } finally {
+            this._conversationSwitching = false;
         }
     }
 
@@ -579,6 +584,10 @@ export class AIModule {
         if (mode === 'agent') {
             request.permission_level =
                 document.getElementById('ai-permission-select')?.value || 'standard';
+            request.allow_task_steps = document.getElementById('ai-task-autonomy')?.checked ?? false;
+            request.include_workspace_context = document.getElementById('ai-workspace-context')?.checked ?? true;
+            request.include_archive_memory = document.getElementById('ai-archive-memory')?.checked ?? false;
+            if (document.getElementById('ai-use-tools')?.checked === false) request.tool_names = [];
         }
 
         if (targetId) {
@@ -616,6 +625,98 @@ export class AIModule {
         }
 
         this._bindAgentAttachmentEvents();
+        this._bindChatEvents();
+    }
+
+    _readPreference(name, fallback) {
+        try { return localStorage.getItem(`rsmarking.ai.${name}`) || fallback; }
+        catch (_error) { return fallback; }
+    }
+
+    _bindChatEvents() {
+        const modal = document.getElementById('ai-modal');
+        const input = document.getElementById('ai-prompt-input');
+        const select = document.getElementById('ai-send-mode');
+        if (select) select.value = this._sendMode === 'ctrl-enter' ? 'ctrl-enter' : 'enter';
+        this._syncKeyboardHint();
+        if (!modal || modal.dataset.chatBound === 'true') return;
+        modal.dataset.chatBound = 'true';
+        modal.addEventListener('keydown', event => {
+            if (event.isComposing) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                const openSettings = modal.querySelector('details[open]');
+                if (openSettings) openSettings.open = false;
+                else this.closeModal();
+            }
+            if (event.key === 'Tab') {
+                const focusable = [...modal.querySelectorAll('button:not(:disabled), input, textarea, select, summary, a[href]')]
+                    .filter(element => element.getClientRects().length && !element.closest('.hidden'));
+                const first = focusable[0], last = focusable.at(-1);
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        });
+        input?.addEventListener('keydown', event => this._handleComposerKeydown(event));
+        input?.addEventListener('input', () => this._resizeComposer());
+        select?.addEventListener('change', () => {
+            this._sendMode = select.value;
+            try { localStorage.setItem('rsmarking.ai.send-mode', this._sendMode); } catch (_error) { /* optional preference */ }
+            this._syncKeyboardHint();
+        });
+        document.getElementById('ai-history-search')?.addEventListener('input', () => this._renderArchivePanel());
+        modal.addEventListener('click', async event => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            if (button.hasAttribute('data-ai-new-chat')) await this.startNewAgentChat();
+            if (button.hasAttribute('data-ai-refresh-history')) await this.loadConversationArchives({ force: true });
+            if (button.hasAttribute('data-ai-save-chat')) await this._saveConversation();
+            if (button.dataset.aiOpenChat) await this.loadConversationArchive(button.dataset.aiOpenChat);
+            if (button.dataset.aiDeleteChat) await this.deleteConversationArchive(button.dataset.aiDeleteChat);
+            if (button.dataset.aiSuggestion && input) {
+                input.value = t(button.dataset.aiSuggestion);
+                input.focus();
+                this._resizeComposer();
+            }
+            if (button.dataset.aiCopyMessage) {
+                const message = this._agentConversation.find(item => item.id === button.dataset.aiCopyMessage);
+                try {
+                    await navigator.clipboard.writeText(message?.content || '');
+                    button.textContent = t('Copied');
+                } catch (_error) { this._showError(t('Copy failed. Select the text to copy.')); }
+            }
+        });
+    }
+
+    _handleComposerKeydown(event) {
+        if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+        if (event.shiftKey || event.altKey) return;
+        const modifier = event.ctrlKey || event.metaKey;
+        const send = this._sendMode === 'ctrl-enter' ? modifier : !modifier;
+        if (send) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!event.repeat && !this._loadingDepth && !this._conversationSwitching) void this.execute();
+        } else if (modifier) {
+            // Browsers do not insert a line break for Ctrl+Enter by default.
+            event.preventDefault();
+            event.stopPropagation();
+            event.target.setRangeText('\n', event.target.selectionStart, event.target.selectionEnd, 'end');
+            this._resizeComposer();
+        }
+    }
+
+    _syncKeyboardHint() {
+        const hint = document.getElementById('ai-keyboard-hint');
+        if (hint) hint.textContent = t(this._sendMode === 'ctrl-enter' ? 'Enter for a new line' : 'Ctrl + Enter for a new line');
+    }
+
+    _resizeComposer() {
+        const input = document.getElementById('ai-prompt-input');
+        if (input) {
+            input.style.height = 'auto';
+            input.style.height = `${Math.min(180, Math.max(48, input.scrollHeight))}px`;
+        }
     }
 
     _syncDataTypeWithTarget() {
@@ -655,24 +756,24 @@ export class AIModule {
 
         if (isAgent) {
             if (contextSummary) contextSummary.textContent = 'Optional in agent mode';
-            if (modeCaption) modeCaption.textContent = 'Agent mode';
+            if (modeCaption) modeCaption.textContent = t('Agent mode');
             if (promptLabel) promptLabel.textContent = 'Message';
             document.getElementById('ai-result-section')?.classList.add('hidden');
             document.getElementById('ai-confirm-section')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 2;
-            if (executeLabel) executeLabel.textContent = 'Send';
+            if (executeLabel) executeLabel.textContent = t('Send');
             this._renderAgentConversation();
             this._renderArchivePanel();
             this._renderAgentAttachments();
             this._syncPermissionUI();
         } else {
             if (contextSummary) contextSummary.textContent = 'Required for analysis and modify modes';
-            if (modeCaption) modeCaption.textContent = mode === 'modify' ? 'Modify mode' : 'Analysis mode';
+            if (modeCaption) modeCaption.textContent = t(mode === 'modify' ? 'Modify mode' : 'Analysis mode');
             if (promptLabel) promptLabel.textContent = 'Prompt';
             document.getElementById('ai-agent-panel')?.classList.add('hidden');
             document.getElementById('ai-agent-attachment-controls')?.classList.add('hidden');
             if (promptInput) promptInput.rows = 3;
-            if (executeLabel) executeLabel.textContent = 'Run';
+            if (executeLabel) executeLabel.textContent = t('Run');
         }
     }
 
@@ -705,7 +806,7 @@ export class AIModule {
         const profile = profiles[permission] || profiles.standard;
         if (banner) {
             banner.textContent = profile.text;
-            banner.className = profile.classes;
+            banner.className = 'ai-setting-note';
         }
         if (select) select.title = profile.title;
     }
@@ -1448,11 +1549,13 @@ export class AIModule {
         if (sessionEl) sessionEl.textContent = this._sessionId.slice(-8);
         if (!messagesEl) return;
 
+        const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
         messagesEl.innerHTML = this._agentConversation.length
             ? this._agentConversation.map(message => this._renderAgentMessage(message)).join('')
-            : '<div class="h-full"></div>';
-
-        this._scrollAgentChatToBottom();
+            : `<div class="ai-empty"><span class="ai-brand-mark">RS</span><h3>${this._escapeHTML(t('What would you like to explore?'))}</h3>
+                <p>${this._escapeHTML(t('Ask about your maps, analyze imagery, or turn an idea into a result.'))}</p>
+                <div class="ai-suggestions">${['Summarize my workspace', 'Help me analyze this imagery', 'What can you do?'].map(label => `<button type="button" data-ai-suggestion="${label}">${this._escapeHTML(t(label))}</button>`).join('')}</div></div>`;
+        if (nearBottom) this._scrollAgentChatToBottom();
     }
 
     _renderAgentAttachments() {
@@ -1465,75 +1568,41 @@ export class AIModule {
     }
 
     _renderArchivePanel() {
-        const panel = document.getElementById('ai-agent-archive-panel');
         const list = document.getElementById('ai-agent-archive-list');
-        if (!panel || !list) return;
-
-        panel.classList.toggle('hidden', !this._archivePanelOpen);
-        if (!this._archivePanelOpen) return;
-
-        if (this._archivesLoading) {
-            list.innerHTML = '<div class="py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">Loading archives...</div>';
+        if (!list) return;
+        const query = (document.getElementById('ai-history-search')?.value || '').trim().toLocaleLowerCase();
+        const items = this._conversationArchives.filter(item => String(item.title || '').toLocaleLowerCase().includes(query));
+        if (!items.length) {
+            const label = this._archivesLoading ? 'Loading conversations…' : this._historyError || (query ? 'No matching conversations' : 'Your conversations will appear here');
+            list.innerHTML = `<p class="ai-history-note">${this._escapeHTML(t(label))}</p>`;
             return;
         }
-
-        if (!this._conversationArchives.length) {
-            list.innerHTML = '<div class="py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">No archived chats</div>';
-            return;
-        }
-
-        list.innerHTML = this._conversationArchives.map((archive) => {
-            const title = this._escapeHTML(archive.title || 'Agent conversation');
-            const date = archive.updated_at ? new Date(archive.updated_at).toLocaleString() : '';
+        list.innerHTML = items.map(archive => {
             const id = this._escapeHTML(archive.archive_id);
-            return `
-                <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <button type="button" onclick="RS.aiLoadConversationArchive('${id}')"
-                        class="min-w-0 flex-1 text-left">
-                        <div class="truncate text-[11px] font-bold text-slate-700">${title}</div>
-                        <div class="mt-0.5 truncate text-[9px] font-mono text-slate-400">${this._escapeHTML(date)} · ${archive.message_count ?? 0} messages</div>
-                    </button>
-                    <button type="button" onclick="RS.aiDeleteConversationArchive('${id}')"
-                        title="Delete archive"
-                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500">
-                        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862A2 2 0 015.867 19.142L5 7m5 4v6m4-6v6M4 7h16m-6-3h-4"/>
-                        </svg>
-                    </button>
-                </div>`;
+            const active = archive.archive_id === this._activeArchiveId;
+            const title = this._escapeHTML(archive.title || 'Agent conversation');
+            const date = archive.updated_at ? new Date(archive.updated_at).toLocaleDateString() : '';
+            return `<div class="ai-history-item ${active ? 'active' : ''}">
+                <button type="button" class="ai-history-open" data-ai-open-chat="${id}" ${active ? 'aria-current="page"' : ''} title="${title}">
+                    <strong>${title}</strong><small>${this._escapeHTML(date)}</small>
+                </button>
+                <button type="button" class="ai-history-delete" data-ai-delete-chat="${id}" aria-label="${this._escapeHTML(t('Delete this conversation?'))}" title="${this._escapeHTML(t('Delete archive'))}">×</button>
+            </div>`;
         }).join('');
     }
 
     _renderAgentMessage(message) {
         const isUser = message.role === 'user';
-        const wrapperClass = isUser ? 'justify-end' : 'justify-start';
-        const bubbleClass = isUser
-            ? 'bg-slate-900 text-white'
-            : message.error
-                ? 'border border-red-100 bg-red-50 text-red-700 shadow-sm'
-                : 'border border-slate-200 bg-white text-slate-700 shadow-sm';
-        const avatar = isUser
-            ? ''
-            : `<div class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[9px] font-black text-violet-700">AI</div>`;
-        const trace = this._renderAgentToolTrace(message.steps ?? []);
-        const attachments = this._renderMessageAttachments(message.attachments ?? [], isUser);
-        const artifacts = this._renderGeneratedArtifacts(message.artifacts ?? []);
-        const content = message.pending
-            ? this._renderPendingAgentMessage(message)
-            : isUser
-                ? `<div class="break-words">${this._renderMarkdown(message.content)}</div>`
-                : this._renderAgentMarkdownOutput(message);
-
-        return `
-            <div class="flex ${wrapperClass} gap-2">
-                ${avatar}
-                <div class="max-w-[82%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${bubbleClass}">
-                    ${content}
-                    ${attachments}
-                    ${artifacts}
-                    ${trace}
-                </div>
-            </div>`;
+        const content = message.pending ? this._renderPendingAgentMessage(message) : this._renderAgentMarkdownOutput(message);
+        const copy = !message.pending && message.id ? `<button type="button" class="ai-message-copy" data-ai-copy-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Copy'))}</button>` : '';
+        return `<article class="ai-message ai-message-${isUser ? 'user' : 'assistant'}" data-ai-message="${this._escapeHTML(message.id || '')}">
+            <div class="ai-bubble ${message.error ? 'ai-message-error' : ''}">
+                ${isUser ? '' : '<div class="ai-message-label">RS · Assistant</div>'}
+                ${content}${this._renderMessageAttachments(message.attachments ?? [], isUser)}
+                ${this._renderGeneratedArtifacts(message.artifacts ?? [])}
+                ${this._renderAgentToolTrace(message.steps ?? [])}${copy}
+            </div>
+        </article>`;
     }
 
     _renderPendingAgentMessage(message = {}) {
@@ -1698,173 +1767,7 @@ export class AIModule {
     }
 
     _renderMarkdown(markdown = '') {
-        const lines = String(markdown).replace(/\r\n/g, '\n').split('\n');
-        const blocks = [];
-        let paragraph = [];
-        let i = 0;
-
-        const flushParagraph = () => {
-            if (!paragraph.length) return;
-            blocks.push(`<p class="mb-2 last:mb-0">${this._renderInlineMarkdown(paragraph.join(' '))}</p>`);
-            paragraph = [];
-        };
-
-        while (i < lines.length) {
-            const rawLine = lines[i];
-            const line = rawLine.trim();
-
-            if (!line) {
-                flushParagraph();
-                i += 1;
-                continue;
-            }
-
-            if (line.startsWith('```')) {
-                flushParagraph();
-                const language = line.slice(3).trim();
-                const code = [];
-                i += 1;
-                while (i < lines.length && !lines[i].trim().startsWith('```')) {
-                    code.push(lines[i]);
-                    i += 1;
-                }
-                if (i < lines.length) i += 1;
-                blocks.push(this._renderCodeBlock(code.join('\n'), language));
-                continue;
-            }
-
-            const heading = line.match(/^(#{1,4})\s+(.+)$/);
-            if (heading) {
-                flushParagraph();
-                const level = heading[1].length;
-                const size = level === 1 ? 'text-sm' : 'text-xs';
-                blocks.push(`<h${level} class="mb-2 mt-3 first:mt-0 font-black ${size} text-slate-800">${this._renderInlineMarkdown(heading[2])}</h${level}>`);
-                i += 1;
-                continue;
-            }
-
-            if (this._isMarkdownTableStart(lines, i)) {
-                flushParagraph();
-                const tableLines = [lines[i], lines[i + 1]];
-                i += 2;
-                while (i < lines.length && lines[i].includes('|') && lines[i].trim()) {
-                    tableLines.push(lines[i]);
-                    i += 1;
-                }
-                blocks.push(this._renderMarkdownTable(tableLines));
-                continue;
-            }
-
-            if (/^[-*+]\s+/.test(line)) {
-                flushParagraph();
-                const items = [];
-                while (i < lines.length && /^[-*+]\s+/.test(lines[i].trim())) {
-                    items.push(lines[i].trim().replace(/^[-*+]\s+/, ''));
-                    i += 1;
-                }
-                blocks.push(`<ul class="mb-2 ml-4 list-disc space-y-1">${items.map(item => `<li>${this._renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
-                continue;
-            }
-
-            if (/^\d+\.\s+/.test(line)) {
-                flushParagraph();
-                const items = [];
-                while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
-                    items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
-                    i += 1;
-                }
-                blocks.push(`<ol class="mb-2 ml-4 list-decimal space-y-1">${items.map(item => `<li>${this._renderInlineMarkdown(item)}</li>`).join('')}</ol>`);
-                continue;
-            }
-
-            if (line.startsWith('>')) {
-                flushParagraph();
-                const quote = [];
-                while (i < lines.length && lines[i].trim().startsWith('>')) {
-                    quote.push(lines[i].trim().replace(/^>\s?/, ''));
-                    i += 1;
-                }
-                blocks.push(`<blockquote class="mb-2 border-l-2 border-violet-200 pl-3 text-slate-500">${this._renderInlineMarkdown(quote.join(' '))}</blockquote>`);
-                continue;
-            }
-
-            paragraph.push(line);
-            i += 1;
-        }
-
-        flushParagraph();
-        return `<div class="ai-markdown space-y-1">${blocks.join('') || '<p class="mb-0"></p>'}</div>`;
-    }
-
-    _renderInlineMarkdown(text = '') {
-        const codeTokens = [];
-        let rendered = this._escapeHTML(text).replace(/`([^`]+)`/g, (_match, code) => {
-            const token = `@@CODE_${codeTokens.length}@@`;
-            codeTokens.push(`<code class="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">${code}</code>`);
-            return token;
-        });
-
-        rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
-            const href = url.replace(/&amp;/g, '&').trim();
-            if (!this._isSafeMarkdownUrl(href)) return label;
-            return `<a href="${this._escapeHTML(href)}" target="_blank" rel="noopener noreferrer" class="font-bold text-violet-600 underline decoration-violet-200 underline-offset-2">${label}</a>`;
-        });
-
-        rendered = rendered
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-            .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-            .replace(/(^|[\s(])_([^_\n]+)_/g, '$1<em>$2</em>');
-
-        codeTokens.forEach((html, index) => {
-            rendered = rendered.replace(`@@CODE_${index}@@`, html);
-        });
-        return rendered;
-    }
-
-    _renderCodeBlock(code = '', language = '') {
-        const lang = language ? `<div class="border-b border-slate-800 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400">${this._escapeHTML(language)}</div>` : '';
-        return `
-            <div class="my-3 overflow-hidden rounded-xl bg-slate-950 text-slate-100">
-                ${lang}
-                <pre class="overflow-x-auto p-3 text-[11px] leading-relaxed"><code>${this._escapeHTML(code)}</code></pre>
-            </div>`;
-    }
-
-    _isMarkdownTableStart(lines, index) {
-        const current = lines[index]?.trim() ?? '';
-        const next = lines[index + 1]?.trim() ?? '';
-        return current.includes('|') && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(next);
-    }
-
-    _renderMarkdownTable(tableLines) {
-        const header = this._splitMarkdownTableRow(tableLines[0]);
-        const rows = tableLines.slice(2).map(line => this._splitMarkdownTableRow(line));
-        return `
-            <div class="my-3 overflow-x-auto rounded-xl border border-slate-200">
-                <table class="min-w-full border-collapse text-left text-[11px]">
-                    <thead class="bg-slate-100 text-slate-600">
-                        <tr>${header.map(cell => `<th class="border-b border-slate-200 px-3 py-2 font-black">${this._renderInlineMarkdown(cell)}</th>`).join('')}</tr>
-                    </thead>
-                    <tbody>
-                        ${rows.map(row => `<tr class="odd:bg-white even:bg-slate-50">${row.map(cell => `<td class="border-t border-slate-100 px-3 py-2 align-top">${this._renderInlineMarkdown(cell)}</td>`).join('')}</tr>`).join('')}
-                    </tbody>
-                </table>
-            </div>`;
-    }
-
-    _splitMarkdownTableRow(row = '') {
-        return row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
-    }
-
-    _isSafeMarkdownUrl(url = '') {
-        if (url.startsWith('#') || url.startsWith('/')) return true;
-        try {
-            const parsed = new URL(url);
-            return ['http:', 'https:', 'mailto:'].includes(parsed.protocol);
-        } catch (_err) {
-            return false;
-        }
+        return renderAgentMarkdown(markdown);
     }
 
     _renderAgentToolTrace(steps) {
@@ -1890,7 +1793,7 @@ export class AIModule {
                 </div>`;
         }).join('');
 
-        return `<div class="mt-3 space-y-1.5 border-t border-slate-100 pt-2">${items}</div>`;
+        return `<details class="ai-tool-trace"><summary>${steps.length} ${this._escapeHTML(t('tool steps'))}</summary><div class="mt-2 space-y-1.5">${items}</div></details>`;
     }
 
     _scrollAgentChatToBottom() {
@@ -2027,7 +1930,7 @@ export class AIModule {
 
     _clearResult() {
         const resultEl = document.getElementById('ai-result-content');
-        if (resultEl) resultEl.textContent = '';
+        if (resultEl) { resultEl.textContent = ''; resultEl.classList.remove('ai-result-markdown'); }
         this._clearTransientMessages();
         document.getElementById('ai-result-section')?.classList.add('hidden');
         document.getElementById('ai-confirm-section')?.classList.add('hidden');
@@ -2043,12 +1946,12 @@ export class AIModule {
 
     _showError(msg) {
         const el = document.getElementById('ai-error-msg');
-        if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+        if (el) { el.textContent = t(msg); el.classList.remove('hidden'); }
     }
 
     _showSuccess(msg) {
         const el = document.getElementById('ai-success-msg');
-        if (el) { el.textContent = msg; el.classList.remove('hidden'); }
+        if (el) { el.textContent = t(msg); el.classList.remove('hidden'); }
     }
 
     _resetState() {

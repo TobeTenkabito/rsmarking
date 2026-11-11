@@ -1,0 +1,28 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent workspace test</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#e9eee9}.hidden{display:none!important}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}button{border:0}textarea{font:inherit}.flex{display:flex}.gap-2{gap:8px}.flex-wrap{flex-wrap:wrap}.mb-2{margin-bottom:8px}p,h1,h2,h3{margin:0}</style></head><body>
+<script type="module">
+import { aiModal } from '/client/packages/ui/src/templates/modals/aiModal.js';
+import { AIModule } from '/client/packages/app/src/modules/AIModule.js';
+import { AIAPI } from '/client/packages/app/src/api/ai.js';
+import { setLanguage, applyTranslations } from '/client/packages/app/src/i18n/index.js';
+setLanguage('zh');
+document.body.innerHTML = aiModal;
+const records = new Map([
+ ['a'.repeat(32), {archive_id:'a'.repeat(32),session_id:'old-a',title:'城市水体分布分析',updated_at:'2026-11-11T08:00:00Z',messages:[{role:'user',content:'帮我分析这幅影像的水体分布。'},{role:'assistant',content:'## 水体分析结果\n\n主要水体沿河流分布，建议结合 **MNDWI** 与现场资料进行核实。\n\n| 区域 | 面积 | 变化 |\n| --- | ---: | --- |\n| 北部河道 | 12.8 km² | 增加 |\n| 南部湖区 | 8.6 km² | 稳定 |\n\n### 后续步骤\n\n1. 检查输入影像\n   - 排除云和阴影\n   - 校验坐标系\n2. 计算水体指数\n\n```python\nmndwi = (green - swir) / (green + swir)\n```\n\n> 这是界面测试用的示例数据。'}]}],
+ ['b'.repeat(32), {archive_id:'b'.repeat(32),session_id:'old-b',title:'植被指数对比',updated_at:'2026-11-10T08:00:00Z',messages:[{role:'user',content:'对比两期植被指数'},{role:'assistant',content:'示例对话。'}]}],
+]);
+window.__calls = [];
+AIAPI.listFunctions = async () => ({functions:[]});
+AIAPI.listConversations = async () => ({conversations:[...records.values()]});
+AIAPI.getConversation = async id => ({conversation:records.get(id)});
+AIAPI.restoreConversation = async () => ({});
+AIAPI.deleteConversation = async id => {records.delete(id); return {};};
+AIAPI.archiveConversation = async payload => {const record={...payload,updated_at:new Date().toISOString(),message_count:payload.messages.length}; records.set(payload.archive_id,record); return {conversation:record};};
+AIAPI.agent = async payload => {window.__calls.push(payload); return {session_id:payload.session_id,answer:'## 已完成\n\n**Markdown** 正常显示。\n\n- [x] 任务完成',steps:[],used_tools:[]};};
+const ai = new AIModule({});
+window.RS = {aiExecute:()=>ai.execute(),closeAIModal:()=>ai.closeModal(),aiStartNewAgentChat:()=>ai.startNewAgentChat()};
+window.__ai = ai;
+ai.openModal();
+applyTranslations(document);
+</script></body></html>

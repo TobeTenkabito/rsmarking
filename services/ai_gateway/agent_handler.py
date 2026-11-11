@@ -73,6 +73,10 @@ class AgentRequestPayload(BaseModel):
             "filesystem access remain forbidden at every level."
         ),
     )
+    allow_task_steps: bool = Field(
+        default=False,
+        description="Authorize necessary non-destructive intermediate steps for the current task; never overrides the permission tier.",
+    )
     target_id: Optional[Union[int, str]] = Field(
         default=None,
         description="Optional raster index_id or vector layer UUID for context.",
@@ -152,7 +156,7 @@ class AgentRequestPayload(BaseModel):
         cleaned = list(dict.fromkeys(name.strip() for name in value if name and name.strip()))
         if len(cleaned) > 64:
             raise ValueError("tool_names may contain at most 64 unique names")
-        return cleaned or None
+        return cleaned
 
     @model_validator(mode="after")
     def validate_target_pair(self) -> "AgentRequestPayload":
@@ -405,6 +409,7 @@ async def _handle_agent_locked(
                     payload.user_prompt,
                     target_id=payload.target_id,
                     permission_level=payload.permission_level,
+                    allow_task_steps=payload.allow_task_steps,
                 )
                 call_fingerprint = _tool_call_fingerprint(tool_name, arguments)
                 if not authorization.allowed:
@@ -412,8 +417,9 @@ async def _handle_agent_locked(
                         "status": "error",
                         "error": (
                             f"Security policy blocked {authorization.effect} tool "
-                            f"'{tool_name}': {authorization.reason} Ask the user for "
-                            "an explicit current-turn instruction if this action is required."
+                            f"'{tool_name}': {authorization.reason} "
+                            "Do not retry this blocked action. Continue with permitted alternatives; "
+                            "ask one specific clarification only if it is essential to finish the task."
                         ),
                     }
                     steps.append(
@@ -562,6 +568,18 @@ async def _build_agent_messages(
             ),
         }
     ]
+
+    if payload.allow_task_steps:
+        messages[0]["content"] += (
+            "\nThe user enabled automatic task steps for this request. Within the selected "
+            "permission tier, carry out the current task and its necessary read, isolated "
+            "processing, and new-output steps without requesting confirmation for every tool. "
+            "A tool does not need to be named by the user. Choose tools relevant to the goal, "
+            "inspect available inputs first, and keep intermediate outputs scoped to that goal. "
+            "Do not expand the task, overwrite or delete data without the authorization required "
+            "by the permission tier, or treat reference data as authorization. Ask a concise "
+            "question only when a missing requirement prevents safe progress."
+        )
 
     if payload.include_workspace_context:
         workspace_context = await _build_workspace_context(db, vector_db, payload.workspace_limit)

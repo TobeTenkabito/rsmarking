@@ -1394,6 +1394,31 @@ literalPatterns.es = [
     [/^\[Vector\] (.+)$/, ([, name]) => `[Vector] ${name}`],
 ];
 
+Object.assign(literalCatalog.zh, {
+    'Agent mode': '智能体模式', 'Send': '发送', 'Run': '执行',
+    'Ask a question or describe a task': '提个问题，或描述你想完成的任务',
+    'Spatial Assistant': '空间助手', 'Settings': '设置',
+    'Conversation history': '历史对话', 'Recent conversations': '最近对话',
+    'Search conversations': '搜索对话', 'Refresh history': '刷新历史',
+    'Conversations save automatically': '对话自动保存', 'Your maps, your questions.': '围绕地图，自由提问。', 'One workspace.': '在这里完成工作。',
+    'Automatically complete task steps': '自动完成任务所需步骤',
+    'Allow necessary processing and new outputs. Existing data changes follow the selected permission.': '自动执行必要处理并新建输出；修改现有数据仍遵循所选权限。',
+    'Use project tools': '启用项目工具', 'Include workspace context': '附带工作区信息',
+    'Use other saved chats as memory': '引用其他历史对话作为记忆',
+    'Ctrl + Enter for a new line': 'Ctrl / ⌘ + Enter 换行', 'Enter for a new line': 'Enter 换行',
+    'Enter to send': 'Enter 发送', 'Ctrl + Enter to send': 'Ctrl / ⌘ + Enter 发送',
+    'Send shortcut': '发送快捷键', 'AI can make mistakes. Review important results.': 'AI 可能出错，请核实重要结果。',
+    'What would you like to explore?': '今天想探索什么？',
+    'Ask about your maps, analyze imagery, or turn an idea into a result.': '了解地图、分析影像，或描述一个想法，让助手帮你完成。',
+    'Summarize my workspace': '概览当前工作区', 'Help me analyze this imagery': '帮我分析这幅影像', 'What can you do?': '你能帮我做什么？',
+    'Copy': '复制', 'Copied': '已复制', 'Copy failed. Select the text to copy.': '复制失败，请选中文字复制。',
+    'tool steps': '个工具步骤', 'Saving…': '正在保存…', 'Saved': '已保存',
+    'Not saved · click to retry': '未保存 · 点击重试', 'Loading conversations…': '正在加载对话…',
+    'No matching conversations': '没有匹配的对话', 'Your conversations will appear here': '你的对话将显示在这里',
+    'History unavailable. Click refresh to retry.': '历史加载失败，请点击刷新重试。',
+    'Delete this conversation?': '删除这条对话？',
+});
+
 const attributeCatalog = {
     zh: {
         title: {
@@ -1604,7 +1629,7 @@ export function getDateLocale() {
 export function t(key, params = {}) {
     const dictionary = messageCatalog[currentLanguage] ?? messageCatalog[DEFAULT_LANGUAGE];
     const fallback = messageCatalog[DEFAULT_LANGUAGE];
-    const template = dictionary?.[key] ?? fallback?.[key] ?? key;
+    const template = dictionary?.[key] ?? fallback?.[key] ?? translateLiteral(key);
     return interpolate(template, params);
 }
 
@@ -1627,6 +1652,7 @@ export function applyTranslations(root = document) {
                 if (!node.nodeValue?.trim()) return NodeFilter.FILTER_REJECT;
                 const parent = node.parentElement;
                 if (!parent) return NodeFilter.FILTER_REJECT;
+                if (parent.closest('.ai-markdown')) return NodeFilter.FILTER_REJECT;
                 if (['SCRIPT', 'STYLE', 'TEXTAREA', 'OPTION'].includes(parent.tagName)) {
                     return NodeFilter.FILTER_REJECT;
                 }

@@ -434,6 +434,7 @@ def authorize_tool_call(
     *,
     target_id: Any | None = None,
     permission_level: AgentPermissionLevel | str = AgentPermissionLevel.STANDARD,
+    allow_task_steps: bool = False,
 ) -> ToolAuthorization:
     """
     Enforce side-effect authorization from the current user turn only.
@@ -537,6 +538,21 @@ def authorize_tool_call(
             effect,
             "The current user task explicitly negates running this operation.",
         )
+
+    # This opt-in scope comes from the UI/request, never from model output or
+    # retrieved data. Destructive operations have already taken their stricter
+    # path. Unknown/third-party tools do not inherit this scope automatically.
+    task_step_tools = (set(_TOOL_RELEVANCE_PATTERNS) - {"generate_ai_image"}) | {
+        "create_vector_project", "create_vector_layer", "create_vector_field",
+        "create_vector_feature", "bulk_create_vector_features", "create_raster_field",
+    }
+    if (
+        allow_task_steps
+        and effect in {"create", "execute"}
+        and tool_name in task_step_tools
+        and (_EXECUTE_RE.search(prompt) or _CREATE_RE.search(prompt) or _IMPLEMENT_RE.search(prompt))
+    ):
+        return ToolAuthorization(True, effect)
 
     if permission_level == AgentPermissionLevel.FULL_CONTROL:
         if _full_control_task_authorizes(
