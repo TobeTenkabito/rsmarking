@@ -5,7 +5,7 @@ import os
 import re
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 ARCHIVE_DIR = os.path.join(BASE_DIR, "storage", "ai_conversations")
+MAX_TRANSFER_BYTES = 20 * 1024 * 1024
 
 
 class ConversationArchiveRequest(BaseModel):
@@ -60,6 +61,36 @@ class ConversationRestoreRequest(BaseModel):
     )
 
 
+class ConversationPinRequest(BaseModel):
+    pinned: bool = Field(strict=True)
+
+
+class ConversationBranchRequest(BaseModel):
+    message_index: int | None = Field(default=None, ge=0, le=499, strict=True)
+    title: str | None = Field(default=None, max_length=120)
+
+
+class TransferMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=20000)
+    steps: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
+    artifacts: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+
+
+class TransferConversation(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    note: str = Field(default="", max_length=4000)
+    pinned: bool = Field(default=False, strict=True)
+    messages: list[TransferMessage] = Field(min_length=1, max_length=500)
+
+
+class ConversationImportRequest(BaseModel):
+    format: Literal["rsmarking.conversation"]
+    version: Literal[1]
+    conversation: TransferConversation
+
+
 def archive_conversation(payload: ConversationArchiveRequest) -> dict[str, Any]:
     messages = _normalize_messages(payload.messages)
     if not messages:
@@ -80,11 +111,13 @@ def archive_conversation(payload: ConversationArchiveRequest) -> dict[str, Any]:
         "title": previous["title"] if previous and previous.get("title_edited") else _archive_title(payload.title, messages),
         "title_edited": bool(previous and previous.get("title_edited")),
         "note": previous.get("note", "") if previous else "",
+        "pinned": bool(previous and previous.get("pinned")),
+        "pinned_at": previous.get("pinned_at") if previous else None,
         "created_at": previous["created_at"] if previous else now,
         "updated_at": now,
         "message_count": len(messages),
         "messages": messages,
-        "metadata": payload.metadata or {},
+        "metadata": {**(previous.get("metadata", {}) if previous else {}), **payload.metadata},
     }
     _write_archive(record)
     return _summary(record)
@@ -100,7 +133,11 @@ def list_conversation_archives() -> list[dict[str, Any]]:
             archives.append(_summary(_read_archive_by_filename(name)))
         except Exception:
             continue
-    return sorted(archives, key=lambda item: item.get("updated_at", ""), reverse=True)
+    return sorted(archives, key=lambda item: (
+        bool(item.get("pinned")),
+        (item.get("pinned_at") if item.get("pinned") else item.get("updated_at")) or "",
+        item["archive_id"],
+    ), reverse=True)
 
 
 def get_conversation_archive(archive_id: str) -> dict[str, Any]:
@@ -112,6 +149,69 @@ def update_conversation_details(archive_id: str, payload: ConversationDetailsReq
     record.update(title=payload.title, title_edited=True, note=payload.note.strip(), updated_at=_timestamp())
     _write_archive(record)
     return _summary(record)
+
+
+def pin_conversation(archive_id: str, pinned: bool) -> dict[str, Any]:
+    record = _read_archive(archive_id)
+    if bool(record.get("pinned")) != pinned:
+        record.update(pinned=pinned, pinned_at=_timestamp() if pinned else None)
+        _write_archive(record)
+    return _summary(record)
+
+
+def export_conversation(archive_id: str) -> dict[str, Any]:
+    record = _read_archive(archive_id)
+    bundle = {
+        "format": "rsmarking.conversation", "version": 1,
+        "conversation": {
+            "title": record["title"], "note": record.get("note", ""),
+            "pinned": bool(record.get("pinned")),
+            "messages": [message for message in record["messages"] if message.get("role") in {"user", "assistant"}],
+        },
+    }
+    # Exports must be accepted by the importer; never silently truncate a backup.
+    validated = ConversationImportRequest.model_validate(bundle)
+    _check_transfer_size(validated)
+    return validated.model_dump()
+
+
+def import_conversation(payload: ConversationImportRequest) -> dict[str, Any]:
+    _check_transfer_size(payload)
+    data = payload.conversation
+    messages = _normalize_messages([message.model_dump() for message in data.messages])
+    return _create_conversation_copy(messages, title=data.title, note=data.note, pinned=data.pinned)
+
+
+def branch_conversation(archive_id: str, payload: ConversationBranchRequest) -> dict[str, Any]:
+    source = _read_archive(archive_id)
+    messages = [message for message in source["messages"] if message.get("role") in {"user", "assistant"} and message.get("content")]
+    index = payload.message_index if payload.message_index is not None else len(messages) - 1
+    if not 0 <= index < len(messages):
+        raise ValueError("Branch message is outside the saved conversation")
+    return _create_conversation_copy(
+        messages[:index + 1], title=payload.title or (source["title"][:111] + " / branch"),
+        note=source.get("note", ""),
+        metadata={"parent_archive_id": archive_id, "branch_message_index": index},
+    )
+
+
+def _create_conversation_copy(messages, *, title=None, note="", pinned=False, metadata=None):
+    archive_id = uuid.uuid4().hex
+    now = _timestamp()
+    record = {
+        "archive_id": archive_id, "session_id": f"chat-{uuid.uuid4().hex}",
+        "title": _archive_title(title, messages), "title_edited": True,
+        "note": note.strip(), "pinned": pinned, "pinned_at": now if pinned else None,
+        "created_at": now, "updated_at": now, "message_count": len(messages),
+        "messages": messages, "metadata": metadata or {},
+    }
+    _write_archive(record)
+    return _summary(record)
+
+
+def _check_transfer_size(payload: ConversationImportRequest) -> None:
+    if len(payload.model_dump_json().encode("utf-8")) > MAX_TRANSFER_BYTES:
+        raise ValueError("Conversation transfer exceeds the 20 MB limit")
 
 
 def delete_conversation_archive(archive_id: str) -> dict[str, Any]:
@@ -136,7 +236,8 @@ def clear_conversation_archives() -> dict[str, Any]:
 
 
 def build_archive_memory_context(limit: int = 5) -> str:
-    archives = list_conversation_archives()[: max(0, limit)]
+    # Pinning changes presentation, not which chats are selected as recent memory.
+    archives = sorted(list_conversation_archives(), key=lambda item: item.get("updated_at") or "", reverse=True)[: max(0, limit)]
     if not archives:
         return ""
 
@@ -209,7 +310,7 @@ def _normalize_attachments(attachments: list[dict[str, Any]]) -> list[dict[str, 
         if text_excerpt:
             item["text_excerpt"] = text_excerpt[:12000]
         image_data_url = str(attachment.get("image_data_url") or "")
-        if image_data_url and len(image_data_url) <= 4_500_000:
+        if len(image_data_url) <= 4_500_000 and re.fullmatch(r"data:image/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}", image_data_url):
             item["image_data_url"] = image_data_url
         normalized.append(item)
     return normalized
@@ -273,6 +374,8 @@ def _summary(record: dict[str, Any]) -> dict[str, Any]:
         "session_id": record.get("session_id"),
         "title": record.get("title") or "Agent conversation",
         "note": record.get("note", ""),
+        "pinned": bool(record.get("pinned")),
+        "pinned_at": record.get("pinned_at"),
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),
         "message_count": record.get("message_count", len(record.get("messages", []))),

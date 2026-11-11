@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 test('desktop: visible history, Markdown, keyboard modes and autosave', async ({ page }) => {
     const errors = [];
@@ -79,4 +80,72 @@ test('history: edit title and note, expand on click, preserve after autosave and
     await page.locator('[data-ai-cancel-edit]').click();
     await note.click();
     await expect(note).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('history: pin, export and import a downloaded chat', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/tests/ui/agent-preview.html');
+    const id = 'b'.repeat(32);
+    const openMenu = async () => {
+        const row = page.locator('.ai-history-item').filter({ has: page.locator(`[data-ai-open-chat="${id}"]`) });
+        await row.hover();
+        await row.locator('[data-ai-history-menu]').click();
+    };
+    await openMenu();
+    await page.locator(`[data-ai-pin-chat="${id}"]`).click();
+    await expect(page.locator('[data-ai-open-chat]').first()).toHaveAttribute('data-ai-open-chat', id);
+    await page.locator('[data-ai-refresh-history]').click();
+    await expect(page.locator('[data-ai-open-chat]').first()).toHaveAttribute('data-ai-open-chat', id);
+    await expect(page.locator('.ai-history-pin')).toHaveText('已置顶 · ');
+    await openMenu();
+    await page.screenshot({ path: 'test-results/agent-history-actions.png' });
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator(`[data-ai-export-chat="${id}"]`).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('植被指数对比.json');
+    const bytes = await readFile(await download.path());
+    const bundle = JSON.parse(bytes.toString('utf8'));
+    expect(bundle.format).toBe('rsmarking.conversation');
+    expect(bundle.conversation.messages).toHaveLength(2);
+    expect(bundle.conversation.pinned).toBe(true);
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('[data-ai-import-chat]').click();
+    await (await chooser).setFiles({ name: 'chat.json', mimeType: 'application/json', buffer: bytes });
+    await expect(page.locator('[data-ai-open-chat]')).toHaveCount(3);
+    await expect(page.locator('.ai-message')).toHaveCount(2);
+    const importedId = await page.evaluate(() => window.__ai._activeArchiveId);
+    expect(importedId).not.toBe(id);
+    expect(await page.evaluate(() => window.__ai._sessionId)).not.toBe('old-b');
+    await openMenu();
+    await page.locator(`[data-ai-pin-chat="${id}"]`).click();
+    await expect(page.locator('[data-ai-open-chat]').first()).not.toHaveAttribute('data-ai-open-chat', id);
+});
+
+test('branch from a message or from history without changing the original chat', async ({ page }) => {
+    await page.goto('/tests/ui/agent-preview.html');
+    const id = 'a'.repeat(32);
+    await page.locator(`[data-ai-open-chat="${id}"]`).click();
+    await page.locator('#ai-prompt-input').fill('继续分析');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect(page.locator('.ai-message')).toHaveCount(4);
+    await expect(page.locator('#ai-save-status')).toHaveText('已保存');
+    await page.locator('.ai-message-assistant [data-ai-branch-message]').first().click();
+    await expect(page.locator('.ai-message')).toHaveCount(2);
+    const branchId = await page.evaluate(() => window.__ai._activeArchiveId);
+    expect(branchId).not.toBe(id);
+    await page.locator('#ai-prompt-input').fill('尝试另一个方法');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect(page.locator('.ai-message')).toHaveCount(4);
+    await expect(page.locator('#ai-save-status')).toHaveText('已保存');
+    await page.locator(`[data-ai-open-chat="${id}"]`).click();
+    await expect(page.locator('.ai-message')).toHaveCount(4);
+    await expect(page.locator('.ai-message-user').last()).toHaveText(/继续分析/);
+    const row = page.locator('.ai-history-item').filter({ has: page.locator(`[data-ai-open-chat="${id}"]`) });
+    await row.hover();
+    await row.locator('[data-ai-history-menu]').click();
+    await row.locator('[data-ai-branch-chat]').click();
+    await expect(page.locator('[data-ai-open-chat]')).toHaveCount(4);
+    await expect(page.locator('.ai-message')).toHaveCount(4);
+    expect(await page.evaluate(() => window.__ai._activeArchiveId)).not.toBe(id);
+    expect(await page.evaluate(() => window.__ai._activeArchiveId)).not.toBe(branchId);
 });

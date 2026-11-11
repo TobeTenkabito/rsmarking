@@ -8,7 +8,8 @@ export const aiModal = `
    <div class="ai-brand"><span class="ai-brand-mark">RS</span> Spatial Assistant</div>
    <button type="button" class="ai-new-chat" data-ai-new-chat><span aria-hidden="true">＋</span><span>New chat</span></button>
    <input id="ai-history-search" class="ai-history-search" type="search" placeholder="Search conversations" aria-label="Search conversations">
-   <div class="ai-history-heading"><span>Recent conversations</span><button type="button" class="ai-icon-button" data-ai-refresh-history aria-label="Refresh history">↻</button></div>
+   <div class="ai-history-heading"><span>Recent conversations</span><div class="ai-history-heading-actions"><button type="button" class="ai-history-import" data-ai-import-chat>Import chat</button><button type="button" class="ai-icon-button" data-ai-refresh-history aria-label="Refresh history">↻</button></div></div>
+   <input id="ai-history-import-file" type="file" accept=".json,application/json" class="hidden" aria-label="Import chat">
    <nav id="ai-agent-archive-list" aria-label="Saved conversations"></nav>
    <button id="ai-save-status" class="ai-status" type="button" data-ai-save-chat aria-live="polite">Conversations save automatically</button>
    <div class="ai-history-note">Your maps, your questions.<br>One workspace.</div>

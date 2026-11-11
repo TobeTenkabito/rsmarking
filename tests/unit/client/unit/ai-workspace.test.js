@@ -142,6 +142,74 @@ describe('Agent workspace interactions', () => {
         expect(get).not.toHaveBeenCalled(); expect(ai._sessionId).toBe(session);
     });
 
+    it('pins conversations above newer chats, with failure leaving the original state intact', async () => {
+        const old = { archive_id: 'a'.repeat(32), title: 'Old', updated_at: '2020-01-01' };
+        const recent = { archive_id: 'b'.repeat(32), title: 'Recent', updated_at: '2026-01-01' };
+        ai._conversationArchives = [old, recent];
+        ai._renderArchivePanel();
+        expect(document.querySelector('[data-ai-open-chat]').dataset.aiOpenChat).toBe(recent.archive_id);
+        vi.spyOn(AIAPI, 'pinConversation').mockResolvedValueOnce({ conversation: { ...old, pinned: true, pinned_at: '2026-01-02' } })
+            .mockRejectedValueOnce(new Error('offline'))
+            .mockResolvedValueOnce({ conversation: old });
+        await ai.toggleConversationPin(old.archive_id);
+        expect(document.querySelector('[data-ai-open-chat]').dataset.aiOpenChat).toBe(old.archive_id);
+        expect(document.querySelector('.ai-history-pin').textContent).toContain('Pinned');
+        expect(await ai.toggleConversationPin(old.archive_id)).toBe(false);
+        expect(ai._conversationArchives.find(item => item.archive_id === old.archive_id).pinned).toBe(true);
+        await ai.toggleConversationPin(old.archive_id);
+        expect(document.querySelector('[data-ai-open-chat]').dataset.aiOpenChat).toBe(recent.archive_id);
+    });
+
+    it('branches at the selected message and switches to an independent restored session', async () => {
+        const id = 'a'.repeat(32), childId = 'c'.repeat(32);
+        const messages = [{ id: 'one', role: 'user', content: 'Question' }, { id: 'two', role: 'assistant', content: 'Answer' }, { id: 'three', role: 'user', content: 'Later' }];
+        ai._agentConversation = messages;
+        ai._activeArchiveId = id;
+        ai._conversationArchives = [{ archive_id: id, title: 'Original' }];
+        const child = { archive_id: childId, session_id: 'child-session', title: 'Branch', messages: messages.slice(0, 2) };
+        vi.spyOn(AIAPI, 'archiveConversation').mockImplementation(async payload => ({ conversation: payload }));
+        const branch = vi.spyOn(AIAPI, 'branchConversation').mockResolvedValue({ conversation: child });
+        vi.spyOn(AIAPI, 'getConversation').mockResolvedValue({ conversation: child });
+        const restore = vi.spyOn(AIAPI, 'restoreConversation').mockResolvedValue({});
+        expect(await ai.branchConversation(id, 'two')).toBe(true);
+        expect(branch).toHaveBeenCalledWith(id, { title: 'Original · Branch', message_index: 1 });
+        expect(restore).toHaveBeenCalledWith(childId, 'child-session');
+        expect(ai._sessionId).toBe('child-session');
+        expect(ai._activeArchiveId).toBe(childId);
+        expect(ai._agentConversation).toHaveLength(2);
+        expect(messages).toHaveLength(3);
+        expect(ai._conversationArchives).toHaveLength(2);
+    });
+
+    it('blocks branching while busy and preserves the original chat on creation failure', async () => {
+        const branch = vi.spyOn(AIAPI, 'branchConversation').mockRejectedValue(new Error('offline'));
+        const session = ai._sessionId;
+        ai._agentQueueDepth = 1;
+        expect(await ai.branchConversation('a'.repeat(32))).toBe(false);
+        expect(branch).not.toHaveBeenCalled();
+        ai._agentQueueDepth = 0;
+        expect(await ai.branchConversation('a'.repeat(32))).toBe(false);
+        expect(ai._sessionId).toBe(session);
+        expect(ai._conversationSwitching).toBe(false);
+        expect(ai._historyBusy).toBe(false);
+    });
+
+    it('validates import files before contacting the server and opens valid imports', async () => {
+        const created = { archive_id: 'd'.repeat(32), session_id: 'imported', title: 'Imported', messages: [{ role: 'user', content: 'Hello' }] };
+        const upload = vi.spyOn(AIAPI, 'importConversation').mockResolvedValue({ conversation: created });
+        vi.spyOn(AIAPI, 'getConversation').mockResolvedValue({ conversation: created });
+        vi.spyOn(AIAPI, 'restoreConversation').mockResolvedValue({});
+        await ai.importConversationFile({ size: 30 * 1024 * 1024, text: async () => '{}' });
+        await ai.importConversationFile({ size: 10, text: async () => 'broken json' });
+        await ai.importConversationFile({ size: 10, text: async () => '{"format":"other"}' });
+        expect(upload).not.toHaveBeenCalled();
+        const bundle = { format: 'rsmarking.conversation', version: 1, conversation: { title: 'Imported', messages: created.messages } };
+        expect(await ai.importConversationFile({ size: 100, text: async () => '\uFEFF' + JSON.stringify(bundle) })).toBe(true);
+        expect(upload).toHaveBeenCalledWith(bundle);
+        expect(ai._activeArchiveId).toBe(created.archive_id);
+        expect(ai._sessionId).toBe('imported');
+    });
+
     it('restores history without hiding the sidebar or losing attachments', async () => {
         const id = 'a'.repeat(32);
         vi.spyOn(AIAPI, 'getConversation').mockResolvedValue({ conversation: { archive_id: id, session_id: 'saved', messages: [{ role: 'user', content: 'saved question', attachments: [{ kind: 'text', name: 'notes.md' }] }] } });

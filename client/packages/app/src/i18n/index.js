@@ -1395,6 +1395,18 @@ literalPatterns.es = [
 ];
 
 Object.assign(literalCatalog.zh, {
+    'Import chat': '导入聊天', 'Export chat': '导出聊天', 'Pin chat': '置顶聊天',
+    'Unpin chat': '取消置顶', 'Pinned': '已置顶', 'Conversation actions': '会话操作',
+    'Branch to new chat': '分支到新聊天', 'Branch from here': '从这里分支', 'Branch': '分支',
+    'Could not change pin status. Please retry.': '修改置顶状态失败，请重试。',
+    'Export failed. Check that the chat is saved and under 20 MB.': '导出失败，请确认对话已保存且大小不超过 20 MB。',
+    'Chat files must be smaller than 20 MB.': '聊天文件不能超过 20 MB。',
+    'Choose a valid chat JSON exported by this application.': '请选择本应用导出的有效聊天 JSON 文件。',
+    'Import failed. Check the chat file format and try again.': '导入失败，请检查聊天文件格式后重试。',
+    'This message is outside the saved history.': '这条消息已超出保存的历史范围。',
+    'Could not create a branch. Please retry.': '创建分支失败，请重试。',
+    'Wait for the current operation to finish.': '请等待当前操作完成。',
+    'The new chat was saved. Open it from history to continue.': '新聊天已保存，请从历史列表打开后继续。',
     'Edit title and note': '编辑标题与注释', 'Conversation title': '对话标题',
     'Conversation note': '对话注释', 'Add a note (optional)': '添加注释（可选）',
     'Click to expand or collapse note': '点击展开或收起注释',

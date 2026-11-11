@@ -17,6 +17,13 @@ from .artifacts import ArtifactNotFoundError, get_artifact
 from .conversation_archive import (
     ConversationDetailsRequest,
     update_conversation_details,
+    ConversationPinRequest,
+    ConversationBranchRequest,
+    ConversationImportRequest,
+    pin_conversation,
+    branch_conversation,
+    import_conversation,
+    export_conversation,
     ConversationArchiveRequest,
     ConversationRestoreRequest,
     archive_conversation,
@@ -171,6 +178,42 @@ async def get_ai_conversation(archive_id: str):
         return {"status": "success", "conversation": get_conversation_archive(archive_id)}
     except FileNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+
+@router.post("/conversations/import", summary="Import a conversation as a new chat")
+async def import_ai_conversation(payload: ConversationImportRequest):
+    try:
+        return {"status": "success", "conversation": import_conversation(payload)}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get("/conversations/{archive_id}/export", summary="Export a portable conversation JSON")
+async def export_ai_conversation(archive_id: str):
+    try:
+        return export_conversation(archive_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conversation cannot be exported in the supported format or exceeds 20 MB")
+
+
+@router.patch("/conversations/{archive_id}/pin", summary="Pin or unpin an archived conversation")
+async def pin_ai_conversation(archive_id: str, payload: ConversationPinRequest):
+    try:
+        return {"status": "success", "conversation": pin_conversation(archive_id, payload.pinned)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+
+
+@router.post("/conversations/{archive_id}/branch", summary="Branch a conversation into an independent chat")
+async def branch_ai_conversation(archive_id: str, payload: ConversationBranchRequest):
+    try:
+        return {"status": "success", "conversation": branch_conversation(archive_id, payload)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.patch("/conversations/{archive_id}", summary="Edit a conversation title and note")

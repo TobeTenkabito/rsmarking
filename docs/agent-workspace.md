@@ -14,6 +14,15 @@ Agent 页采用左侧会话列表、右侧消息和底部输入框。刷新前�
 - 消息直接展示，不再用人为逐句延迟伪装流式输出。工具步骤默认折叠，可展开查看错误及结果状态。
 - 可以复制回复；浏览器不允许剪贴板访问时仍可手动选择文字。
 
+## 置顶、导入导出与分支
+
+- 会话旁的 `⋯` 菜单提供置顶/取消置顶、导出、分支及删除。置顶会话始终排在普通会话之前，多个置顶按置顶时间排列；刷新、重启及继续聊天都会保留状态。置顶只影响列表展示，不自动加入模型记忆。
+- 左侧“导入聊天”接收本应用导出的 JSON 文件，最大 20 MB、500 条消息。导入成功后自动打开独立的新会话，保留标题、注释、置顶状态、消息和可用的附件信息，不覆盖原有会话或沿用文件中的会话 ID。
+- “导出聊天”下载单个会话 JSON，可作为备份再次导入。格式标识为 `rsmarking.conversation`，版本为 `1`，内容放在 `conversation` 对象中。支持本应用格式，不直接支持其他聊天产品的导出包。
+- 导出包含聊天正文、工具步骤、附件中已保存的文本摘录及内嵌图片。生成文件仅保留本部署的资源引用，不打包文件本体；迁移到其他部署时，需要另行保存这些文件。导入不加载外部图片 URL，也不接受 `system` 或 `tool` 角色作为消息。
+- 会话菜单中的“分支到新聊天”复制整段已保存对话；每条消息下方的“从这里分支”只复制到该消息为止（包含该消息）。新分支使用独立会话 ID，继承标题及注释，默认不置顶；后续回复、重命名、删除不会修改原对话。
+- 分支会恢复已有文本上下文，不重新执行历史工具，也不复制地图数据或生成文件。模型仍受已有上下文长度限制。发送请求进行中会阻止切换与创建分支；失败时保留当前对话。
+
 ## 工具授权与账户鉴权的区别
 
 API Key 负责向模型供应商鉴权。本次调整的是本应用的 **工具执行授权**，不能关闭供应商自身的策略。原来 `agent_security.py` 要求当前提示词逐项命中工具关键词；例如“分析影像并制作报告”可能不包含中间所需的 MNDWI 工具名，因此被应用拦截。
@@ -42,7 +51,7 @@ Markdown 库锁定在根目录 `package.json` / `package-lock.json`；浏览器�
 ```sh
 npm test
 npm run test:ui
-python -m pytest tests/unit/services/test_ai_agent_security.py tests/unit/services/test_ai_agent.py tests/unit/services/test_ai_conversation_archive.py -q
+python -m pytest tests/unit/services/test_ai_agent_security.py tests/unit/services/test_ai_agent.py tests/unit/services/test_ai_conversation_archive.py tests/unit/services/test_ai_conversation_transfer.py -q
 ```
 
 浏览器测试使用本机 Edge 的无头模式和隔离的模拟 API，不读取 `.env`，不消耗模型额度。测试服务器只提供公开前端模块和测试页面，不暴露仓库数据或密钥。截图在 `test-results/`；若环境没有 Edge，可在 Playwright 配置中改用已安装的 Chromium。

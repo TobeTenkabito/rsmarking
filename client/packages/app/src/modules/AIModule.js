@@ -333,36 +333,155 @@ export class AIModule {
             if (!await this._saveConversation()) return;
             const result = await AIAPI.getConversation(archiveId);
             const archive = result.conversation;
-            const sessionId = archive.session_id || archive.archive_id || this._createSessionId();
-            await AIAPI.restoreConversation(archiveId, sessionId);
-            this._sessionId = sessionId;
-            this._activeArchiveId = archiveId;
-            this._agentConversation = (archive.messages ?? [])
-                .filter(message => ['user', 'assistant'].includes(message.role))
-                .map(message => ({
-                    id: this._createMessageId(),
-                    role: message.role,
-                    content: message.content,
-                    steps: Array.isArray(message.steps) ? message.steps : [],
-                    attachments: Array.isArray(message.attachments)
-                        ? this._displayAttachments(message.attachments)
-                        : [],
-                    artifacts: Array.isArray(message.artifacts)
-                        ? this._displayArtifacts(message.artifacts)
-                        : [],
-                }));
-            this._clearAgentAttachments();
-            const input = document.getElementById('ai-prompt-input');
-            if (input) input.value = '';
-            this._resizeComposer();
-            this.setMode('agent');
-            this._renderArchivePanel();
-            this._renderAgentConversation();
-            this._setSaveStatus('Saved');
+            await this._activateArchivedConversation(archive);
         } catch (err) {
             this._showError(err.message);
         } finally {
             this._conversationSwitching = false;
+        }
+    }
+
+    async _activateArchivedConversation(archive) {
+        const sessionId = archive.session_id || archive.archive_id || this._createSessionId();
+        await AIAPI.restoreConversation(archive.archive_id, sessionId);
+        this._sessionId = sessionId;
+        this._activeArchiveId = archive.archive_id;
+        this._historyMenuId = null;
+        this._agentConversation = (archive.messages ?? [])
+            .filter(message => ['user', 'assistant'].includes(message.role))
+            .map(message => ({
+                id: this._createMessageId(),
+                role: message.role,
+                content: message.content,
+                steps: Array.isArray(message.steps) ? message.steps : [],
+                attachments: Array.isArray(message.attachments)
+                    ? this._displayAttachments(message.attachments)
+                    : [],
+                artifacts: Array.isArray(message.artifacts)
+                    ? this._displayArtifacts(message.artifacts)
+                    : [],
+            }));
+        this._clearAgentAttachments();
+        const input = document.getElementById('ai-prompt-input');
+        if (input) input.value = '';
+        this._resizeComposer();
+        this.setMode('agent');
+        this._renderArchivePanel();
+        this._renderAgentConversation();
+        this._setSaveStatus('Saved');
+    }
+
+    async toggleConversationPin(archiveId) {
+        if (this._historyBusy) return;
+        const archive = this._conversationArchives.find(item => item.archive_id === archiveId);
+        if (!archive) return;
+        this._historyBusy = true;
+        this._renderArchivePanel();
+        const save = async () => {
+            try {
+                const { conversation } = await AIAPI.pinConversation(archiveId, !archive.pinned);
+                this._conversationArchives = this._conversationArchives.map(item => item.archive_id === archiveId ? conversation : item);
+                this._historyMenuId = null;
+                return true;
+            } catch (_error) {
+                this._showError(t('Could not change pin status. Please retry.'));
+                return false;
+            } finally {
+                this._historyBusy = false;
+                this._renderArchivePanel();
+            }
+        };
+        this._saveTail = this._saveTail.catch(() => {}).then(save);
+        return this._saveTail;
+    }
+
+    async exportConversationFile(archiveId) {
+        if (this._historyBusy) return;
+        this._historyBusy = true;
+        this._renderArchivePanel();
+        try {
+            if (archiveId === this._activeArchiveId && !await this._saveConversation()) return;
+            await this._saveTail;
+            const bundle = await AIAPI.exportConversation(archiveId);
+            const filename = (bundle.conversation.title || 'conversation').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 80);
+            const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json;charset=utf-8' }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${filename}.json`;
+            document.body.append(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            this._historyMenuId = null;
+        } catch (_error) {
+            this._showError(t('Export failed. Check that the chat is saved and under 20 MB.'));
+        } finally {
+            this._historyBusy = false;
+            this._renderArchivePanel();
+        }
+    }
+
+    async importConversationFile(file) {
+        if (!file) return;
+        if (file.size > 20 * 1024 * 1024) {
+            this._showError(t('Chat files must be smaller than 20 MB.'));
+            return;
+        }
+        let bundle;
+        try {
+            bundle = JSON.parse((await file.text()).replace(/^\uFEFF/, ''));
+            if (bundle?.format !== 'rsmarking.conversation' || bundle.version !== 1 || !Array.isArray(bundle.conversation?.messages)) throw new Error('format');
+        } catch (_error) {
+            this._showError(t('Choose a valid chat JSON exported by this application.'));
+            return;
+        }
+        return this._createChatFromArchive(() => AIAPI.importConversation(bundle), 'Import failed. Check the chat file format and try again.');
+    }
+
+    async branchConversation(archiveId, messageId = null) {
+        const payload = {};
+        const archive = this._conversationArchives.find(item => item.archive_id === archiveId);
+        if (archive) payload.title = `${archive.title.slice(0, 100)} · ${t('Branch')}`;
+        if (messageId) {
+            // Match the server's saved, visible message indices, including the 500-message cap.
+            const messages = this._agentConversation.filter(item => !item.pending && item.content && ['user', 'assistant'].includes(item.role)).slice(-500);
+            payload.message_index = messages.findIndex(item => item.id === messageId);
+            if (payload.message_index < 0) {
+                this._showError(t('This message is outside the saved history.'));
+                return;
+            }
+        }
+        return this._createChatFromArchive(() => AIAPI.branchConversation(archiveId, payload), 'Could not create a branch. Please retry.');
+    }
+
+    async _createChatFromArchive(create, errorLabel) {
+        if (this._historyBusy || this._conversationSwitching || this._agentQueueDepth || this._loadingDepth) {
+            this._showError(t('Wait for the current operation to finish.'));
+            return false;
+        }
+        this._historyBusy = true;
+        this._conversationSwitching = true;
+        this._renderArchivePanel();
+        let created = false;
+        try {
+            if (!await this._saveConversation()) return false;
+            await this._saveTail;
+            const { conversation } = await create();
+            created = true;
+            this._conversationArchives = [conversation, ...this._conversationArchives];
+            const search = document.getElementById('ai-history-search');
+            if (search) search.value = '';
+            const result = await AIAPI.getConversation(conversation.archive_id);
+            await this._activateArchivedConversation(result.conversation);
+            document.getElementById('ai-prompt-input')?.focus();
+            return true;
+        } catch (_error) {
+            this._showError(t(created ? 'The new chat was saved. Open it from history to continue.' : errorLabel));
+            return false;
+        } finally {
+            this._historyBusy = false;
+            this._conversationSwitching = false;
+            this._renderArchivePanel();
         }
     }
 
@@ -720,6 +839,11 @@ export class AIModule {
             this._syncKeyboardHint();
         });
         document.getElementById('ai-history-search')?.addEventListener('input', () => this._renderArchivePanel());
+        document.getElementById('ai-history-import-file')?.addEventListener('change', async event => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            await this.importConversationFile(file);
+        });
         const history = document.getElementById('ai-agent-archive-list');
         history?.addEventListener('input', event => {
             if (this._archiveEdit && event.target.dataset.aiEditField) {
@@ -736,6 +860,13 @@ export class AIModule {
                 event.preventDefault();
                 event.stopPropagation();
                 this.cancelConversationDetails();
+            } else if (event.key === 'Escape' && this._historyMenuId) {
+                event.preventDefault();
+                event.stopPropagation();
+                const id = this._historyMenuId;
+                this._historyMenuId = null;
+                this._renderArchivePanel();
+                Array.from(history.querySelectorAll('[data-ai-history-menu]')).find(button => button.dataset.aiHistoryMenu === id)?.focus();
             }
         });
         const collapseNote = event => {
@@ -751,6 +882,17 @@ export class AIModule {
             if (button.hasAttribute('data-ai-new-chat')) await this.startNewAgentChat();
             if (button.hasAttribute('data-ai-refresh-history')) await this.loadConversationArchives({ force: true });
             if (button.hasAttribute('data-ai-save-chat')) await this._saveConversation();
+            if (button.hasAttribute('data-ai-import-chat')) document.getElementById('ai-history-import-file')?.click();
+            if (button.dataset.aiHistoryMenu) {
+                this._historyMenuId = this._historyMenuId === button.dataset.aiHistoryMenu ? null : button.dataset.aiHistoryMenu;
+                this._renderArchivePanel();
+                const row = Array.from(history.querySelectorAll('[data-ai-history-menu]')).find(item => item.dataset.aiHistoryMenu === button.dataset.aiHistoryMenu)?.closest('.ai-history-item');
+                (row?.querySelector('.ai-history-menu button') || row?.querySelector('[data-ai-history-menu]'))?.focus();
+            }
+            if (button.dataset.aiPinChat) await this.toggleConversationPin(button.dataset.aiPinChat);
+            if (button.dataset.aiExportChat) await this.exportConversationFile(button.dataset.aiExportChat);
+            if (button.dataset.aiBranchChat) await this.branchConversation(button.dataset.aiBranchChat);
+            if (button.dataset.aiBranchMessage) await this.branchConversation(this._activeArchiveId, button.dataset.aiBranchMessage);
             if (button.dataset.aiOpenChat) await this.loadConversationArchive(button.dataset.aiOpenChat);
             if (button.dataset.aiDeleteChat) await this.deleteConversationArchive(button.dataset.aiDeleteChat);
             if (button.dataset.aiEditChat) this.editConversationDetails(button.dataset.aiEditChat);
@@ -1654,7 +1796,10 @@ export class AIModule {
         const list = document.getElementById('ai-agent-archive-list');
         if (!list) return;
         const query = (document.getElementById('ai-history-search')?.value || '').trim().toLocaleLowerCase();
-        const items = this._conversationArchives.filter(item => item.archive_id === this._archiveEdit?.id || `${item.title || ''} ${item.note || ''}`.toLocaleLowerCase().includes(query));
+        const items = this._conversationArchives.filter(item => item.archive_id === this._archiveEdit?.id || `${item.title || ''} ${item.note || ''}`.toLocaleLowerCase().includes(query))
+            .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+                || String((b.pinned ? b.pinned_at : b.updated_at) || '').localeCompare(String((a.pinned ? a.pinned_at : a.updated_at) || ''))
+                || String(b.archive_id).localeCompare(String(a.archive_id)));
         if (!items.length) {
             const label = this._archivesLoading ? 'Loading conversations…' : this._historyError || (query ? 'No matching conversations' : 'Your conversations will appear here');
             list.innerHTML = `<p class="ai-history-note">${this._escapeHTML(t(label))}</p>`;
@@ -1663,6 +1808,7 @@ export class AIModule {
         const focused = list.contains(document.activeElement) && document.activeElement.dataset.aiEditField
             ? { id: document.activeElement.id, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
         const label = text => this._escapeHTML(t(text));
+        const disabled = this._historyBusy ? 'disabled' : '';
         list.innerHTML = items.map(archive => {
             const id = this._escapeHTML(archive.archive_id);
             const active = archive.archive_id === this._activeArchiveId;
@@ -1680,12 +1826,19 @@ export class AIModule {
                 </form></div>`;
             }
             const note = archive.note ? `<button type="button" class="ai-history-annotation" data-ai-note aria-expanded="false" title="${label('Click to expand or collapse note')}">${this._escapeHTML(archive.note)}</button>` : '';
+            const menuOpen = this._historyMenuId === archive.archive_id;
+            const menu = menuOpen ? `<div class="ai-history-menu">
+                <button type="button" data-ai-pin-chat="${id}" ${disabled}>${label(archive.pinned ? 'Unpin chat' : 'Pin chat')}</button>
+                <button type="button" data-ai-export-chat="${id}" ${disabled}>${label('Export chat')}</button>
+                <button type="button" data-ai-branch-chat="${id}" ${disabled}>${label('Branch to new chat')}</button>
+                <button type="button" data-ai-delete-chat="${id}" ${disabled}>${label('Delete archive')}</button>
+            </div>` : '';
             return `<div class="ai-history-item ${active ? 'active' : ''}">
                 <button type="button" class="ai-history-open" data-ai-open-chat="${id}" ${active ? 'aria-current="page"' : ''} title="${title}">
                     <strong>${title}</strong>
                 </button>
-                <div class="ai-history-actions"><button type="button" class="ai-history-edit" data-ai-edit-chat="${id}" aria-label="${label('Edit title and note')}" title="${label('Edit title and note')}">✎</button><button type="button" class="ai-history-delete" data-ai-delete-chat="${id}" aria-label="${label('Delete this conversation?')}" title="${label('Delete archive')}">×</button></div>
-                ${note}<small class="ai-history-date">${this._escapeHTML(date)}</small>
+                <div class="ai-history-actions"><button type="button" class="ai-history-edit" data-ai-edit-chat="${id}" aria-label="${label('Edit title and note')}" title="${label('Edit title and note')}">✎</button><button type="button" class="ai-history-more" data-ai-history-menu="${id}" aria-expanded="${menuOpen}" aria-label="${label('Conversation actions')}" title="${label('Conversation actions')}">⋯</button></div>
+                ${note}<small class="ai-history-date">${archive.pinned ? `<span class="ai-history-pin">${label('Pinned')} · </span>` : ''}${this._escapeHTML(date)}</small>${menu}
             </div>`;
         }).join('');
         if (focused) {
@@ -1699,12 +1852,13 @@ export class AIModule {
         const isUser = message.role === 'user';
         const content = message.pending ? this._renderPendingAgentMessage(message) : this._renderAgentMarkdownOutput(message);
         const copy = !message.pending && message.id ? `<button type="button" class="ai-message-copy" data-ai-copy-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Copy'))}</button>` : '';
+        const branch = !message.pending && message.id && message.content ? `<button type="button" class="ai-message-copy" data-ai-branch-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Branch from here'))}</button>` : '';
         return `<article class="ai-message ai-message-${isUser ? 'user' : 'assistant'}" data-ai-message="${this._escapeHTML(message.id || '')}">
             <div class="ai-bubble ${message.error ? 'ai-message-error' : ''}">
                 ${isUser ? '' : '<div class="ai-message-label">RS · Assistant</div>'}
                 ${content}${this._renderMessageAttachments(message.attachments ?? [], isUser)}
                 ${this._renderGeneratedArtifacts(message.artifacts ?? [])}
-                ${this._renderAgentToolTrace(message.steps ?? [])}${copy}
+                ${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}</div>
             </div>
         </article>`;
     }

@@ -135,6 +135,22 @@ export const AIAPI = {
         return requestAI(`/ai/conversations/${encodeURIComponent(archiveId)}`, details, 'Failed to update conversation', 'PATCH');
     },
 
+    async pinConversation(archiveId, pinned) {
+        return requestAI(`/ai/conversations/${encodeURIComponent(archiveId)}/pin`, { pinned }, 'Failed to pin conversation', 'PATCH');
+    },
+
+    async exportConversation(archiveId) {
+        return requestAIGet(`/ai/conversations/${encodeURIComponent(archiveId)}/export`, 'Failed to export conversation');
+    },
+
+    async importConversation(bundle) {
+        return requestAI('/ai/conversations/import', bundle, 'Failed to import conversation');
+    },
+
+    async branchConversation(archiveId, payload = {}) {
+        return requestAI(`/ai/conversations/${encodeURIComponent(archiveId)}/branch`, payload, 'Failed to branch conversation');
+    },
+
     async restoreConversation(archiveId, sessionId = null) {
         return requestAI(
             `/ai/conversations/${encodeURIComponent(archiveId)}/restore`,

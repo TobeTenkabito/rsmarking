@@ -12,6 +12,7 @@ export const agentStyles = `
 .ai-new-chat {display:flex;gap:9px;align-items:center;border:1px solid #dce3e1;border-radius:9px;background:white;padding:9px 12px;font-weight:600!important;text-align:left}
 .ai-history-search {width:100%;border:1px solid #e3e7ec;border-radius:8px;background:white;padding:7px 10px;font-size:12px!important;box-sizing:border-box}
 .ai-history-heading {display:flex;align-items:center;justify-content:space-between;padding:0 6px;font-size:11px;color:#778398}
+.ai-history-heading {flex-wrap:wrap;gap:4px}.ai-history-heading-actions {display:flex;align-items:center;gap:4px}.ai-history-import {font-size:11px!important;border:0;background:none;color:#536b5e;padding:3px}
 #ai-agent-archive-list {flex:1;min-height:0;overflow-y:auto}
 .ai-history-item {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;border-radius:8px;margin-bottom:4px;padding-bottom:8px}.ai-history-item:hover {background:#edf0f3}.ai-history-item.active {background:#e5ede9;color:#24483b}
 .ai-history-open {flex:1;min-width:0;text-align:left;padding:10px 9px;border:0;background:none}
@@ -25,6 +26,9 @@ export const agentStyles = `
 #ai-window .ai-history-editor input,#ai-window .ai-history-editor textarea {box-sizing:border-box;width:100%;min-width:0;border:1px solid #cbd8d0;border-radius:6px;padding:6px;background:white;font-size:12px;resize:vertical}
 .ai-history-edit-actions {display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.ai-history-edit-actions button {font-size:11px!important;border:1px solid #d4ded8;border-radius:6px;padding:4px 8px;background:white}.ai-history-edit-actions button[type="submit"] {background:#294e3e;color:white;border-color:#294e3e}
 .ai-history-edit-error {font-size:11px;color:#ad3428;overflow-wrap:anywhere}
+.ai-history-more {border:0;background:none;color:#7b8796;padding:3px 5px;opacity:0}.ai-history-more[aria-expanded="true"] {opacity:1}
+.ai-history-menu {grid-column:1/-1;display:flex;flex-direction:column;border-top:1px solid #dce4df;margin:6px 7px 0;padding-top:5px;gap:2px}.ai-history-menu button {border:0;background:transparent;text-align:left;font-size:11px!important;padding:5px;border-radius:4px;color:#42584b}.ai-history-menu button:hover {background:#dce6df}.ai-history-menu [data-ai-delete-chat] {color:#a9443d}
+.ai-history-pin {color:#39765a;font-weight:600}.ai-message-actions {display:flex;gap:16px;flex-wrap:wrap}
 @media(hover:none) {.ai-history-actions button {opacity:1}}
 .ai-history-note {font-size:11px;color:#8b95a3;line-height:1.7;padding:0 6px}
 .ai-main {min-width:0;flex:1;display:flex;flex-direction:column;position:relative}
