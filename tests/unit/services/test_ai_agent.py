@@ -59,7 +59,7 @@ def test_agent_returns_direct_answer_without_tool_calls(monkeypatch):
     assert result["permission_level"] == "standard"
     assert result["answer"] == "No tool needed."
     assert result["steps"] == []
-    assert calls[0]["model"] == "test-model"
+    assert calls[0]["model"] == "openai/test-model"
     assert calls[0]["tools"]
 
 

@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -27,8 +28,11 @@ _TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
 class AISettings:
     model: str
     provider: str | None = None
-    api_key: str | None = None
+    api_key: str | None = field(default=None, repr=False)
     api_base: str | None = None
+    timeout: float = 30.0
+    max_tokens: int = 4096
+    api_version: str | None = None
     reasoning_enabled: bool = False
     reasoning_effort: str | None = None
     reasoning_budget_tokens: int | None = None
@@ -37,28 +41,69 @@ class AISettings:
     reasoning_extra: dict[str, Any] = field(default_factory=dict)
 
 
+    @property
+    def litellm_model(self) -> str:
+        if self.provider in _COMPATIBLE_BASES:
+            return "openai/" + self.model.split("/", 1)[-1]
+        return self.model
+
+
+_ALIASES = {"google": "gemini", "qwen": "dashscope", "doubao": "ark", "volcengine": "ark", "baidu": "qianfan", "compatible": "openai", "ollama": "ollama_chat"}
+_PREFIXES = {"gemini": ("GEMINI", "GOOGLE"), "dashscope": ("DASHSCOPE", "QWEN"), "ark": ("ARK", "DOUBAO"), "ollama_chat": ("OLLAMA",)}
+_COMPATIBLE_BASES = {
+    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "ark": "https://ark.cn-beijing.volces.com/api/v3",
+    "qianfan": "https://qianfan.baidubce.com/v2",
+    "moonshot": "https://api.moonshot.cn/v1",
+    "siliconflow": "https://api.siliconflow.cn/v1",
+    "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+}
+_PROVIDERS = {"openai", "anthropic", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "azure", "ollama_chat", *_COMPATIBLE_BASES}
+_EMPTY_VALUES.update({"your_api_key", "your-api-key", "your_model", "<your-api-key>", "hidden", "redacted", "***"})
+
+
 def get_ai_settings(model_name: str | None = None) -> AISettings:
-    model = _clean_env_value(
-        model_name
-        or os.getenv("AI_MODEL")
-        or os.getenv("AI_NAME")
-        or os.getenv("AI_MODEL_NAME")
-        or os.getenv("OPENAI_MODEL")
-        or "deepseek/deepseek-chat"
-    )
-    provider = _provider_from_model(model)
-    reasoning_extra = _json_env("AI_REASONING_EXTRA_JSON")
+    explicit = _first_env(["AI_PROVIDER"])
+    explicit = _ALIASES.get(explicit.lower(), explicit.lower()) if explicit else None
+    if explicit and explicit not in _PROVIDERS:
+        raise ValueError("Unknown AI_PROVIDER; use a documented provider or openai for a compatible gateway.")
+    model = _clean_env_value(model_name) or _first_env(["AI_MODEL", "AI_NAME", "AI_MODEL_NAME"])
+    if not model:
+        provider = explicit or "openai"
+        model = _first_env([f"{prefix}_MODEL" for prefix in _prefixes(provider)])
+        if not model:
+            if provider != "openai":
+                raise ValueError("Set AI_MODEL or the selected provider's *_MODEL variable.")
+            model = "gpt-4o"
+    prefix, separator, remainder = model.partition("/")
+    canonical = _ALIASES.get(prefix.lower(), prefix.lower())
+    # Provider prefixes are lowercase; e.g. Qwen/Model is an organization/model
+    # identifier, not the qwen/ provider alias.
+    if separator and prefix == prefix.lower() and canonical in _PROVIDERS:
+        provider = canonical
+        model = f"{provider}/{remainder}"
+        if not remainder:
+            raise ValueError("AI_MODEL must include a model name after the provider prefix.")
+    else:
+        provider = explicit or _infer_provider(model)
+        model = f"{provider}/{model}"
+    timeout_ms = _int_env("AI_TIMEOUT")
+    max_tokens = _int_env("AI_MAX_TOKENS")
+    timeout_ms = 30000 if timeout_ms is None else timeout_ms
+    max_tokens = 4096 if max_tokens is None else max_tokens
+    if timeout_ms <= 0 or max_tokens <= 0:
+        raise ValueError("AI_TIMEOUT and AI_MAX_TOKENS must be positive integers.")
     return AISettings(
-        model=model,
-        provider=provider,
-        api_key=_resolve_api_key(provider),
-        api_base=_resolve_api_base(provider),
+        model=model, provider=provider,
+        api_key=_resolve_api_key(provider), api_base=_resolve_api_base(provider),
+        timeout=timeout_ms / 1000, max_tokens=max_tokens,
+        api_version=_first_env(["AZURE_API_VERSION"]) if provider == "azure" else None,
         reasoning_enabled=_bool_env("AI_REASONING_ENABLED", default=False),
         reasoning_effort=_clean_env_value(os.getenv("AI_REASONING_EFFORT") or "medium"),
         reasoning_budget_tokens=_int_env("AI_REASONING_BUDGET_TOKENS"),
         reasoning_style=_clean_env_value(os.getenv("AI_REASONING_STYLE") or "auto").lower(),
         reasoning_model_allowlist=_csv_env("AI_REASONING_MODEL_ALLOWLIST"),
-        reasoning_extra=reasoning_extra,
+        reasoning_extra=_json_env("AI_REASONING_EXTRA_JSON"),
     )
 
 
@@ -86,11 +131,13 @@ def build_litellm_kwargs(
 
 def log_ai_settings() -> None:
     settings = get_ai_settings()
+    parsed = urlsplit(settings.api_base or "")
+    safe_base = f"{parsed.scheme}://{parsed.hostname}{parsed.path}" if settings.api_base else "default"
     logger.info(
         "AI model configuration: model=%s provider=%s api_base=%s api_key_configured=%s reasoning_enabled=%s",
         settings.model,
         settings.provider or "unknown",
-        settings.api_base or "default",
+        safe_base,
         bool(settings.api_key),
         settings.reasoning_enabled,
     )
@@ -101,30 +148,32 @@ def log_ai_settings() -> None:
     )
 
 
-def _provider_from_model(model: str) -> str | None:
-    if "/" in model:
-        return model.split("/", 1)[0].strip().lower()
-    explicit = _clean_env_value(os.getenv("AI_PROVIDER") or "")
-    if explicit:
-        return explicit.lower()
+def _infer_provider(model: str) -> str:
+    lower = model.lower()
+    for prefix, provider in (("claude-", "anthropic"), ("gemini-", "gemini"), ("deepseek-", "deepseek"), ("qwen", "dashscope"), ("qwq", "dashscope"), ("doubao-", "ark"), ("ernie-", "qianfan")):
+        if lower.startswith(prefix):
+            return provider
     return "openai"
 
 
+def _prefixes(provider: str) -> tuple[str, ...]:
+    return _PREFIXES.get(provider, (provider.upper(),))
+
+
 def _resolve_api_key(provider: str | None) -> str | None:
-    candidates = ["AI_API_KEY"]
-    if provider:
-        candidates.append(f"{provider.upper()}_API_KEY")
-    candidates.append("OPENAI_API_KEY")
-    return _first_env(candidates)
+    return _first_env(["AI_API_KEY"] + [f"{prefix}_API_KEY" for prefix in _prefixes(provider or "openai")])
 
 
 def _resolve_api_base(provider: str | None) -> str | None:
     candidates = ["AI_BASE_URL", "AI_API_BASE"]
-    if provider:
-        prefix = provider.upper()
+    for prefix in _prefixes(provider or "openai"):
         candidates.extend([f"{prefix}_BASE_URL", f"{prefix}_API_BASE"])
-    candidates.extend(["OPENAI_BASE_URL", "OPENAI_API_BASE"])
-    return _first_env(candidates)
+    value = _first_env(candidates) or _COMPATIBLE_BASES.get(provider)
+    if value:
+        value = value.rstrip("/")
+        if value.endswith(("/chat/completions", "/responses", "/messages")):
+            raise ValueError("Set an API base URL, not a /chat/completions, /responses or /messages endpoint.")
+    return value
 
 
 def _first_env(names: list[str]) -> str | None:
@@ -148,8 +197,7 @@ def _clean_env_value(value: str | None) -> str:
     if value is None:
         return ""
     value = str(value).strip()
-    if "#" in value:
-        value = value.split("#", 1)[0].strip()
+    # dotenv already parses comments; preserve literal hashes in keys and JSON.
     return value.strip("\"'")
 
 

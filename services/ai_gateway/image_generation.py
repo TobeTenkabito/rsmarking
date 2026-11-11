@@ -38,8 +38,10 @@ async def generate_ai_image(
         raise RuntimeError("LiteLLM is required to generate AI images.")
 
     settings = get_ai_settings(model)
+    if settings.litellm_model != settings.model and not settings.api_key:
+        raise ValueError("Configure an API key for the selected image provider.")
     kwargs: dict[str, Any] = {
-        "model": model,
+        "model": settings.litellm_model,
         "prompt": prompt,
         "n": 1,
         "size": size,

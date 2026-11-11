@@ -4,6 +4,7 @@ from typing import Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from services.ai_gateway.config import get_ai_model
 from services.ai_gateway.llm_client import call_chat_completion
+from services.ai_gateway.agent_messages import completion_message, assistant_message, message_content, message_tool_calls, normalize_tool_call, parse_tool_arguments
 from services.ai_gateway.tool_executor import execute_vector_query
 from services.ai_gateway.schema_validator import (
     AILanguage, TaskMode, DataType,
@@ -72,12 +73,13 @@ async def call_llm_with_retry(
                     temperature=0.1 if mode == TaskMode.MODIFY else 0.7,
                 )
 
-                response_message = response.choices[0].message
-                messages.append(response_message)  # Append the AI response or tool request to history.
+                response_message = completion_message(response)
+                tool_calls = message_tool_calls(response_message)
+                messages.append(assistant_message(response_message, tool_calls))
 
                 # If there are no tool calls, the AI has produced the final text/JSON result
-                if not response_message.tool_calls:
-                    ai_content = response_message.content
+                if not tool_calls:
+                    ai_content = message_content(response_message)
                     if mode == TaskMode.ANALYZE:
                         return ai_content
 
@@ -85,17 +87,20 @@ async def call_llm_with_retry(
                         return validate_ai_json_output(ai_content, expected_type)
 
                 # Handle tool calls
-                for tool_call in response_message.tool_calls:
-                    if tool_call.function.name == "query_vector_features":
-                        args = json.loads(tool_call.function.arguments)
+                for raw_tool_call in tool_calls:
+                    tool_call = normalize_tool_call(raw_tool_call)
+                    if tool_call["function"]["name"] == "query_vector_features":
+                        args, argument_error = parse_tool_arguments(tool_call["function"]["arguments"])
+                        if argument_error:
+                            raise ValueError(argument_error)
                         logger.info(f"AI called the query tool: {args}")
 
                         tool_result = await execute_vector_query(db, target_id, args, context_schema)
 
                         messages.append({
-                            "tool_call_id": tool_call.id,
+                            "tool_call_id": tool_call["id"],
                             "role": "tool",
-                            "name": tool_call.function.name,
+                            "name": tool_call["function"]["name"],
                             "content": json.dumps(tool_result, ensure_ascii=False)
                         })
 

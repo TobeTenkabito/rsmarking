@@ -1,5 +1,9 @@
 # RSMarking
 
+AI / Agent configuration: see [multi-provider setup and troubleshooting](docs/ai-providers.md)
+and the copyable provider blocks in [.env.example](.env.example).
+Offline diagnostics: `python -m services.ai_gateway.diagnose`.
+
 RSMarking is a remote-sensing annotation and raster analysis workspace. It combines a Leaflet/Cesium browser map, FastAPI microservices, PostGIS-backed vector storage, GDAL/rasterio processing, a permission-aware AI agent, and an optional Celery worker layer for longer-running jobs.
 
 The repository is currently most useful as a local development stack for GeoTIFF upload, raster metadata management, on-the-fly map tiles, vector annotation, raster/vector analysis tools, AI-assisted project operations, and Docker-isolated custom Python scripts.
@@ -404,7 +408,7 @@ AI_MODEL=deepseek/deepseek-chat
 DEEPSEEK_API_KEY=sk-...
 ```
 
-Use any LiteLLM-supported provider by changing `AI_MODEL` and setting the provider-specific API key expected by LiteLLM. `AI_NAME` and `AI_MODEL_NAME` remain compatibility fallbacks, but `AI_MODEL` is the preferred setting.
+Choose a provider from [the supported configurations](docs/ai-providers.md) by changing `AI_MODEL` and its provider-specific key. OpenAI-compatible gateways use `openai/<model-id>` and their own Base URL. `AI_NAME` and `AI_MODEL_NAME` remain compatibility fallbacks; `AI_MODEL` is preferred.
 
 The agent can create persistent downloadable documents, SVG images, and CSV/XLSX/JSON tables. To enable provider-backed raster image generation as well, configure a LiteLLM-compatible image model separately:
 

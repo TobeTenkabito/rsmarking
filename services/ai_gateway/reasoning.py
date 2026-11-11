@@ -9,7 +9,7 @@ from services.ai_gateway.config import AISettings
 
 logger = logging.getLogger("ai_gateway.reasoning")
 
-_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
 _ANTHROPIC_THINKING_MARKERS = ("claude-3-7", "claude-sonnet-4", "claude-opus-4")
 
 

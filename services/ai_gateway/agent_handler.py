@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.ai_gateway.context_builder import build_map_context
 from services.ai_gateway.config import get_ai_model
 from services.ai_gateway.llm_client import acompletion, call_chat_completion
+from services.ai_gateway.agent_messages import completion_message
 from services.ai_gateway.agent_messages import (
     assistant_message as _assistant_message,
     compact_json as _compact_json,
@@ -274,7 +275,7 @@ async def _handle_agent_locked(
             tool_choice="auto",
             temperature=0.2,
         )
-        response_message = response.choices[0].message
+        response_message = completion_message(response)
         raw_tool_calls = _message_tool_calls(response_message)
         tool_calls = _normalize_agent_tool_calls(
             raw_tool_calls[:MAX_ACCEPTED_TOOL_CALLS_PER_TURN],
@@ -517,7 +518,7 @@ async def _handle_agent_locked(
         completion_func=acompletion,
         temperature=0.2,
     )
-    final_message = response.choices[0].message
+    final_message = completion_message(response)
     return _finalize_agent_response(
         payload=payload,
         session_id=session_id,

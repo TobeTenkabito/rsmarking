@@ -73,6 +73,7 @@ def test_reasoning_not_sent_to_standard_model(monkeypatch):
 
 def test_provider_specific_qwen_thinking_params(monkeypatch):
     _clear_env(monkeypatch)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-key")
     monkeypatch.setenv("AI_REASONING_ENABLED", "1")
     monkeypatch.setenv("AI_REASONING_BUDGET_TOKENS", "2048")
 
