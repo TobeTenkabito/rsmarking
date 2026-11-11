@@ -46,6 +46,14 @@ def build_litellm_kwargs(
     if reasoning_kwargs:
         request_kwargs.update(reasoning_kwargs)
     base_model = settings.model.split("/", 1)[-1].lower()
+    if settings.provider == "openai" and base_model.startswith("gpt-6") and "reasoning_effort" in request_kwargs:
+        # LiteLLM 1.82.x predates GPT-6 and otherwise rejects this documented
+        # OpenAI parameter before sending the request. Keep provider validation
+        # enabled for all other parameters; never silently drop reasoning/tools.
+        allowed = list(request_kwargs.get("allowed_openai_params") or [])
+        if "reasoning_effort" not in allowed:
+            allowed.append("reasoning_effort")
+        request_kwargs["allowed_openai_params"] = allowed
     if settings.provider == "openai" and base_model.startswith(("o1", "o3", "o4", "gpt-5", "gpt-6")):
         request_kwargs.pop("temperature", None)
         if "max_tokens" in request_kwargs:

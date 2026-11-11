@@ -30,6 +30,8 @@ def main():
         "api_base": f"{parsed.scheme}://{parsed.hostname}{parsed.path}" if settings.api_base else "provider default",
         "api_key_configured": bool(settings.api_key), "api_key_source": key_source,
         "timeout_seconds": settings.timeout, "max_tokens": settings.max_tokens,
+        "reasoning_enabled": settings.reasoning_enabled,
+        "reasoning_effort": request.get("reasoning_effort"),
         "request_parameter_names": sorted(request), "litellm_version": library_version,
         "live_request_sent": False,
         "note": "Offline checks cannot verify credentials, model access, billing or connectivity. Restart ai_gateway after editing .env.",

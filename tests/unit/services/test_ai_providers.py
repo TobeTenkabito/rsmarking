@@ -78,6 +78,34 @@ def test_timeout_tokens_and_reasoning_request(monkeypatch):
     assert 'temperature' not in request and 'tool_choice' not in request
 
 
+def test_gpt6_reasoning_reaches_litellm_parameter_mapping(monkeypatch):
+    from litellm.utils import get_optional_params
+
+    monkeypatch.setenv('AI_REASONING_ENABLED', 'true')
+    monkeypatch.setenv('AI_REASONING_EFFORT', 'none')
+    tools = [{'type': 'function', 'function': {'name': 'echo_probe', 'parameters': {'type': 'object', 'properties': {}}}}]
+    request = build_litellm_kwargs(model_name='openai/gpt-6-sol', messages=[], tools=tools)
+    # Exercise the installed LiteLLM validator without sending a network request.
+    mapped = get_optional_params(
+        model='gpt-6-sol', custom_llm_provider='openai',
+        reasoning_effort=request['reasoning_effort'], tools=request['tools'],
+        allowed_openai_params=request.get('allowed_openai_params'),
+    )
+    assert mapped['reasoning_effort'] == 'none'
+    assert mapped['tools'] == tools
+
+
+def test_gpt6_allowlist_preserves_caller_options_and_provider_isolation(monkeypatch):
+    monkeypatch.setenv('AI_REASONING_ENABLED', 'true')
+    monkeypatch.setenv('AI_REASONING_EFFORT', 'low')
+    allowed = ['other_parameter']
+    request = build_litellm_kwargs(model_name='openai/gpt-6.1-sol', messages=[], allowed_openai_params=allowed)
+    assert request['allowed_openai_params'] == ['other_parameter', 'reasoning_effort']
+    assert allowed == ['other_parameter']
+    assert 'allowed_openai_params' not in build_litellm_kwargs(model_name='openai/gpt-5', messages=[])
+    assert 'allowed_openai_params' not in build_litellm_kwargs(model_name='anthropic/claude-sonnet-4-6', messages=[])
+
+
 @pytest.mark.parametrize('name,value', [('AI_TIMEOUT','0'), ('AI_MAX_TOKENS','-1')])
 def test_invalid_limits_rejected(monkeypatch,name,value):
     monkeypatch.setenv(name,value)
