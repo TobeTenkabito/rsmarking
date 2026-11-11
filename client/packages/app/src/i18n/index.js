@@ -1395,6 +1395,9 @@ literalPatterns.es = [
 ];
 
 Object.assign(literalCatalog.zh, {
+    'Retry this request': '重试本次请求',
+    'Standard permission: isolated sandbox processing is available; updates and deletion require explicit authorization.': '标准权限：可直接使用隔离沙箱处理任务；修改、删除现有数据仍需明确授权。',
+    'Standard: sandbox available, explicit changes to existing data': '标准：支持沙箱，修改现有数据需明确授权',
     'Import chat': '导入聊天', 'Export chat': '导出聊天', 'Pin chat': '置顶聊天',
     'Unpin chat': '取消置顶', 'Pinned': '已置顶', 'Conversation actions': '会话操作',
     'Branch to new chat': '分支到新聊天', 'Branch from here': '从这里分支', 'Branch': '分支',

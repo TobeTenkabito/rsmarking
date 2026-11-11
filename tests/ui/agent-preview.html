@@ -25,7 +25,7 @@ AIAPI.exportConversation = async id => {const record=records.get(id); return str
 const createRecord = details => {const id=crypto.randomUUID().replaceAll('-',''); const record={...structuredClone(details),archive_id:id,session_id:'new-'+id,title_edited:true,updated_at:new Date().toISOString()}; records.set(id,record); return {conversation:record};};
 AIAPI.importConversation = async bundle => createRecord({...bundle.conversation,pinned_at:bundle.conversation.pinned ? new Date().toISOString() : null});
 AIAPI.branchConversation = async (id, payload) => {const record=records.get(id); return createRecord({title:payload.title || record.title+' / branch',note:record.note || '',pinned:false,messages:record.messages.slice(0,payload.message_index == null ? undefined : payload.message_index+1)});};
-AIAPI.agent = async payload => {window.__calls.push(payload); return {session_id:payload.session_id,answer:'## 已完成\n\n**Markdown** 正常显示。\n\n- [x] 任务完成',steps:[],used_tools:[]};};
+AIAPI.agent = async payload => {window.__calls.push(payload); if(window.__interruptNext){window.__interruptNext=false;return {status:'interrupted',session_id:payload.session_id,answer:'请求中断，已保存执行记录。',steps:[],used_tools:[]};} return {session_id:payload.session_id,answer:'## 已完成\n\n**Markdown** 正常显示。\n\n- [x] 任务完成',steps:[],used_tools:[]};};
 const ai = new AIModule({});
 window.RS = {aiExecute:()=>ai.execute(),closeAIModal:()=>ai.closeModal(),aiStartNewAgentChat:()=>ai.startNewAgentChat()};
 window.__ai = ai;

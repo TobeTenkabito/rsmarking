@@ -149,3 +149,19 @@ test('branch from a message or from history without changing the original chat',
     expect(await page.evaluate(() => window.__ai._activeArchiveId)).not.toBe(id);
     expect(await page.evaluate(() => window.__ai._activeArchiveId)).not.toBe(branchId);
 });
+
+test('interrupted response retries the same request and replaces the original reply', async ({ page }) => {
+    await page.goto('/tests/ui/agent-preview.html');
+    await page.evaluate(() => { window.__interruptNext = true; });
+    await page.locator('#ai-prompt-input').fill('分析影像');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect(page.locator('[data-ai-retry-message]')).toBeVisible();
+    await expect(page.locator('.ai-message')).toHaveCount(2);
+    await page.locator('[data-ai-retry-message]').click();
+    await expect(page.locator('.ai-message-assistant h2')).toHaveText('已完成');
+    await expect(page.locator('.ai-message')).toHaveCount(2);
+    const ids = await page.evaluate(() => window.__calls.map(call => call.request_id));
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+    await expect(page.locator('[data-ai-retry-message]')).toHaveCount(0);
+});

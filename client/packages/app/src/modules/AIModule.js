@@ -165,7 +165,8 @@ export class AIModule {
         document.getElementById('ai-result-section')?.classList.remove('hidden');
     }
 
-    async _runAgent(payload) {
+    async _runAgent(payload, retryMessage = null) {
+        payload = { ...payload, request_id: payload.request_id || this._createMessageId() };
         const promptInput = document.getElementById('ai-prompt-input');
         const userMessage = {
             id: this._createMessageId(),
@@ -173,7 +174,7 @@ export class AIModule {
             content: payload.user_prompt,
             attachments: this._displayAttachments(payload.attachments ?? []),
         };
-        const assistantMessage = {
+        const assistantMessage = retryMessage || {
             id: this._createMessageId(),
             role: 'assistant',
             content: '',
@@ -183,12 +184,12 @@ export class AIModule {
             steps: [],
             streaming: false,
         };
-
-        this._agentConversation.push(userMessage, assistantMessage);
+        Object.assign(assistantMessage, { pending: true, error: false, content: '', visibleContent: '', retryPayload: payload });
+        if (!retryMessage) this._agentConversation.push(userMessage, assistantMessage);
         this._renderAgentConversation();
-        if (promptInput) promptInput.value = '';
+        if (promptInput && !retryMessage) promptInput.value = '';
         this._resizeComposer();
-        this._clearAgentAttachments();
+        if (!retryMessage) this._clearAgentAttachments();
         void this._saveConversation();
 
         this._agentQueueDepth += 1;
@@ -210,9 +211,12 @@ export class AIModule {
 
                 if (result.session_id) this._sessionId = result.session_id;
                 assistantMessage.pending = false;
+                assistantMessage.error = result.status === 'interrupted';
+                if (!assistantMessage.error) delete assistantMessage.retryPayload;
                 assistantMessage.steps = result.steps ?? [];
                 assistantMessage.artifacts = this._displayArtifacts(result.artifacts ?? []);
-                await this._revealAgentResponse(assistantMessage, result.answer ?? '');
+                const answer = `${result.answer ?? ''}${assistantMessage.error && result.error ? `\n\n${result.error}` : ''}`;
+                await this._revealAgentResponse(assistantMessage, answer);
                 if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
                     await this._refreshSidebar('raster');
                 }
@@ -225,6 +229,21 @@ export class AIModule {
         const task = this._agentQueueTail.catch(() => {}).then(runRequest);
         this._agentQueueTail = task.catch(() => {});
         return task;
+    }
+
+    async retryAgentMessage(messageId) {
+        if (this._loadingDepth || this._agentQueueDepth || this._conversationSwitching) return;
+        const message = this._agentConversation.at(-1);
+        if (message?.id !== messageId || !message.retryPayload || message.retryPayload.session_id !== this._sessionId) return;
+        this._setLoading(true);
+        try {
+            this._clearTransientMessages();
+            await this._runAgent(message.retryPayload, message);
+        } catch (err) {
+            this._showError(err.message);
+        } finally {
+            this._setLoading(false);
+        }
     }
 
     async _revealAgentResponse(message, answer) {
@@ -893,6 +912,7 @@ export class AIModule {
             if (button.dataset.aiExportChat) await this.exportConversationFile(button.dataset.aiExportChat);
             if (button.dataset.aiBranchChat) await this.branchConversation(button.dataset.aiBranchChat);
             if (button.dataset.aiBranchMessage) await this.branchConversation(this._activeArchiveId, button.dataset.aiBranchMessage);
+            if (button.dataset.aiRetryMessage) await this.retryAgentMessage(button.dataset.aiRetryMessage);
             if (button.dataset.aiOpenChat) await this.loadConversationArchive(button.dataset.aiOpenChat);
             if (button.dataset.aiDeleteChat) await this.deleteConversationArchive(button.dataset.aiDeleteChat);
             if (button.dataset.aiEditChat) this.editConversationDetails(button.dataset.aiEditChat);
@@ -1018,8 +1038,8 @@ export class AIModule {
                 classes: 'shrink-0 border-b border-emerald-100 bg-emerald-50 px-5 py-2 text-[10px] font-semibold text-emerald-700',
             },
             standard: {
-                text: 'Standard permission: task-matched changes; deletion must be explicit and specific.',
-                title: 'Standard: task-matched changes with explicit deletion',
+                text: 'Standard permission: isolated sandbox processing is available; updates and deletion require explicit authorization.',
+                title: 'Standard: sandbox available, explicit changes to existing data',
                 classes: 'shrink-0 border-b border-slate-100 bg-slate-50 px-5 py-2 text-[10px] font-semibold text-slate-500',
             },
             full_control: {
@@ -1030,10 +1050,10 @@ export class AIModule {
         };
         const profile = profiles[permission] || profiles.standard;
         if (banner) {
-            banner.textContent = profile.text;
+            banner.textContent = t(profile.text);
             banner.className = 'ai-setting-note';
         }
-        if (select) select.title = profile.title;
+        if (select) select.title = t(profile.title);
     }
 
     _syncModeButtons(mode) {
@@ -1853,12 +1873,13 @@ export class AIModule {
         const content = message.pending ? this._renderPendingAgentMessage(message) : this._renderAgentMarkdownOutput(message);
         const copy = !message.pending && message.id ? `<button type="button" class="ai-message-copy" data-ai-copy-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Copy'))}</button>` : '';
         const branch = !message.pending && message.id && message.content ? `<button type="button" class="ai-message-copy" data-ai-branch-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Branch from here'))}</button>` : '';
+        const retry = message.error && message.retryPayload && message === this._agentConversation.at(-1) ? `<button type="button" class="ai-message-copy" data-ai-retry-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Retry this request'))}</button>` : '';
         return `<article class="ai-message ai-message-${isUser ? 'user' : 'assistant'}" data-ai-message="${this._escapeHTML(message.id || '')}">
             <div class="ai-bubble ${message.error ? 'ai-message-error' : ''}">
                 ${isUser ? '' : '<div class="ai-message-label">RS · Assistant</div>'}
                 ${content}${this._renderMessageAttachments(message.attachments ?? [], isUser)}
                 ${this._renderGeneratedArtifacts(message.artifacts ?? [])}
-                ${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}</div>
+                ${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}${retry}</div>
             </div>
         </article>`;
     }

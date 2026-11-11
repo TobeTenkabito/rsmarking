@@ -4,6 +4,18 @@ import sys
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def isolated_agent_checkpoints(tmp_path, monkeypatch):
+    """Unit tests must never read or write the user's durable chat state."""
+    from services.ai_gateway import agent_state_store, agent_session
+    monkeypatch.setattr(agent_state_store, "STATE_DB", tmp_path / "agent-state.sqlite3")
+    agent_session._AGENT_SESSIONS.clear()
+    agent_session._AGENT_SESSION_EXECUTION_LOCKS.clear()
+    yield
+    agent_session._AGENT_SESSIONS.clear()
+    agent_session._AGENT_SESSION_EXECUTION_LOCKS.clear()
+
+
 def pytest_configure(config):
     """Keep service tests importable when invoked below the repo root."""
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))

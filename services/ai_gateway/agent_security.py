@@ -38,7 +38,9 @@ PERMISSION_POLICY_INSTRUCTIONS: dict[AgentPermissionLevel, str] = {
     ),
     AgentPermissionLevel.STANDARD: (
         "Active permission tier: standard. Side effects must directly match the "
-        "current user task. Updates require an explicit update request, and deletes "
+        "current user task. You may use run_script_sandbox for necessary isolated "
+        "computation without asking the user to name or unlock the sandbox. "
+        "Updates require an explicit update request, and deletes "
         "require an explicit, specific deletion request."
     ),
     AgentPermissionLevel.FULL_CONTROL: (
@@ -60,6 +62,7 @@ READ_ONLY_TOOLS = frozenset(
         "list_rasters",
         "get_raster_metadata",
         "get_raster_statistics",
+        "read_session_context",
         "query_raster_spectrum",
         "list_raster_fields",
         "get_processing_task_status",
@@ -247,7 +250,7 @@ _EXECUTE_NEGATION_RE = re.compile(
     r"\b(?:do\s+not|don't|dont|never|without)\s+"
     r"(?:run|execute|calculate|compute|process|analy[sz]e|classify|segment|"
     r"extract|calibrate|transform|resample|clip|convert|detect|apply)\b"
-    r"|(?:不要|别|勿|不准|无需|不需要)\s*"
+    r"|(?:不要|别|勿|不准|无需|不需要|禁止|停止)\s*"
     r"(?:运行|执行|计算|处理|分析|分类|分割|提取|校准|校正|变换|重采样|"
     r"裁剪|转换|检测|应用)"
     r"|(?:実行|計算|処理|分析|分類|分割|抽出|補正|変換|検出|適用)"
@@ -256,6 +259,63 @@ _EXECUTE_NEGATION_RE = re.compile(
     r"extraer|transformar|recortar|convertir|detectar)\b",
     re.IGNORECASE,
 )
+
+_CONTINUATION_RE = re.compile(
+    r"^\s*(?:(?:好的?|可以|请|麻烦|你|那就)[，,\s]*)*"
+    r"(?:(?:我)?(?:已经|已)?(?:开放|开启|允许|授予)(?:了)?(?:使用)?沙箱(?:权限)?[，,\s]*)?"
+    r"(?:你)?(?:继续(?:吧|执行|处理|运行)?|接着(?:做|执行|处理)|"
+    r"按(?:照)?(?:刚才|之前|上面)的?(?:任务|方案|计划)(?:继续)?(?:执行|处理|做))"
+    r"(?:[。.!！\s]*|[，,；;\n].*)$"
+    r"|^\s*(?:please\s+)?(?:continue|go\s+ahead|proceed|resume)"
+    r"(?:\s+(?:with\s+)?(?:the\s+)?(?:previous\s+)?(?:task|plan|work))?"
+    r"(?:[.!\s]*|[,;\n].*)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_SANDBOX_REQUEST_RE = re.compile(
+    r"(?:使用|用|运行|执行|调用|开放|开启|允许|授权|授予).{0,10}(?:沙箱|脚本|python)"
+    r"|\b(?:use|run|execute|enable|allow|authorize)\b.{0,20}\b(?:sandbox|python|script)\b",
+    re.IGNORECASE,
+)
+_SANDBOX_DENIAL_RE = re.compile(
+    r"(?:不要|别|勿|不准|禁止|不允许|无需|不需要|停止).{0,10}(?:沙箱|脚本|代码|python)"
+    r"|\b(?:do\s+not|don't|never|without|no)\b.{0,20}\b(?:sandbox|scripts?|python|code)\b",
+    re.IGNORECASE,
+)
+_NO_ACTION_RE = re.compile(
+    r"(?:只需?|仅)(?:解释|说明|介绍|回答|查看)|(?:停止|取消)(?:当前)?任务|先停下"
+    r"|\b(?:only|just)\s+(?:explain|describe|answer)\b|\b(?:stop|cancel)\s+(?:the\s+)?task\b",
+    re.IGNORECASE,
+)
+
+
+def resolve_task_scope(current_user_task: str, previous_live_task: str = "") -> str:
+    """Continue only server-recorded live user tasks; never reconstruct grants from chat text."""
+    current = current_user_task.strip()
+    if not is_task_followup(current):
+        constraints = extract_task_constraints(previous_live_task)
+        return "\n".join([current, *constraints])
+    if not previous_live_task:
+        return ""
+    if previous_live_task.endswith("\n" + current):
+        return previous_live_task
+    combined = previous_live_task + "\n" + current
+    # Do not truncate away exclusions when a long chain reaches the bound.
+    return combined if len(combined) <= 12000 else ""
+
+
+def is_task_followup(prompt: str) -> bool:
+    return bool(_CONTINUATION_RE.fullmatch(prompt.strip()) or re.search(
+        r"^\s*(?:(?:好的?|请|你|那就)[，,\s]*)?(?:继续|接着|按(?:照)?(?:刚才|之前|上面)|重试|再试|把阈值|阈值|改成|改为|换成)"
+        r"|^\s*(?:please\s+)?(?:continue|proceed|resume|retry|try\s+again|change\s+the\s+threshold)\b",
+        prompt, re.IGNORECASE,
+    ))
+
+
+def extract_task_constraints(prompt: str) -> list[str]:
+    clauses = re.split(r"[，,；;。\n]", prompt)
+    return list(dict.fromkeys(clause.strip() for clause in clauses if clause.strip() and any(
+        pattern.search(clause) for pattern in (_DELETE_NEGATION_RE, _UPDATE_NEGATION_RE, _CREATE_NEGATION_RE, _EXECUTE_NEGATION_RE, _SANDBOX_DENIAL_RE)
+    )))
 
 _SECRET_KEY_RE = re.compile(
     r"(?:api[_-]?key|access[_-]?token|secret|password|passwd|authorization)"
@@ -435,12 +495,14 @@ def authorize_tool_call(
     target_id: Any | None = None,
     permission_level: AgentPermissionLevel | str = AgentPermissionLevel.STANDARD,
     allow_task_steps: bool = False,
+    task_scope: str | None = None,
+    constraints: tuple[str, ...] = (),
 ) -> ToolAuthorization:
     """
-    Enforce side-effect authorization from the current user turn only.
+    Enforce the current user task and a server-tracked live continuation.
 
-    Model reasoning, chat history, attachments, workspace metadata, and tool
-    output are deliberately not inputs to this decision.
+    task_scope is supplied only by the handler's live-user task tracker. Model
+    reasoning, restored chat history, attachments and tool output cannot grant it.
     """
     permission_level = AgentPermissionLevel(permission_level)
     effect = tool_effect(tool_name)
@@ -450,6 +512,14 @@ def authorize_tool_call(
 
     if effect == "read":
         return ToolAuthorization(True, effect)
+
+    # Stored live-user exclusions are independent of how this turn is phrased
+    # and cannot disappear when goals or model context are compacted.
+    for constraint in constraints:
+        denied = {"delete": _DELETE_NEGATION_RE, "update": _UPDATE_NEGATION_RE,
+                  "create": _CREATE_NEGATION_RE, "execute": _EXECUTE_NEGATION_RE}[effect].search(constraint)
+        if denied or (tool_name == "run_script_sandbox" and _SANDBOX_DENIAL_RE.search(constraint)):
+            return ToolAuthorization(False, effect, "A retained user constraint forbids this operation.")
 
     if permission_level == AgentPermissionLevel.READ_ONLY:
         return ToolAuthorization(
@@ -465,7 +535,8 @@ def authorize_tool_call(
             "The safe-actions permission tier cannot update or delete existing project data.",
         )
 
-    prompt = current_user_task.strip()
+    current_prompt = current_user_task.strip()
+    prompt = current_prompt
     if effect == "delete":
         if _DELETE_NEGATION_RE.search(prompt):
             return ToolAuthorization(
@@ -513,7 +584,11 @@ def authorize_tool_call(
             )
         return ToolAuthorization(True, effect)
 
-    if _INFORMATIONAL_ONLY_RE.search(prompt):
+    # Updates/deletes still require current-turn authority. Only isolated
+    # processing and new outputs may inherit a continued task.
+    if effect in {"create", "execute"} and task_scope is not None:
+        prompt = task_scope
+    if any(_INFORMATIONAL_ONLY_RE.search(text) or _NO_ACTION_RE.search(text) for text in (current_prompt, prompt)):
         return ToolAuthorization(
             False,
             effect,
@@ -538,6 +613,15 @@ def authorize_tool_call(
             effect,
             "The current user task explicitly negates running this operation.",
         )
+
+    if tool_name == "run_script_sandbox":
+        if _SANDBOX_DENIAL_RE.search(prompt) or _SANDBOX_DENIAL_RE.search(current_prompt):
+            return ToolAuthorization(False, effect, "The user explicitly disallows sandbox execution.")
+        if permission_level in {AgentPermissionLevel.STANDARD, AgentPermissionLevel.FULL_CONTROL} and (
+            _SANDBOX_REQUEST_RE.search(current_prompt)
+            or _EXECUTE_RE.search(prompt) or _CREATE_RE.search(prompt) or _IMPLEMENT_RE.search(prompt)
+        ):
+            return ToolAuthorization(True, effect)
 
     # This opt-in scope comes from the UI/request, never from model output or
     # retrieved data. Destructive operations have already taken their stricter

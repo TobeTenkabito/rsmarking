@@ -210,6 +210,28 @@ describe('Agent workspace interactions', () => {
         expect(ai._sessionId).toBe('imported');
     });
 
+    it('retries an interrupted turn with the same request id without duplicating messages', async () => {
+        vi.spyOn(ai, '_saveConversation').mockResolvedValue(true);
+        const request = { user_prompt: 'Analyze image', session_id: ai._sessionId, attachments: [] };
+        const agent = vi.spyOn(AIAPI, 'agent')
+            .mockResolvedValueOnce({ status: 'interrupted', answer: 'Checkpoint saved', error: 'Model request timed out', steps: [], used_tools: [] })
+            .mockResolvedValueOnce({ status: 'success', answer: 'Recovered output', steps: [], used_tools: [] });
+        await ai._runAgent(request);
+        expect(ai._agentConversation).toHaveLength(2);
+        const message = ai._agentConversation.at(-1);
+        expect(message.error).toBe(true);
+        expect(message.content).toContain('Model request timed out');
+        expect(document.querySelector('[data-ai-retry-message]')).not.toBeNull();
+        document.getElementById('ai-prompt-input').value = 'Unsent draft';
+        await ai.retryAgentMessage(message.id);
+        expect(agent.mock.calls[1][0].request_id).toBe(agent.mock.calls[0][0].request_id);
+        expect(ai._agentConversation).toHaveLength(2);
+        expect(message.content).toBe('Recovered output');
+        expect(message.error).toBe(false);
+        expect(document.querySelector('[data-ai-retry-message]')).toBeNull();
+        expect(document.getElementById('ai-prompt-input').value).toBe('Unsent draft');
+    });
+
     it('restores history without hiding the sidebar or losing attachments', async () => {
         const id = 'a'.repeat(32);
         vi.spyOn(AIAPI, 'getConversation').mockResolvedValue({ conversation: { archive_id: id, session_id: 'saved', messages: [{ role: 'user', content: 'saved question', attachments: [{ kind: 'text', name: 'notes.md' }] }] } });

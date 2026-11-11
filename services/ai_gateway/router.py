@@ -1,4 +1,5 @@
 import logging
+from .agent_session import session_execution_lock, clear_session
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,7 +28,6 @@ from .conversation_archive import (
     ConversationArchiveRequest,
     ConversationRestoreRequest,
     archive_conversation,
-    clear_conversation_archives,
     delete_conversation_archive,
     get_conversation_archive,
     list_conversation_archives,
@@ -169,7 +169,16 @@ async def archive_ai_conversation(payload: ConversationArchiveRequest):
 
 @router.delete("/conversations", summary="Clear all archived AI agent conversations")
 async def clear_ai_conversations():
-    return clear_conversation_archives()
+    archives = list_conversation_archives()
+    deleted = 0
+    for archive in archives:
+        try:
+            await delete_ai_conversation(archive["archive_id"])
+            deleted += 1
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+    return {"status": "success", "deleted": deleted}
 
 
 @router.get("/conversations/{archive_id}", summary="Get an archived AI agent conversation")
@@ -230,7 +239,12 @@ async def update_ai_conversation(archive_id: str, payload: ConversationDetailsRe
 @router.delete("/conversations/{archive_id}", summary="Delete an archived AI agent conversation")
 async def delete_ai_conversation(archive_id: str):
     try:
-        return delete_conversation_archive(archive_id)
+        archive = get_conversation_archive(archive_id)
+        session_id = archive.get("session_id") or archive_id
+        async with session_execution_lock(session_id):
+            result = delete_conversation_archive(archive_id)
+            clear_session(session_id)
+            return result
     except FileNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
 
@@ -246,7 +260,9 @@ async def restore_ai_conversation(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation archive not found")
 
     session_id = payload.session_id if payload and payload.session_id else archive.get("session_id") or archive_id
-    restored_count = restore_session_messages(session_id, archive.get("messages", []))
+    async with session_execution_lock(session_id):
+        restored_count = restore_session_messages(session_id, archive.get("messages", []),
+            preserve_existing=session_id == archive.get("session_id"))
     return {
         "status": "success",
         "archive_id": archive_id,

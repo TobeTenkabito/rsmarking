@@ -72,7 +72,7 @@ class ConversationBranchRequest(BaseModel):
 
 class TransferMessage(BaseModel):
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1, max_length=20000)
+    content: str = Field(min_length=1, max_length=100000)
     steps: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     attachments: list[dict[str, Any]] = Field(default_factory=list, max_length=10)
     artifacts: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
@@ -276,9 +276,12 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if role not in {"user", "assistant", "system", "tool"} or not content:
             continue
 
+        if len(content) > 100000:
+            raise ValueError("A conversation message exceeds the 100000-character storage limit")
+
         item: dict[str, Any] = {
             "role": role,
-            "content": content[:20000],
+            "content": content,
         }
         if isinstance(message.get("steps"), list):
             item["steps"] = message["steps"]

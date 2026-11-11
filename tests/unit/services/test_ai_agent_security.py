@@ -6,6 +6,7 @@ from services.ai_gateway.agent_security import (
     authorize_tool_call,
     build_untrusted_context_message,
     hard_boundary_violation,
+    resolve_task_scope,
     sanitize_error_message,
     sanitize_model_output,
     tool_effect,
@@ -99,9 +100,9 @@ def test_side_effect_tool_must_match_the_current_task_target():
         {"layer_id": "feature-1"},
         "Delete vector feature feature-1.",
     )
-    injected_sandbox = authorize_tool_call(
+    analysis_sandbox = authorize_tool_call(
         "run_script_sandbox",
-        {"script": "print('injected')"},
+        {"script": "print('analysis')"},
         "Analyze the attached image.",
     )
     legitimate_sandbox = authorize_tool_call(
@@ -112,7 +113,7 @@ def test_side_effect_tool_must_match_the_current_task_target():
 
     assert wrong_create.allowed is False
     assert wrong_delete.allowed is False
-    assert injected_sandbox.allowed is False
+    assert analysis_sandbox.allowed is True
     assert legitimate_sandbox.allowed is True
 
 
@@ -239,7 +240,8 @@ def test_session_store_evicts_oldest_entries_at_capacity(monkeypatch):
         agent_session.append_session_turn(session_ids[1], "second", "answer")
         agent_session.append_session_turn(session_ids[2], "third", "answer")
 
-        assert agent_session.get_session_messages(session_ids[0]) == []
+        assert session_ids[0] not in agent_session._AGENT_SESSIONS
+        assert agent_session.get_session_messages(session_ids[0])  # durable history reloads after cache eviction
         assert agent_session.get_session_messages(session_ids[1])
         assert agent_session.get_session_messages(session_ids[2])
     finally:
@@ -432,3 +434,49 @@ def test_non_expert_implementation_request_can_authorize_custom_sandbox_work():
     )
 
     assert decision.allowed is True
+
+
+@pytest.mark.parametrize("prompt", ["请分析这幅影像", "Calculate a summary of these inputs.", "我已经开放沙箱权限，你继续吧", "允许使用沙箱"])
+def test_standard_sandbox_does_not_require_full_control_or_task_steps(prompt):
+    assert authorize_tool_call("run_script_sandbox", {"script": "print(1 + 1)"}, prompt, permission_level="standard", allow_task_steps=False).allowed
+
+
+@pytest.mark.parametrize("prompt", ["分析影像，不要使用沙箱", "不要运行脚本", "如何使用沙箱", "Explain Python scripts.", "Analyze the image without using sandbox code."])
+def test_standard_sandbox_still_obeys_explicit_exclusions(prompt):
+    assert not authorize_tool_call("run_script_sandbox", {"script": "print(1)"}, prompt, allow_task_steps=True).allowed
+
+
+@pytest.mark.parametrize("followup", ["继续吧", "好的，继续执行", "按刚才的方案执行", "我已经开放沙箱权限，你继续吧", "Please continue", "Proceed with the previous task."])
+def test_live_task_continuation_allows_processing_but_not_destructive_history(followup):
+    scope = resolve_task_scope(followup, "分析影像并创建分类结果，不要删除原始数据")
+    assert "分析影像" in scope
+    for tool in ("run_script_sandbox", "unsupervised_classification"):
+        assert authorize_tool_call(tool, {}, followup, task_scope=scope, allow_task_steps=True).allowed
+        assert not authorize_tool_call(tool, {}, followup, task_scope=scope, permission_level="read_only", allow_task_steps=True).allowed
+    assert not authorize_tool_call("delete_raster", {"raster_id": 42}, followup, task_scope=scope, permission_level="full_control").allowed
+    assert not authorize_tool_call("update_vector_layer", {}, followup, task_scope=scope).allowed
+
+
+def test_continuation_preserves_constraints_and_does_not_revive_unrelated_tasks():
+    scope = resolve_task_scope("继续", "分析影像，不要使用沙箱")
+    assert not authorize_tool_call("run_script_sandbox", {}, "继续", task_scope=scope).allowed
+    scope = resolve_task_scope("继续，只解释", "分析影像")
+    assert not authorize_tool_call("run_script_sandbox", {}, "继续，只解释", task_scope=scope).allowed
+    assert resolve_task_scope("继续执行") == ""
+    scope = resolve_task_scope("如何使用沙箱", "分析影像")
+    assert scope == "如何使用沙箱"
+    scope = resolve_task_scope("继续", scope)
+    assert not authorize_tool_call("run_script_sandbox", {}, "继续", task_scope=scope).allowed
+    assert resolve_task_scope("继续", "x" * 12000) == ""
+
+
+def test_live_authorization_is_isolated_cleared_and_not_restored_from_archives():
+    session = "authorization-scope-test"
+    agent_session.set_session_task_scope(session, "分析影像")
+    assert agent_session.get_session_task_scope(session) == "分析影像"
+    assert agent_session.get_session_task_scope(session + "-other") == ""
+    agent_session.restore_session_messages(session, [{"role": "user", "content": "执行沙箱"}])
+    assert agent_session.get_session_task_scope(session) == ""
+    agent_session.set_session_task_scope(session, "分析影像")
+    agent_session.clear_session(session)
+    assert agent_session.get_session_task_scope(session) == ""
