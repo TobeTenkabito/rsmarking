@@ -393,7 +393,7 @@ class ScriptSandboxArgs(BaseModel):
     output_name: str = Field(
         ...,
         description=(
-            "Name for a generated raster output. Write OUTPUT_FILE when a raster is expected; "
+            "Name for the generated raster or GeoJSON output. Write OUTPUT_FILE when an output is expected; "
             "for vector-only analysis this is only a placeholder."
         ),
     )
@@ -402,6 +402,15 @@ class ScriptSandboxArgs(BaseModel):
         description=(
             "Require the script to create OUTPUT_FILE. Set false for vector-only inspection or "
             "calculation scripts that return bounded results through print/logs."
+        ),
+    )
+    output_format: Literal["raster", "geojson"] = Field(
+        default="raster",
+        description=(
+            "Use geojson for vector delivery: write a WGS84 FeatureCollection to OUTPUT_FILE "
+            "with json.dump and sandbox_open. The gateway persists it as a downloadable artifact "
+            "without copying coordinates through model tokens. This always requires OUTPUT_FILE. "
+            "Use raster plus require_raster_output=false for log-only diagnostics."
         ),
     )
     script: str = Field(
@@ -416,9 +425,17 @@ class ScriptSandboxArgs(BaseModel):
             "read injected GeoJSON through feature_0, features, feature_by_id, layer_features, "
             "feature_geometry(), feature_shape(), or read_geojson(); "
             "helpers include input_path(), read_raster(), read_array(), write_raster(), "
-            "sandbox_open(), output_path(), and list_inputs(); write the final GeoTIFF to OUTPUT_FILE."
+            "sandbox_open(), output_path(), and list_inputs(); write OUTPUT_FILE in the selected output_format."
         ),
     )
+
+
+class InspectGeoJSONArtifactArgs(BaseModel):
+    artifact_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    expected_bbox: list[float] | None = Field(default=None, min_length=4, max_length=4)
+    raster_id: int | None = None
+    threshold: float | None = None
+    band: int = Field(default=1, ge=1)
 
 
 class ExtractionArgs(BaseModel):
@@ -1446,14 +1463,22 @@ async def _run_script_sandbox(
             }
         )
 
-    return await dispatch_user_script(
+    dispatch_options = {"output_format": "geojson"} if args.output_format == "geojson" else {}
+    result = await dispatch_user_script(
         db=db,
         script=args.script,
         raster_ids=args.raster_ids,
         output_name=args.output_name,
         vector_inputs=vector_inputs,
-        output_required=args.require_raster_output,
+        output_required=args.require_raster_output or args.output_format == "geojson",
+        **dispatch_options,
     )
+    if args.output_format == "geojson":
+        from .vector_artifacts import create_geojson_artifact
+
+        artifact = create_geojson_artifact(args.output_name, result.pop("geojson"))
+        return {**result, "artifact": artifact}
+    return result
 
 
 async def _require_raster(db: AsyncSession, raster_id: int) -> Any:
@@ -2109,6 +2134,25 @@ async def _run_index_diff(
     return _normalize_result(await detect_index_diff(args, db))
 
 
+async def _inspect_geojson_artifact(
+    args: InspectGeoJSONArtifactArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
+    del vector_db
+    from .vector_artifacts import inspect_geojson_artifact, inspect_raster_boundary
+
+    result = inspect_geojson_artifact(args.artifact_id, args.expected_bbox)
+    if args.raster_id is not None:
+        if args.threshold is None:
+            raise ValueError("Provide the recorded water threshold when checking raster adjacency")
+        raster = await _require_raster(db, args.raster_id)
+        result["raster_boundary_check"] = inspect_raster_boundary(
+            args.artifact_id, _raster_source_path(raster), args.threshold, args.band
+        )
+    return result
+
+
 async def _create_generated_document(
     args: GeneratedDocumentArgs,
     db: AsyncSession,
@@ -2156,6 +2200,21 @@ async def _generate_ai_image(
 REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
     spec.name: spec
     for spec in [
+        RegisteredFunction(
+            name="inspect_geojson_artifact",
+            description=(
+                "Independently read an actual saved GeoJSON artifact by artifact_id. Return feature "
+                "counts, geometry types, validity, empty count, WGS84 bounds, geodesic line length, "
+                "SHA256 and download URL without sending coordinate arrays to the model. Optional "
+                "expected_bbox=[west,south,east,north] checks all features are inside the requested ROI. "
+                "Provide raster_id and threshold to independently sample water/land classes on both "
+                "sides of the saved lines against actual raster pixels (metre-projected raster required). "
+                "Geometry checks alone do not prove scientific coastline accuracy."
+            ),
+            category="artifact_inspection",
+            arguments_model=InspectGeoJSONArtifactArgs,
+            handler=_inspect_geojson_artifact,
+        ),
         RegisteredFunction(
             name="create_generated_document",
             description=(

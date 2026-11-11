@@ -168,6 +168,8 @@ def begin_session_turn(
             }
         else:
             pending["request_id"] = request_id
+            pending["failure"] = None
+            pending.pop("activity", None)
         pending["signature"] = signature
         state["pending"] = pending
         refs = [
@@ -179,6 +181,11 @@ def begin_session_turn(
         _save_locked(session_id, state)
         return {
             "run_id": pending["run_id"],
+            "unresolved_operations": bool(resume)
+            and any(
+                operation["status"] != "success"
+                for operation in store.operation_statuses(session_id, pending["run_id"])
+            ),
             "scope": state["task_scope"],
             "constraints": tuple(constraints),
             "resuming": bool(resume),
@@ -205,6 +212,15 @@ def checkpoint_workflow(session_id: str, workflow: dict) -> None:
             raise ValueError("Cannot checkpoint a workflow without an active turn.")
         state["pending"]["workflow"] = copy.deepcopy(workflow)
         _save_locked(session_id, state)
+
+
+def checkpoint_agent_activity(session_id: str, activity: dict) -> None:
+    """Publish operational status only, never model reasoning or hidden prompts."""
+    with _SESSION_LOCK:
+        state = _load_locked(session_id)
+        if state and state.get("pending"):
+            state["pending"]["activity"] = {**activity, "started_at": time.time()}
+            _save_locked(session_id, state)
 
 
 def complete_session_turn(

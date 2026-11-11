@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AIModule } from '@app/modules/AIModule.js';
 import { AIAPI } from '@app/api/ai.js';
+import { t } from '@app/i18n/index.js';
 
 
 describe('AIModule markdown rendering', () => {
@@ -74,7 +75,7 @@ describe('AIModule markdown rendering', () => {
         expect(html).toContain('scene.png');
         expect(html).toContain('notes.md');
         expect(html).toContain('data:image/png;base64,AAAA');
-        expect(pending).toContain('Waiting for AI response');
+        expect(pending).toContain(t('Waiting for AI response'));
     });
 
     it('renders assistant markdown after completion', () => {
@@ -173,7 +174,7 @@ describe('AIModule markdown rendering', () => {
         vi.spyOn(ai, '_saveConversation').mockResolvedValue(true);
         vi.spyOn(AIAPI, 'agent').mockImplementation(async () => {
             expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Hello');
-            expect(document.getElementById('ai-agent-messages').innerHTML).toContain('Waiting for AI response');
+            expect(document.getElementById('ai-agent-messages').innerHTML).toContain(t('Waiting for AI response'));
             return {
                 session_id: 'session-a',
                 answer: 'Done.',

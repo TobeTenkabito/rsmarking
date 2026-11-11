@@ -35,6 +35,7 @@ class AISettings:
     api_version: str | None = None
     reasoning_enabled: bool = False
     reasoning_effort: str | None = None
+    tool_reasoning_effort: str | None = None
     reasoning_budget_tokens: int | None = None
     reasoning_style: str = "auto"
     reasoning_model_allowlist: tuple[str, ...] = field(default_factory=tuple)
@@ -100,6 +101,7 @@ def get_ai_settings(model_name: str | None = None) -> AISettings:
         api_version=_first_env(["AZURE_API_VERSION"]) if provider == "azure" else None,
         reasoning_enabled=_bool_env("AI_REASONING_ENABLED", default=False),
         reasoning_effort=_clean_env_value(os.getenv("AI_REASONING_EFFORT") or "medium"),
+        tool_reasoning_effort=_clean_env_value(os.getenv("AI_TOOL_REASONING_EFFORT") or "") or None,
         reasoning_budget_tokens=_int_env("AI_REASONING_BUDGET_TOKENS"),
         reasoning_style=_clean_env_value(os.getenv("AI_REASONING_STYLE") or "auto").lower(),
         reasoning_model_allowlist=_csv_env("AI_REASONING_MODEL_ALLOWLIST"),

@@ -82,7 +82,10 @@ async def dispatch_user_script(
     output_name: str,
     vector_inputs: list[dict] | None = None,
     output_required: bool = True,
+    output_format: str = "raster",
 ):
+    if output_format not in {"raster", "geojson"}:
+        raise ValueError("Unsupported sandbox output format")
     input_files_payload = []
     for raster_id in raster_ids:
         raster = await RasterCRUD.get_raster_by_index_id(db, raster_id)
@@ -99,7 +102,8 @@ async def dispatch_user_script(
 
     task_id = str(uuid.uuid4())
     prefix = "script"
-    raw_output_filename = f"{task_id}_{prefix}_raw.tif"
+    suffix = "geojson" if output_format == "geojson" else "tif"
+    raw_output_filename = f"{task_id}_{prefix}_raw.{suffix}"
 
     async with httpx.AsyncClient(timeout=600.0) as client:
         try:
@@ -131,6 +135,20 @@ async def dispatch_user_script(
         )
 
     tmp_path = res_data.get("output_path")
+    if output_format == "geojson":
+        from pathlib import Path
+        import json
+
+        expected = (Path(UPLOAD_DIR) / raw_output_filename).resolve()
+        if not tmp_path or Path(tmp_path).resolve() != expected or not expected.is_file():
+            raise HTTPException(status_code=500, detail="Executor did not produce the expected GeoJSON")
+        if expected.stat().st_size > 5 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Sandbox GeoJSON exceeds 5 MiB")
+        return {
+            "status": "success",
+            "geojson": json.loads(expected.read_text(encoding="utf-8")),
+            "logs": res_data.get("logs", ""),
+        }
     if not tmp_path and output_required:
         tmp_path = os.path.join(UPLOAD_DIR, raw_output_filename)
 

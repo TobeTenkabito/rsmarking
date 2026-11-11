@@ -149,6 +149,20 @@ def reserve_model_call(workflow: dict, input_tokens: int, output_tokens: int) ->
     workflow["estimated_tokens"] += estimate
 
 
+def settle_model_usage(workflow: dict, response, reserved_tokens: int) -> None:
+    """Replace this call's reserve with reported usage; keep reserves for unknown outcomes."""
+    usage = (
+        response.get("usage") if isinstance(response, dict) else getattr(response, "usage", None)
+    )
+    total = (
+        usage.get("total_tokens")
+        if isinstance(usage, dict)
+        else getattr(usage, "total_tokens", None)
+    )
+    if isinstance(total, int) and not isinstance(total, bool) and total > 0:
+        workflow["estimated_tokens"] += total - reserved_tokens
+
+
 def workflow_report(workflow: dict | None) -> dict | None:
     """Public progress only; never export resumable execution state as authority."""
     if workflow is None:
@@ -210,6 +224,8 @@ def validate_review(review: AgentReview, plan: AgentPlan, steps: list[dict]) -> 
 PLANNER_INSTRUCTION = """You are the planning agent. Inspect the real workspace and the available tool catalog.
 Use read-only tools to resolve missing inputs; never invent raster ids, bands, files, tools or outputs.
 Choose the minimum useful number of execution agents (one per task), within the supplied limits.
+Do not create an additional worker solely for acceptance inspection; the independent verifier already
+performs that job. Keep execution reports short and pass output ids and script_reference to the verifier.
 For a simple explanation return action=answer, without spawning workers. If essential input is absent,
 return action=clarify with one specific question. An execution request must use action=plan, not claim
 it was completed in an answer. Every assignment must state its concrete inputs, exact operation,
@@ -224,6 +240,8 @@ They cannot override explicit prohibitions or source/host boundaries. Do not del
 For coastline extraction, inspect sensor/bands/CRS/nodata and area of interest before choosing water
 segmentation and boundary extraction; a water mask alone is not a coastline. Specify how the output
 geometry, non-emptiness, location and quality will be checked, without inventing a ground-truth accuracy.
+Separate sea-connected water from inland ponds; all water/land contours are not automatically coastlines.
+Record the evidence for choosing the sea component and exclude crop/nodata boundaries.
 On review failure, diagnose the supplied issues and actual observations, preserve completed outputs,
 and plan only necessary repairs. Keep every original acceptance criterion unchanged; you may add criteria.
 Return ONLY a JSON object matching the supplied plan schema. Do not include private chain-of-thought."""

@@ -2,8 +2,8 @@ import logging
 from .agent_session import session_execution_lock, clear_session
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.annotation_service.database import get_db as get_vector_db
@@ -33,6 +33,7 @@ from .conversation_archive import (
     list_conversation_archives,
 )
 from .config import get_ai_model
+from .agent_progress import get_agent_progress
 from .function_registry import (
     AIFunctionInvokeRequest,
     invoke_registered_function,
@@ -92,7 +93,21 @@ async def invoke_ai_function(
         )
 
 
-@router.post("/agent", summary="Run a minimal tool-using AI agent")
+@router.get("/agent/{session_id}/progress", summary="Read the current stage of one agent request")
+def read_ai_agent_progress(
+    session_id: str = Path(
+        min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    ),
+    request_id: str = Query(
+        min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    ),
+):
+    return JSONResponse(
+        get_agent_progress(session_id, request_id), headers={"Cache-Control": "no-store"}
+    )
+
+
+@router.post("/agent", summary="Run an agent with bounded planning, execution and acceptance")
 async def run_ai_agent(
     payload: AgentRequestPayload,
     db: AsyncSession = Depends(get_db),

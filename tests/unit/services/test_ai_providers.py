@@ -95,6 +95,19 @@ def test_gpt6_reasoning_reaches_litellm_parameter_mapping(monkeypatch):
     assert mapped['tools'] == tools
 
 
+def test_tool_reasoning_override_does_not_change_plain_requests_or_other_providers(monkeypatch):
+    monkeypatch.setenv('AI_REASONING_ENABLED', 'true')
+    monkeypatch.setenv('AI_REASONING_EFFORT', 'low')
+    monkeypatch.setenv('AI_TOOL_REASONING_EFFORT', 'none')
+    tools = [{'type': 'function', 'function': {'name': 'inspect', 'parameters': {'type': 'object'}}}]
+    request = build_litellm_kwargs(model_name='openai/gpt-6-sol', messages=[], tools=tools)
+    assert request['reasoning_effort'] == 'none'
+    plain = build_litellm_kwargs(model_name='openai/gpt-6-sol', messages=[])
+    assert plain['reasoning_effort'] == 'low'
+    other = build_litellm_kwargs(model_name='deepseek/deepseek-chat', messages=[], tools=tools)
+    assert other.get('reasoning_effort') != 'none'
+
+
 def test_gpt6_allowlist_preserves_caller_options_and_provider_isolation(monkeypatch):
     monkeypatch.setenv('AI_REASONING_ENABLED', 'true')
     monkeypatch.setenv('AI_REASONING_EFFORT', 'low')

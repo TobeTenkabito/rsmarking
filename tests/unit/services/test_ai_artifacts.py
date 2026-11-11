@@ -229,6 +229,7 @@ def test_agent_creates_and_returns_downloadable_table(monkeypatch):
         handle_agent(
             AgentRequestPayload(
                 user_prompt="Create an exportable class table.",
+                execution_mode="single",
                 language="en",
                 tool_names=["create_generated_table"],
             ),

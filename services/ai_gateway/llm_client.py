@@ -45,6 +45,14 @@ def build_litellm_kwargs(
     reasoning_kwargs = build_reasoning_kwargs(settings)
     if reasoning_kwargs:
         request_kwargs.update(reasoning_kwargs)
+    if (
+        settings.provider == "openai"
+        and request_kwargs.get("tools")
+        and settings.tool_reasoning_effort
+    ):
+        # Some Chat Completions gateways support tools only with reasoning=none.
+        # Keep this explicit and scoped to tool requests, without an unmetered retry.
+        request_kwargs["reasoning_effort"] = settings.tool_reasoning_effort
     base_model = settings.model.split("/", 1)[-1].lower()
     if settings.provider == "openai" and base_model.startswith("gpt-6") and "reasoning_effort" in request_kwargs:
         # LiteLLM 1.82.x predates GPT-6 and otherwise rejects this documented

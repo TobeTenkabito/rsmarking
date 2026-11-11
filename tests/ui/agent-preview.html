@@ -14,6 +14,7 @@ const records = new Map([
 ]);
 window.__calls = [];
 AIAPI.listFunctions = async () => ({functions:[]});
+AIAPI.agentProgress = async (sessionId, requestId) => ({request_id: requestId, ...window.__progress});
 AIAPI.listConversations = async () => ({conversations:[...records.values()]});
 AIAPI.getConversation = async id => ({conversation:records.get(id)});
 AIAPI.restoreConversation = async () => ({});
@@ -27,6 +28,7 @@ AIAPI.importConversation = async bundle => createRecord({...bundle.conversation,
 AIAPI.branchConversation = async (id, payload) => {const record=records.get(id); return createRecord({title:payload.title || record.title+' / branch',note:record.note || '',pinned:false,messages:record.messages.slice(0,payload.message_index == null ? undefined : payload.message_index+1)});};
 AIAPI.agent = async payload => {
     window.__calls.push(payload);
+    if (window.__delayAgent) await new Promise(resolve => { window.__finishAgent = resolve; });
     if (window.__interruptNext) {
         window.__interruptNext = false;
         return { status: 'interrupted', session_id: payload.session_id, answer: '请求中断，已保存执行记录。', steps: [], used_tools: [] };

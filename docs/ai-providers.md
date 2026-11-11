@@ -21,6 +21,8 @@
 
 ## 选择与优先级
 
+工具请求可单独设置 `AI_TOOL_REASONING_EFFORT=none`。本次真实联调中的配置网关明确拒绝 Chat Completions 同时携带工具与非 `none` 推理级别，因此启用了此项；普通请求继续使用 `AI_REASONING_EFFORT`。该覆盖仅用于 OpenAI 路由的工具请求，默认不启用，不自动尝试付费重试，也不保证所有兼容网关接受同一参数。
+
 1. 系统/启动进程环境变量优先于 `.env`（`override=False`）。若修改文件后仍使用旧值，检查启动脚本、终端和服务管理器中的同名变量。
 2. 模型选择：调用方显式模型 > `AI_MODEL` > `AI_NAME` > `AI_MODEL_NAME`。明确的 `provider/model` 前缀优先于 `AI_PROVIDER`。
 3. 未指定模型时，读取 `AI_PROVIDER` 对应的 `*_MODEL`；未指定厂商则读取 `OPENAI_MODEL`，最后默认 `openai/gpt-4o`。样例密钥不用于推断激活厂商。

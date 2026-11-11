@@ -225,3 +225,13 @@ def get_response(session_id: str, request_id: str | None, signature: str) -> dic
     if row[0] != signature:
         raise ValueError("This request_id was already used with different inputs.")
     return json.loads(row[1])
+
+
+def load_request_response(session_id: str, request_id: str) -> dict | None:
+    """Internal lookup for the public progress projection; never returned verbatim."""
+    with connection() as db:
+        row = db.execute(
+            "SELECT response FROM responses WHERE session=? AND request=?",
+            (session_id, request_id),
+        ).fetchone()
+    return json.loads(row[0]) if row else None

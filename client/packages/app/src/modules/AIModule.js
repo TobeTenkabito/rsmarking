@@ -195,7 +195,10 @@ export class AIModule {
         this._agentQueueDepth += 1;
         const runRequest = async () => {
             assistantMessage.pendingLabel = 'Waiting for AI response';
+            assistantMessage.progress = null;
+            assistantMessage.elapsedSeconds = 0;
             this._renderAgentConversation();
+            const stopProgress = this._startAgentProgress(payload, assistantMessage);
 
             try {
                 let result;
@@ -222,6 +225,7 @@ export class AIModule {
                     await this._refreshSidebar('raster');
                 }
             } finally {
+                stopProgress();
                 await this._saveConversation();
                 this._agentQueueDepth = Math.max(0, this._agentQueueDepth - 1);
             }
@@ -230,6 +234,38 @@ export class AIModule {
         const task = this._agentQueueTail.catch(() => {}).then(runRequest);
         this._agentQueueTail = task.catch(() => {});
         return task;
+    }
+
+    _startAgentProgress(payload, message) {
+        const controller = new AbortController();
+        const startedAt = Date.now();
+        let stopped = false;
+        let pollTimer;
+        const elapsedTimer = setInterval(() => {
+            if (stopped || !message.pending) return;
+            message.elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+            this._refreshAgentProgress(message);
+        }, 1000);
+        const poll = async () => {
+            if (stopped || !message.pending || this._sessionId !== payload.session_id) return;
+            try {
+                const progress = await AIAPI.agentProgress(payload.session_id, payload.request_id, controller.signal);
+                if (progress && !stopped && message.pending && progress.request_id === payload.request_id) {
+                    message.progress = progress;
+                    this._refreshAgentProgress(message);
+                }
+            } catch (_) {
+                // Progress is best-effort. Keep waiting for the actual request result.
+            }
+            if (!stopped && message.pending) pollTimer = setTimeout(poll, 2000);
+        };
+        pollTimer = setTimeout(poll, 700);
+        return () => {
+            stopped = true;
+            clearTimeout(pollTimer);
+            clearInterval(elapsedTimer);
+            controller.abort();
+        };
     }
 
     async retryAgentMessage(messageId) {
@@ -1889,17 +1925,42 @@ export class AIModule {
         </article>`;
     }
 
+    _refreshAgentProgress(message) {
+        const messages = document.getElementById('ai-agent-messages');
+        if (!messages) return;
+        const article = [...messages.querySelectorAll('[data-ai-message]')]
+            .find(element => element.dataset.aiMessage === message.id);
+        const pending = article?.querySelector('[data-ai-pending]');
+        if (!pending) return;
+        const nearBottom = messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100;
+        pending.outerHTML = this._renderPendingAgentMessage(message);
+        if (nearBottom) this._scrollAgentChatToBottom();
+    }
+
     _renderPendingAgentMessage(message = {}) {
-        const label = this._escapeHTML(message.pendingLabel ?? 'Waiting for AI response');
+        const progress = message.progress;
+        const stages = {
+            planning: 'Inspecting inputs and planning tasks', replanning: 'Adjusting the plan after review',
+            executing: 'Executing assigned tasks', reviewing: 'Checking the actual outputs',
+        };
+        const statusLabel = progress?.phase === 'complete' ? 'Preparing the final response' : stages[progress?.stage];
+        const label = this._escapeHTML(t(statusLabel || message.pendingLabel || 'Waiting for AI response'));
+        const details = [];
+        if (progress?.task_title) details.push(progress.task_title);
+        if (progress?.phase === 'tool' && progress.tool) details.push(`${t('Using tool')}: ${progress.tool}`);
+        else if (progress?.phase === 'model') details.push(t('Model is preparing the next step'));
+        if (progress?.total_tasks) details.push(`${progress.completed_tasks}/${progress.total_tasks} ${t('tasks completed')}`);
+        if (progress?.round) details.push(`${progress.round} ${t('repair rounds')}`);
+        if (message.elapsedSeconds) details.push(`${t('Elapsed')}: ${message.elapsedSeconds}s`);
         return `
-            <div class="flex items-center gap-2 text-slate-500">
+            <div data-ai-pending role="status"><div class="flex items-center gap-2 text-slate-500">
                 <span class="font-bold">${label}</span>
                 <span class="flex gap-1">
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400"></span>
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:120ms"></span>
                     <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" style="animation-delay:240ms"></span>
                 </span>
-            </div>`;
+            </div><div class="ai-progress-detail">${this._escapeHTML(details.join(' · '))}</div></div>`;
     }
 
     _renderAgentMarkdownOutput(message = {}) {

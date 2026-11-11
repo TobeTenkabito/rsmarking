@@ -26,6 +26,15 @@ CONTEXT_TOOL = {
     },
 }
 
+EXECUTION_AUDIT_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "read_agent_execution_audit",
+        "description": "Read the server-recorded operations for this active task: tool names, status, permission tier and sandbox isolation. Use to verify whether this workflow modified existing data. This is not an audit of unrelated users or external processes.",
+        "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+}
+
 
 def excerpt(text: str, limit: int = 1200) -> str:
     if len(text) <= limit:
@@ -50,7 +59,7 @@ def result_digest(value, limit: int = 2000) -> dict:
                 location = f"{path}.{key}" if path else str(key)
                 if isinstance(child, (str, int, float, bool)) and (
                     str(key).endswith(("_id", "_ids", "_name", "_url"))
-                    or key in {"id", "status", "name", "error"}
+                    or key in {"id", "status", "name", "error", "script_reference"}
                 ):
                     if len(identifiers) < 64:
                         identifiers[location] = str(child)[:400]

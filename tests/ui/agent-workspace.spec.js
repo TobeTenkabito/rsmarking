@@ -1,5 +1,25 @@
 import { test, expect } from '@playwright/test';
 
+test('live progress shows tool execution, review and repair while waiting', async ({ page }) => {
+    await page.goto('/tests/ui/agent-preview.html');
+    await page.evaluate(() => {
+        window.__delayAgent = true;
+        window.__progress = {stage: 'executing', phase: 'tool', tool: 'run_script_sandbox', task_title: '提取海岸线', total_tasks: 1, completed_tasks: 0};
+    });
+    await page.locator('#ai-prompt-input').fill('帮我提取海岸线');
+    await page.locator('#ai-prompt-input').press('Enter');
+    await expect(page.locator('.ai-progress-detail')).toContainText('run_script_sandbox');
+    await expect(page.locator('.ai-progress-detail')).toContainText('0/1');
+    await page.evaluate(() => { window.__progress = {stage: 'reviewing', phase: 'model'}; });
+    await expect(page.locator('.ai-message-assistant')).toContainText('检查实际输出');
+    await page.evaluate(() => { window.__progress = {stage: 'replanning', phase: 'model', round: 1}; });
+    await expect(page.locator('.ai-message-assistant')).toContainText('根据验收结果调整方案');
+    await page.screenshot({path: 'test-results/agent-live-progress.png'});
+    await page.evaluate(() => window.__finishAgent());
+    await expect(page.locator('.ai-message-assistant h2')).toHaveText('已完成');
+    await expect(page.locator('.ai-progress-detail')).toHaveCount(0);
+});
+
 test('collaboration: default mode, acceptance report, history and direct mode', async ({ page }) => {
     await page.goto('/tests/ui/agent-preview.html');
     await page.locator('#ai-prompt-input').fill('帮我提取海岸线');

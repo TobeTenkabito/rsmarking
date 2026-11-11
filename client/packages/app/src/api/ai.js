@@ -100,6 +100,14 @@ export const AIAPI = {
         }, 'Agent request failed');
     },
 
+    async agentProgress(sessionId, requestId, signal) {
+        const path = `/ai/agent/${encodeURIComponent(sessionId)}/progress?request_id=${encodeURIComponent(requestId)}`;
+        const response = await fetch(`${BASE_URL}${path}`, { signal, cache: 'no-store' });
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error(`Progress unavailable (${response.status})`);
+        return response.json();
+    },
+
     async confirmOverwrite(payload) {
         return requestAI('/ai/process', {
             ...payload,

@@ -1,16 +1,12 @@
 # RSMarking
 
-AI / Agent configuration: see [multi-provider setup and troubleshooting](docs/ai-providers.md)
-
-Agent interface, keyboard shortcuts, conversation history, and tool permissions: see [Agent workspace guide](docs/agent-workspace.md).
-and the copyable provider blocks in [.env.example](.env.example).
-Offline diagnostics: `python -m services.ai_gateway.diagnose`.
-
 RSMarking is a remote-sensing annotation and raster analysis workspace. It combines a Leaflet/Cesium browser map, FastAPI microservices, PostGIS-backed vector storage, GDAL/rasterio processing, a permission-aware AI agent, and an optional Celery worker layer for longer-running jobs.
 
 The repository is currently most useful as a local development stack for GeoTIFF upload, raster metadata management, on-the-fly map tiles, vector annotation, raster/vector analysis tools, AI-assisted project operations, and Docker-isolated custom Python scripts.
 
-> Documentation status: updated against the repository on 2026-07-28. The PowerShell launcher, service entry points, `.env.example`, and tests remain the operational sources of truth.
+> Updated against the current working tree on 2026-11-12. Screenshots below were captured from this version. The PowerShell launcher, service entry points, `.env.example`, and tests remain the operational sources of truth.
+
+[Quick start](#quick-start) · [Screenshots](#screenshots) · [AI configuration](#ai-gateway-configuration) · [Agent workspace](#agent-workspace) · [Testing](#testing)
 
 ## Features
 
@@ -23,9 +19,35 @@ The repository is currently most useful as a local development stack for GeoTIFF
 - Raster algorithms for NDVI, NDWI, NDBI, MNDWI, band extraction, band merge, raster calculator expressions, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, rasterization, clipping, and change detection.
 - Automatic raster acquisition-time extraction and non-blocking time-series discovery with provenance, confidence, grid alignment, and documented fallbacks for undated imagery.
 - Extraction algorithms for vegetation, water, buildings, and clouds.
-- AI gateway built around LiteLLM with analyze/modify modes, a callable tool registry, conversation memory, safe attachments, and four per-request permission tiers.
-- Docker-isolated Python script executor with validated raster/vector inputs, bounded logs, resource limits, and restricted host-path access.
+- AI gateway built around LiteLLM with multiple provider routes, analyze/modify modes, and bounded planning, execution, independent acceptance, and repair agents.
+- Agent workspace with Markdown, configurable send shortcuts, visible conversation history, editable titles and notes, pinning, chat import/export, branching, and live task progress.
+- Durable session checkpoints, scoped derived-task authorization, recoverable script references, and shared model/tool/token budgets.
+- Docker-isolated Python script executor with validated raster/vector inputs, GeoTIFF or GeoJSON outputs, bounded logs, resource limits, and restricted host-path access.
 - Optional Celery worker cluster for offline preprocessing, index calculation, and GeoJSON export jobs.
+
+## Documentation
+
+| Guide | Contents |
+|---|---|
+| [AI provider setup](docs/ai-providers.md) | Model routing, provider-specific configuration, reasoning settings, and troubleshooting |
+| [Environment examples](.env.example) | Copyable provider blocks and service/runtime settings; never put real credentials in this file |
+| [Agent workspace](docs/agent-workspace.md) | Conversation controls, collaboration, permissions, context recovery, and limits |
+| [Real-model coastline validation](docs/agent-coastline-validation-2026-11-12.md) | Observed results, failure cases, fixes, API consumption, and incomplete final acceptance |
+| [Worker cluster](worker_cluster/README.md) | Background jobs, queues, deployment, and status tracking |
+
+## Agent Workspace
+
+The default Agent mode separates planning, execution, and acceptance. The planner inspects available inputs and assigns concrete subtasks; execution agents receive only their assigned tools; an independent read-only verifier checks actual outputs. Rejected outputs return to the planner for bounded repair. The settings panel also offers direct execution for simpler workflows.
+
+- **Conversation UI:** GFM Markdown, tables and code blocks; Enter to send and Ctrl/Command + Enter for a new line, with the inverse mode available. Shift + Enter inserts a new line, and IME composition does not send a message.
+- **Visible history:** left sidebar, editable titles, smaller notes beneath titles, expandable note text, pinning, search, automatic saving, JSON import/export, and branching from a message or conversation.
+- **Progress:** current planning/execution/review/repair phase, tool, task progress, and elapsed time. Progress displays operational status, not private model reasoning.
+- **Continuation:** persistent checkpoints and session-scoped references retain messages, attachments, tool observations, and sandbox scripts. Interrupted requests can resume without blindly repeating successful writes.
+- **Outputs:** downloadable documents, tables, images, and sandbox-generated GeoJSON. Vector acceptance tools inspect saved geometry and can sample actual raster pixels on either side of a line.
+
+Default collaborative limits are 6 logical agents, 1 repair round, 24 model calls, 12 tool calls, and a cumulative token budget of 300,000. Calls reserve a conservative estimate before execution; valid provider usage settles that reserve afterwards. Missing usage and timeouts retain the reserve. These limits bound work rather than guarantee completion or a particular bill.
+
+The real-model coastline test produced candidate line geometry and verified derived-task authorization, empty-output rejection, and replanning. **Its final model acceptance handoff did not complete within the cumulative budget.** Geometry checks and spectral samples are not ground-truth accuracy measurements. See the [validation report](docs/agent-coastline-validation-2026-11-12.md) for the exact scope and limitations.
 
 ## Frontend Tool Placement Standards
 
@@ -135,7 +157,7 @@ services/
   tile_service/                 Raster tile engine and Cython extensions
   vtile_service/                PostGIS vector tile endpoint
   executor_service/             Docker sandbox for custom Python scripts
-  ai_gateway/                   AI analyze/modify gateway and tool registry
+  ai_gateway/                   AI gateway, collaboration, policy, checkpoints, and tool registry
 
 functions/
   implement/                    Core raster, vector, index, extraction algorithms
@@ -146,8 +168,11 @@ infrastructure/docker/          PostgreSQL/PostGIS, RabbitMQ, Redis compose file
 infrastructure/*_migrations/    Alembic migrations for raster and vector DBs
 storage/raw/                    Uploaded/original rasters and script outputs
 storage/cog/                    Cloud-optimized GeoTIFF outputs
-tests/                          Pytest, Vitest, and benchmark tests
-resources/                      README screenshots and benchmark images
+storage/ai_artifacts/            Downloadable AI-generated files
+storage/ai_agent_state.sqlite3   Durable agent context and operation journal
+docs/                           Configuration, workspace, and validation guides
+tests/                          Pytest, Vitest, Playwright, and benchmark tests
+resources/screenshots/          Versioned screenshots used by this README
 ```
 
 ## Services
@@ -159,7 +184,7 @@ resources/                      README screenshots and benchmark images
 | Vector tile service | 8003 | `services.vtile_service.main:app` | MVT tiles from PostGIS |
 | Executor service | 8004 | `services.executor_service.main:app` | Docker-isolated Python script execution |
 | Tile service | 8005 | `services.tile_service.main:app` | Cached RasterIO XYZ PNG rendering and HTTP revalidation |
-| AI gateway | 8006 | `services.ai_gateway.main:app` | AI analyze/modify requests, agent policy enforcement, and callable tools |
+| AI gateway | 8006 | `services.ai_gateway.main:app` | Analyze/modify, agent collaboration and progress, conversations, artifacts, and tool authorization |
 
 ## Rendering Architecture
 
@@ -247,11 +272,21 @@ Different but georeferenced grids are aligned to the first selected raster with 
 - Conda or Mamba.
 - Python 3.12. The checked-in `environment.yml` creates a Python 3.12 environment named `rsmarking`.
 - A browser. The frontend is currently a static app, so there is no `npm run dev` workflow in this revision.
-- Optional: Node.js if you want to run the Vitest frontend unit tests.
+- Optional: Node.js for Vitest and Playwright tests. The checked-in browser-test configuration uses Microsoft Edge in headless mode.
 
 ## Quick Start
 
 From the repository root:
+
+For a first-time setup, create the Python environment and a local configuration file before using either launch method:
+
+```powershell
+conda env create -f environment.yml
+conda activate rsmarking
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Review `.env` for your database and service settings. AI features additionally require a compatible model and provider credentials; map browsing and ordinary processing do not require a model API key. Keep credentials in the server environment or ignored `.env`, never in `client/runtime-config.js`.
 
 ### One-click Windows launch
 
@@ -331,7 +366,10 @@ into the isolated container as real GeoJSON and exposed as `feature_0`,
 `feature_shape()`, and `read_geojson()`. Scripts that only inspect or calculate
 vector data may finish without creating a raster, in which case their bounded
 execution log is shown in the script editor. Raster-producing scripts should
-write `OUTPUT_FILE`.
+write `OUTPUT_FILE`. The Agent's `run_script_sandbox` tool also supports
+`output_format="geojson"`: write a WGS84 FeatureCollection to `OUTPUT_FILE` using
+`json.dump` and `sandbox_open`. The gateway saves the actual coordinates and
+returns a download link, without copying geometry through model text.
 
 Host raster paths are accepted only from the repository `storage` directory by
 default. Deployments with additional managed data roots can set
@@ -339,12 +377,7 @@ default. Deployments with additional managed data roots can set
 
 ### Manual launch
 
-From the repository root:
-
-```powershell
-conda env create -f environment.yml
-conda activate rsmarking
-```
+Use the `rsmarking` environment prepared above and run commands from the repository root.
 
 Start infrastructure:
 
@@ -401,22 +434,36 @@ http://localhost:8002/client/index.html
 
 You can also serve the repository root with any static file server and open `/client/index.html`.
 
+For a separate frontend origin or non-default ports, set the service URLs in `client/runtime-config.js`; the launcher generates this file for its configured ports. Restart the relevant backend after changing server-side environment variables.
+
 ## AI Gateway Configuration
 
 The AI gateway loads `.env` from the repository root and calls LiteLLM. A minimal DeepSeek-style configuration looks like this:
 
 ```env
 AI_MODEL=deepseek/deepseek-chat
-DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_API_KEY=your_deepseek_api_key
+AI_TIMEOUT=90000
+AI_MAX_TOKENS=4096
 ```
 
 Choose a provider from [the supported configurations](docs/ai-providers.md) by changing `AI_MODEL` and its provider-specific key. OpenAI-compatible gateways use `openai/<model-id>` and their own Base URL. `AI_NAME` and `AI_MODEL_NAME` remain compatibility fallbacks; `AI_MODEL` is preferred.
+
+The repository-root `.env` is loaded independently of the launch directory; existing process environment variables take precedence. `AI_TIMEOUT` is in milliseconds. Tool calling support depends on the configured model and endpoint: provider routing alone does not make a text-only or Responses-only endpoint compatible with the current Chat Completions agent.
+
+Some OpenAI-compatible configurations reject tool requests with a non-`none` reasoning effort. When the endpoint explicitly requires it, set `AI_TOOL_REASONING_EFFORT=none` to override only OpenAI-routed tool requests; ordinary requests retain `AI_REASONING_EFFORT`. This is an explicit compatibility setting, not an automatic retry or a universal provider requirement.
+
+Inspect resolved configuration without making a model request or printing the key:
+
+```powershell
+python -m services.ai_gateway.diagnose
+```
 
 The agent can create persistent downloadable documents, SVG images, and CSV/XLSX/JSON tables. To enable provider-backed raster image generation as well, configure a LiteLLM-compatible image model separately:
 
 ```env
 AI_IMAGE_MODEL=openai/gpt-image-1
-OPENAI_API_KEY=sk-...
+OPENAI_API_KEY=your_openai_api_key
 ```
 
 Generated files are stored under `storage/ai_artifacts` by default; override that location with `AI_ARTIFACT_DIR`.
@@ -430,8 +477,14 @@ Core endpoints:
 | `GET` | `/ai/functions?format=catalog` | Return a readable function catalog |
 | `POST` | `/ai/functions/invoke` | Invoke a registered algorithm function directly |
 | `POST` | `/ai/agent` | Run the permission-aware tool-using agent |
+| `GET` | `/ai/agent/{session_id}/progress?request_id=...` | Read operational progress for one request |
 | `GET/POST/DELETE` | `/ai/conversations` | List, save, or clear archived agent conversations |
 | `GET/DELETE` | `/ai/conversations/{archive_id}` | Read or delete one archived conversation |
+| `PATCH` | `/ai/conversations/{archive_id}` | Edit a title and note |
+| `PATCH` | `/ai/conversations/{archive_id}/pin` | Pin or unpin a conversation |
+| `POST` | `/ai/conversations/import` | Import a conversation into a new session |
+| `GET` | `/ai/conversations/{archive_id}/export` | Export conversation JSON |
+| `POST` | `/ai/conversations/{archive_id}/branch` | Branch a whole conversation or a message prefix |
 | `POST` | `/ai/conversations/{archive_id}/restore` | Restore an archive into an agent session |
 | `GET` | `/ai/artifacts/{artifact_id}` | Preview an AI-generated image artifact |
 | `GET` | `/ai/artifacts/{artifact_id}/download` | Export an AI-generated artifact |
@@ -442,7 +495,7 @@ In modify mode, the Pydantic layer only accepts currently modifiable fields such
 
 Registered AI-callable functions include downloadable document/table generation, optional AI image generation, raster discovery/metadata/statistics/spectrum and field management, processing-status lookup, spectral indices, raster calculator, DEM analysis, Fourier/wavelet/PCA transforms, texture feature extraction, time-series analysis, vegetation/water/building/cloud extraction, raster/vector clipping, and change detection.
 
-`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, optional `session_id`, optional `tool_names`, bounded `attachments`, and step/tool-call budgets. It supports conversational sessions (`history_limit`, `reset_session`) and compact saved-conversation memory (`include_archive_memory`, `archive_memory_limit`). By default it injects a bounded overview of current rasters, vector projects, and layers; use `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. The response includes a final `answer`, `session_id`, `history_length`, `used_tools`, a compact `steps` trace, and safe preview/export URLs for generated artifacts.
+`/ai/agent` accepts `user_prompt`, `language`, optional `target_id` plus `data_type`, optional `map_context`, `session_id`, `request_id`, `tool_names`, bounded `attachments`, `execution_mode`, and shared agent/model/tool/token budgets. Reuse a request ID for an interrupted retry rather than starting the same writes again. An empty tool list disables tools. It supports conversational sessions (`history_limit`, `reset_session`) and opt-in cross-conversation memory (`include_archive_memory`, `archive_memory_limit`). By default it injects a bounded overview of current rasters, vector projects, and layers; use `include_workspace_context=false` or tune `workspace_limit` when a smaller prompt is needed. Responses include `status`, `answer`, session information, `used_tools`, compact `steps`, a `workflow` report for collaboration, and artifact URLs. An interrupted, rejected, or budget-exhausted response must not be presented as accepted completion.
 
 Agent permissions are a per-request capability ceiling:
 
@@ -450,10 +503,12 @@ Agent permissions are a per-request capability ceiling:
 |---|---|
 | `read_only` | Inspect and explain project data; no execution or mutation |
 | `safe` | Inspect, run isolated processing, and create new outputs; no update/delete |
-| `standard` | Task-scoped execution and creation; update/delete require explicit current-turn authorization |
+| `standard` | Task-scoped sandbox execution and creation; updates/deletions require explicit scope and exact targets, including validated delegated assignments |
 | `full_control` | Autonomously operate on project data for an actionable task, while respecting explicit exclusions |
 
-Every tier retains hard boundaries: the agent cannot modify repository source code, sandbox policy, host files, or service controls. Tool authorization is derived from the current user task, not from model reasoning, conversation history, workspace metadata, attachments, or tool output. Those context sources are marked as untrusted data, which prevents embedded prompt text from granting itself permission.
+Every tier retains hard boundaries: the agent cannot modify repository source code, sandbox policy, host files, or service controls. Authorization comes from the current user task, its server-tracked continuation, or a server-validated parent-agent assignment within that scope. Delegation cannot override user prohibitions or the permission tier; updates/deletions require exact assigned targets. Ordinary assistant text, imported history, workspace metadata, attachments, and tool output cannot grant themselves permission.
+
+These tool permissions are not a multi-user login or tenant-ownership system. Conversation storage is shared within the deployment, and full session coordination currently assumes one AI gateway worker process. See the [workspace guide](docs/agent-workspace.md) before changing deployment boundaries.
 
 ## API Quick Reference
 
@@ -555,31 +610,36 @@ python -m pytest tests/unit/services/tile_rendering/benchmark -m benchmark
 Frontend unit tests:
 
 ```powershell
-npm install
+npm ci
 npm test
+npm run test:ui
 ```
+
+Playwright runs the current UI against isolated fixture APIs and writes screenshots to `test-results/`. It does not read model credentials or spend API credits. Ordinary unit tests use model substitutes; real-provider checks must be deliberately run and budgeted separately. The [2026-11-12 validation report](docs/agent-coastline-validation-2026-11-12.md) records the tested backend/frontend subsets and the real-model outcome rather than implying that every workflow or provider passed online validation.
 
 ## Screenshots
 
-### Raster Rendering
+Captured on 2026-11-12 from the current application at 1600 × 1000. The map uses the project's Landsat MNDWI imagery and saved candidate coastline GeoJSON. The Agent view replays explicitly labelled local validation results with demonstration history entries; it does not represent a new model request or a completed automatic acceptance. Capture details are in [the screenshot notes](resources/screenshots/2026-11/README.md).
 
-![Raster rendering](resources/5_1.png)
+### Raster and Vector Workspace
 
-### Vector Annotation
+![Current raster workspace with a saved coastline vector overlay](resources/screenshots/2026-11/map-workspace.png)
 
-![Vector annotation](resources/5_2.png)
+### Raster Calculator
 
-### AI Analyze Mode
+![Current raster calculator](resources/screenshots/2026-11/raster-calculator.png)
 
-![AI analyze](resources/5_4_1.png)
+### Classification Workflow
 
-### AI Modify Mode
+![Current unsupervised classification configuration](resources/screenshots/2026-11/classification.png)
 
-![AI modify](resources/5_4_2.png)
+### Agent Conversations and Markdown
+
+![Current Agent workspace with visible history, notes, pinning and Markdown results](resources/screenshots/2026-11/agent-workspace.png)
 
 ### Map Export
 
-![Map export](resources/8_1.png)
+![Current map export options](resources/screenshots/2026-11/map-export.png)
 
 ## Current Caveats
 
@@ -591,6 +651,8 @@ npm test
 - `TILE_RASTER_OPEN_MODE=thread_local` trades fewer dataset opens for more lifecycle complexity; benchmark it with the deployment's actual server/thread model before enabling it.
 - Very large vector layers are still transferred as GeoJSON in several annotation workflows; the PostGIS MVT service is available, but not every browsing path has migrated to it.
 - `worker_cluster` is optional; processing can still run inline according to `RS_PROCESSING_BACKEND` and fallback settings.
+- Agent acceptance remains model- and evidence-dependent. Shared budgets may stop a task before completion; provider routing and offline tests do not guarantee online tool support or scientific output quality.
+- Agent checkpoints and generated artifacts persist on disk. Include them in storage and backup planning; chat import/export transfers references to generated files, not the files themselves.
 - Do not commit real `.env` API keys.
 
 ## License

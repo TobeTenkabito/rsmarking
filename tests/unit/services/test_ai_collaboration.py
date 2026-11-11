@@ -564,6 +564,78 @@ def test_vague_task_assignments_are_rejected(field):
         AgentPlan.model_validate(assignment)
 
 
+def test_provider_usage_replaces_conservative_call_reservations(monkeypatch):
+    responses = [response(json.dumps(plan())), *execution(), *verification()]
+    for item in responses:
+        item["usage"] = {"total_tokens": 100}
+    mock_model(monkeypatch, responses)
+    result = run(request())
+    assert result["status"] == "success"
+    assert result["workflow"]["estimated_tokens"] == 500
+
+
+def test_resume_keeps_completed_review_rounds_and_goes_directly_to_final_handoff(monkeypatch):
+    calls, _ = mock_model(
+        monkeypatch,
+        [
+            response(json.dumps(plan())),
+            *execution(),
+            response(tool="get_raster_metadata", arguments={"raster_id": 88}),
+            response(tool="get_raster_statistics", arguments={"raster_id": 88}),
+            RuntimeError("final review response timeout"),
+            response(json.dumps(review("evidence-3"))),
+        ],
+    )
+    payload = request()
+    assert run(payload)["status"] == "interrupted"
+    result = run(payload)
+    assert result["status"] == "success", result
+    assert not calls[-1].get("tools")
+    assert "evidence-3" in json.dumps(calls[-1]["messages"])
+    assert len(result["steps"]) == 3
+
+
+def test_original_sandbox_script_is_recoverable_after_context_compaction(monkeypatch):
+    from services.ai_gateway import agent_state_store
+
+    script = "print('repairable original script')"
+    mock_model(monkeypatch, [response(json.dumps(plan())), *execution(script), *verification()])
+    result = run(request())
+    reference = result["steps"][0]["result"]["script_reference"]
+    stored = agent_state_store.read_resource("coastline-chat", reference)
+    assert script in stored["text"]
+    assert "repairable original script" not in json.dumps(result["steps"][0]["arguments"])
+
+
+def test_resume_before_any_operation_allows_fixing_a_new_failed_script(monkeypatch):
+    calls, _ = mock_model(
+        monkeypatch,
+        [
+            RuntimeError("initial model timeout"),
+            response(json.dumps(plan())),
+            response(tool="run_script_sandbox", arguments={"script": "print('bad shape')"}),
+            response(tool="run_script_sandbox", arguments={"script": "print('fixed shape')"}),
+            response("Created output 88"),
+            *verification("evidence-3"),
+        ],
+    )
+    invocations = []
+
+    async def invoke(name, arguments, *args):
+        invocations.append((name, arguments))
+        if "bad shape" in arguments.get("script", ""):
+            return {"status": "error", "error": "array shape mismatch"}
+        return {"status": "success", "result": {"id": 88, "geometry_type": "LineString"}}
+
+    monkeypatch.setattr(handler, "_invoke_agent_tool", invoke)
+    payload = request()
+    assert run(payload)["status"] == "interrupted"
+    result = run(payload)
+    assert result["status"] == "success", result
+    assert len(invocations) == 3
+    assert "fixed shape" in invocations[1][1]["script"]
+
+
 @pytest.mark.parametrize("field", ["title", "instruction", "expected_output"])
 def test_blank_assignment_text_is_rejected(field):
     assignment = plan()

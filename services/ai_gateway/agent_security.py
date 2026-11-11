@@ -62,6 +62,8 @@ READ_ONLY_TOOLS = frozenset(
         "get_raster_metadata",
         "get_raster_statistics",
         "read_session_context",
+        "inspect_geojson_artifact",
+        "read_agent_execution_audit",
         "query_raster_spectrum",
         "list_raster_fields",
         "get_processing_task_status",
