@@ -8,15 +8,34 @@ from urllib.parse import urlsplit
 from dotenv import dotenv_values
 
 
-def main():
+def main() -> None:
     env_path = Path(__file__).resolve().parents[2] / ".env"
     file_values = dotenv_values(env_path)
-    overrides = sorted(key for key, value in file_values.items() if key.startswith(("AI_", "OPENAI_", "ANTHROPIC_", "GEMINI_", "GOOGLE_", "DEEPSEEK_", "DASHSCOPE_", "ARK_", "QIANFAN_")) and key in os.environ and os.environ[key] != value)
+    overrides = sorted(
+        key
+        for key, value in file_values.items()
+        if key.startswith((
+            "AI_",
+            "OPENAI_",
+            "ANTHROPIC_",
+            "GEMINI_",
+            "GOOGLE_",
+            "DEEPSEEK_",
+            "DASHSCOPE_",
+            "ARK_",
+            "QIANFAN_",
+        ))
+        and key in os.environ
+        and os.environ[key] != value
+    )
     from services.ai_gateway.config import get_ai_settings, _prefixes, _first_env
     from services.ai_gateway.llm_client import build_litellm_kwargs
     from services.ai_gateway.environment_settings import saved_ai_settings
     settings = get_ai_settings()
-    request = build_litellm_kwargs(messages=[{"role": "user", "content": "offline diagnostic"}], temperature=0.2)
+    request = build_litellm_kwargs(
+        messages=[{"role": "user", "content": "offline diagnostic"}],
+        temperature=0.2,
+    )
     names = ["AI_API_KEY"] + [f"{prefix}_API_KEY" for prefix in _prefixes(settings.provider)]
     key_source = next((name for name in names if _first_env([name])), None)
     configuration_source = "ui" if saved_ai_settings() is not None else "env"

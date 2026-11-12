@@ -135,11 +135,15 @@ def list_conversation_archives() -> list[dict[str, Any]]:
             archives.append(_summary(_read_archive_by_filename(name)))
         except Exception:
             continue
-    return sorted(archives, key=lambda item: (
-        bool(item.get("pinned")),
-        (item.get("pinned_at") if item.get("pinned") else item.get("updated_at")) or "",
-        item["archive_id"],
-    ), reverse=True)
+    return sorted(
+        archives,
+        key=lambda item: (
+            bool(item.get("pinned")),
+            (item.get("pinned_at") if item.get("pinned") else item.get("updated_at")) or "",
+            item["archive_id"],
+        ),
+        reverse=True,
+    )
 
 
 def get_conversation_archive(archive_id: str) -> dict[str, Any]:
@@ -148,7 +152,12 @@ def get_conversation_archive(archive_id: str) -> dict[str, Any]:
 
 def update_conversation_details(archive_id: str, payload: ConversationDetailsRequest) -> dict[str, Any]:
     record = _read_archive(archive_id)
-    record.update(title=payload.title, title_edited=True, note=payload.note.strip(), updated_at=_timestamp())
+    record.update(
+        title=payload.title,
+        title_edited=True,
+        note=payload.note.strip(),
+        updated_at=_timestamp(),
+    )
     _write_archive(record)
     return _summary(record)
 
@@ -164,11 +173,17 @@ def pin_conversation(archive_id: str, pinned: bool) -> dict[str, Any]:
 def export_conversation(archive_id: str) -> dict[str, Any]:
     record = _read_archive(archive_id)
     bundle = {
-        "format": "rsmarking.conversation", "version": 1,
+        "format": "rsmarking.conversation",
+        "version": 1,
         "conversation": {
-            "title": record["title"], "note": record.get("note", ""),
+            "title": record["title"],
+            "note": record.get("note", ""),
             "pinned": bool(record.get("pinned")),
-            "messages": [message for message in record["messages"] if message.get("role") in {"user", "assistant"}],
+            "messages": [
+                message
+                for message in record["messages"]
+                if message.get("role") in {"user", "assistant"}
+            ],
         },
     }
     # Exports must be accepted by the importer; never silently truncate a backup.
@@ -186,18 +201,30 @@ def import_conversation(payload: ConversationImportRequest) -> dict[str, Any]:
 
 def branch_conversation(archive_id: str, payload: ConversationBranchRequest) -> dict[str, Any]:
     source = _read_archive(archive_id)
-    messages = [message for message in source["messages"] if message.get("role") in {"user", "assistant"} and message.get("content")]
+    messages = [
+        message
+        for message in source["messages"]
+        if message.get("role") in {"user", "assistant"} and message.get("content")
+    ]
     index = payload.message_index if payload.message_index is not None else len(messages) - 1
     if not 0 <= index < len(messages):
         raise ValueError("Branch message is outside the saved conversation")
     return _create_conversation_copy(
-        messages[:index + 1], title=payload.title or (source["title"][:111] + " / branch"),
+        messages[:index + 1],
+        title=payload.title or (source["title"][:111] + " / branch"),
         note=source.get("note", ""),
         metadata={"parent_archive_id": archive_id, "branch_message_index": index},
     )
 
 
-def _create_conversation_copy(messages, *, title=None, note="", pinned=False, metadata=None):
+def _create_conversation_copy(
+    messages: list[dict[str, Any]],
+    *,
+    title: str | None = None,
+    note: str = "",
+    pinned: bool = False,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     archive_id = uuid.uuid4().hex
     now = _timestamp()
     record = {
@@ -246,7 +273,11 @@ def clear_conversation_archives() -> dict[str, Any]:
 
 def build_archive_memory_context(limit: int = 5) -> str:
     # Pinning changes presentation, not which chats are selected as recent memory.
-    archives = sorted(list_conversation_archives(), key=lambda item: item.get("updated_at") or "", reverse=True)[: max(0, limit)]
+    archives = sorted(
+        list_conversation_archives(),
+        key=lambda item: item.get("updated_at") or "",
+        reverse=True,
+    )[: max(0, limit)]
     if not archives:
         return ""
 
@@ -327,7 +358,10 @@ def _normalize_attachments(attachments: list[dict[str, Any]]) -> list[dict[str, 
         if text_excerpt:
             item["text_excerpt"] = text_excerpt[:12000]
         image_data_url = str(attachment.get("image_data_url") or "")
-        if len(image_data_url) <= 4_500_000 and re.fullmatch(r"data:image/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}", image_data_url):
+        if len(image_data_url) <= 4_500_000 and re.fullmatch(
+            r"data:image/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}",
+            image_data_url,
+        ):
             item["image_data_url"] = image_data_url
         normalized.append(item)
     return normalized

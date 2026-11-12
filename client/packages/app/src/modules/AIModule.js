@@ -335,7 +335,13 @@ export class AIModule {
         }
         const archiveId = this._activeArchiveId;
         const title = messages.find(message => message.role === 'user')?.content.slice(0, 80) || 'Agent conversation';
-        const payload = { archive_id: archiveId, session_id: sessionId, title, messages, metadata: { source: 'agent-ui', autosaved: true } };
+        const payload = {
+            archive_id: archiveId,
+            session_id: sessionId,
+            title,
+            messages,
+            metadata: { source: 'agent-ui', autosaved: true },
+        };
         this._setSaveStatus('Saving…');
         const save = async () => {
             try {
@@ -574,7 +580,13 @@ export class AIModule {
         if (this._archiveEdit?.saving) return;
         const archive = this._conversationArchives.find(item => item.archive_id === archiveId);
         if (!archive) return;
-        this._archiveEdit = { id: archiveId, title: archive.title || '', note: archive.note || '', saving: false, error: '' };
+        this._archiveEdit = {
+            id: archiveId,
+            title: archive.title || '',
+            note: archive.note || '',
+            saving: false,
+            error: '',
+        };
         this._renderArchivePanel();
         document.getElementById('ai-history-edit-title')?.focus();
     }
@@ -865,8 +877,11 @@ export class AIModule {
     }
 
     _readPreference(name, fallback) {
-        try { return localStorage.getItem(`rsmarking.ai.${name}`) || fallback; }
-        catch (_error) { return fallback; }
+        try {
+            return localStorage.getItem(`rsmarking.ai.${name}`) || fallback;
+        } catch (_error) {
+            return fallback;
+        }
     }
 
     _bindChatEvents() {
@@ -888,16 +903,27 @@ export class AIModule {
             if (event.key === 'Tab') {
                 const focusable = [...modal.querySelectorAll('button:not(:disabled), input, textarea, select, summary, a[href]')]
                     .filter(element => element.getClientRects().length && !element.closest('.hidden'));
-                const first = focusable[0], last = focusable.at(-1);
-                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-                if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                const first = focusable[0];
+                const last = focusable.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last?.focus();
+                }
+                if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first?.focus();
+                }
             }
         });
         input?.addEventListener('keydown', event => this._handleComposerKeydown(event));
         input?.addEventListener('input', () => this._resizeComposer());
         select?.addEventListener('change', () => {
             this._sendMode = select.value;
-            try { localStorage.setItem('rsmarking.ai.send-mode', this._sendMode); } catch (_error) { /* optional preference */ }
+            try {
+                localStorage.setItem('rsmarking.ai.send-mode', this._sendMode);
+            } catch (_error) {
+                // The preference is optional when browser storage is unavailable.
+            }
             this._syncKeyboardHint();
         });
         document.getElementById('ai-history-search')?.addEventListener('input', () => this._renderArchivePanel());
@@ -928,7 +954,8 @@ export class AIModule {
                 const id = this._historyMenuId;
                 this._historyMenuId = null;
                 this._renderArchivePanel();
-                Array.from(history.querySelectorAll('[data-ai-history-menu]')).find(button => button.dataset.aiHistoryMenu === id)?.focus();
+                Array.from(history.querySelectorAll('[data-ai-history-menu]'))
+                    .find(button => button.dataset.aiHistoryMenu === id)?.focus();
             }
         });
         const collapseNote = event => {
@@ -949,7 +976,9 @@ export class AIModule {
             if (button.dataset.aiHistoryMenu) {
                 this._historyMenuId = this._historyMenuId === button.dataset.aiHistoryMenu ? null : button.dataset.aiHistoryMenu;
                 this._renderArchivePanel();
-                const row = Array.from(history.querySelectorAll('[data-ai-history-menu]')).find(item => item.dataset.aiHistoryMenu === button.dataset.aiHistoryMenu)?.closest('.ai-history-item');
+                const row = Array.from(history.querySelectorAll('[data-ai-history-menu]'))
+                    .find(item => item.dataset.aiHistoryMenu === button.dataset.aiHistoryMenu)
+                    ?.closest('.ai-history-item');
                 (row?.querySelector('.ai-history-menu button') || row?.querySelector('[data-ai-history-menu]'))?.focus();
             }
             if (button.dataset.aiPinChat) await this.toggleConversationPin(button.dataset.aiPinChat);
@@ -972,7 +1001,9 @@ export class AIModule {
                 try {
                     await navigator.clipboard.writeText(message?.content || '');
                     button.textContent = t('Copied');
-                } catch (_error) { this._showError(t('Copy failed. Select the text to copy.')); }
+                } catch (_error) {
+                    this._showError(t('Copy failed. Select the text to copy.'));
+                }
             }
         });
     }
@@ -2205,7 +2236,12 @@ export class AIModule {
     }
 
     _agentRoleLabel(role) {
-        const labels = { planner: 'Planner', executor: 'Executor', verifier: 'Verifier', coordinator: 'Coordinator' };
+        const labels = {
+            planner: 'Planner',
+            executor: 'Executor',
+            verifier: 'Verifier',
+            coordinator: 'Coordinator',
+        };
         return t(labels[role] || 'Coordinator');
     }
 
@@ -2370,7 +2406,10 @@ export class AIModule {
 
     _clearResult() {
         const resultEl = document.getElementById('ai-result-content');
-        if (resultEl) { resultEl.textContent = ''; resultEl.classList.remove('ai-result-markdown'); }
+        if (resultEl) {
+            resultEl.textContent = '';
+            resultEl.classList.remove('ai-result-markdown');
+        }
         this._clearTransientMessages();
         document.getElementById('ai-result-section')?.classList.add('hidden');
         document.getElementById('ai-confirm-section')?.classList.add('hidden');
@@ -2386,12 +2425,18 @@ export class AIModule {
 
     _showError(msg) {
         const el = document.getElementById('ai-error-msg');
-        if (el) { el.textContent = t(msg); el.classList.remove('hidden'); }
+        if (el) {
+            el.textContent = t(msg);
+            el.classList.remove('hidden');
+        }
     }
 
     _showSuccess(msg) {
         const el = document.getElementById('ai-success-msg');
-        if (el) { el.textContent = t(msg); el.classList.remove('hidden'); }
+        if (el) {
+            el.textContent = t(msg);
+            el.classList.remove('hidden');
+        }
     }
 
     _resetState() {
