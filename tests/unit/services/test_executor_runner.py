@@ -195,3 +195,70 @@ def test_validated_input_path_rejects_files_outside_storage_roots(tmp_path, monk
     assert runner._validated_input_path(str(allowed_file)) == str(allowed_file)
     with pytest.raises(ValueError, match="outside the configured"):
         runner._validated_input_path(str(outside_file))
+
+
+@pytest.mark.parametrize(
+    "filenames,expected_status",
+    [
+        (["coastline.geojson"], "success"),
+        (["coastline.geojson", "alternative.geojson"], "error"),
+        (["water.tif"], "error"),
+    ],
+)
+def test_geojson_output_fallback_uses_only_unambiguous_matching_files(
+    tmp_path, monkeypatch, filenames, expected_status
+):
+    raw_dir = tmp_path / "raw"
+    temp_dir = tmp_path / "tmp"
+    temp_dir.mkdir()
+    fake_client = _FakeDockerClient(create_output=False)
+
+    def create_files(**kwargs):
+        output_dir = next(
+            Path(path)
+            for path, spec in kwargs["volumes"].items()
+            if spec["bind"] == runner.CONTAINER_OUTPUT_DIR
+        )
+        for filename in filenames:
+            (output_dir / filename).write_text(
+                '{"type":"FeatureCollection","features":[]}',
+                encoding="utf-8",
+            )
+        return _FakeContainer()
+
+    fake_client.containers.run = create_files
+    monkeypatch.setattr(runner, "client", fake_client)
+    monkeypatch.setattr(runner, "HOST_RAW_DIR", str(raw_dir))
+    monkeypatch.setattr(runner, "HOST_TMP_DIR", str(temp_dir))
+
+    result = runner.run_in_sandbox("print('ok')", [], "expected.geojson")
+
+    assert result["status"] == expected_status
+    assert (raw_dir / "expected.geojson").exists() == (expected_status == "success")
+
+
+def test_output_directory_is_not_published_as_a_file(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "raw"
+    temp_dir = tmp_path / "tmp"
+    temp_dir.mkdir()
+    fake_client = _FakeDockerClient(create_output=False)
+
+    def create_directory(**kwargs):
+        output_dir = next(
+            Path(path)
+            for path, spec in kwargs["volumes"].items()
+            if spec["bind"] == runner.CONTAINER_OUTPUT_DIR
+        )
+        (output_dir / kwargs["environment"]["OUTPUT_FILENAME"]).mkdir()
+        return _FakeContainer()
+
+    fake_client.containers.run = create_directory
+    monkeypatch.setattr(runner, "client", fake_client)
+    monkeypatch.setattr(runner, "HOST_RAW_DIR", str(raw_dir))
+    monkeypatch.setattr(runner, "HOST_TMP_DIR", str(temp_dir))
+
+    result = runner.run_in_sandbox("print('ok')", [], "expected.geojson")
+
+    assert result["status"] == "error"
+    assert "regular file" in result["message"]
+    assert not (raw_dir / "expected.geojson").exists()

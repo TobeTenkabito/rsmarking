@@ -106,10 +106,10 @@ class WorkflowReport(BaseModel):
         "budget_exhausted",
     ]
     round: int = Field(default=0, ge=0, le=2)
-    model_calls: int = Field(default=0, ge=0, le=32)
-    estimated_tokens: int = Field(default=0, ge=0, le=1000000)
-    tool_calls: int = Field(default=0, ge=0, le=24)
-    limits: dict[str, int] = Field(default_factory=dict, max_length=8)
+    model_calls: int = Field(default=0, ge=0)
+    estimated_tokens: int = Field(default=0, ge=0)
+    tool_calls: int = Field(default=0, ge=0)
+    limits: dict[str, int | None] = Field(default_factory=dict, max_length=8)
     events: list[WorkflowEvent] = Field(default_factory=list, max_length=48)
     review: AgentReview | None = None
     tasks: list[AgentTask] = Field(default_factory=list, max_length=4)
@@ -140,13 +140,26 @@ def new_workflow(payload) -> dict[str, Any]:
 def reserve_model_call(workflow: dict, input_tokens: int, output_tokens: int) -> None:
     limits = workflow["limits"]
     estimate = input_tokens + output_tokens
-    if workflow["model_calls"] >= limits["max_model_calls"]:
+    if (
+        limits["max_model_calls"] is not None
+        and workflow["model_calls"] >= limits["max_model_calls"]
+    ):
         raise AgentBudgetExceeded("Shared model-call limit reached.")
-    if workflow["estimated_tokens"] + estimate > limits["token_budget"]:
+    if (
+        limits["token_budget"] is not None
+        and workflow["estimated_tokens"] + estimate > limits["token_budget"]
+    ):
         raise AgentBudgetExceeded("Shared estimated token budget reached.")
     # Reserve before the call: a timeout may still have incurred provider usage.
     workflow["model_calls"] += 1
     workflow["estimated_tokens"] += estimate
+
+
+def remaining_budget(workflow: dict, limit: str, usage: str) -> int | None:
+    maximum = workflow["limits"][limit]
+    if maximum is None:
+        return None
+    return max(0, maximum - workflow[usage])
 
 
 def settle_model_usage(workflow: dict, response, reserved_tokens: int) -> None:
@@ -223,6 +236,8 @@ def validate_review(review: AgentReview, plan: AgentPlan, steps: list[dict]) -> 
 
 PLANNER_INSTRUCTION = """You are the planning agent. Inspect the real workspace and the available tool catalog.
 Use read-only tools to resolve missing inputs; never invent raster ids, bands, files, tools or outputs.
+Reuse the supplied workspace inventory and prior observations. Limit discovery to missing facts;
+do not spend the execution and verification budget re-listing already known inputs.
 Choose the minimum useful number of execution agents (one per task), within the supplied limits.
 Do not create an additional worker solely for acceptance inspection; the independent verifier already
 performs that job. Keep execution reports short and pass output ids and script_reference to the verifier.
@@ -242,6 +257,8 @@ segmentation and boundary extraction; a water mask alone is not a coastline. Spe
 geometry, non-emptiness, location and quality will be checked, without inventing a ground-truth accuracy.
 Separate sea-connected water from inland ponds; all water/land contours are not automatically coastlines.
 Record the evidence for choosing the sea component and exclude crop/nodata boundaries.
+For rotated scenes or nodata margins, inspect the valid-data footprint boundary, not only the
+outermost raster rows and columns. An empty rectangular-edge candidate set does not prove no sea exists.
 On review failure, diagnose the supplied issues and actual observations, preserve completed outputs,
 and plan only necessary repairs. Keep every original acceptance criterion unchanged; you may add criteria.
 Return ONLY a JSON object matching the supplied plan schema. Do not include private chain-of-thought."""
@@ -261,6 +278,8 @@ Tool success alone does not establish scientific quality. Verify data type, geom
 non-empty content and requested quality metrics where relevant. If evidence or access is insufficient,
 reject acceptance and explain the missing check. Never execute repairs or change the acceptance criteria.
 Return ONLY JSON matching the review schema, with a user-facing summary in the requested language.
+Prioritize inspecting the worker's actual output ids. If execution failed and produced no output,
+reject with the recorded cause instead of spending calls rediscovering source data or empty projects.
 Do not include private chain-of-thought or fabricate evidence ids."""
 
 

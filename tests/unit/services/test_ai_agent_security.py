@@ -538,3 +538,19 @@ def test_live_authorization_is_isolated_cleared_and_not_restored_from_archives()
     agent_session.set_session_task_scope(session, "分析影像")
     agent_session.clear_session(session)
     assert agent_session.get_session_task_scope(session) == ""
+
+
+def test_long_sandbox_error_keeps_redacted_exception_tail(monkeypatch):
+    from services.ai_gateway.agent_security import sanitize_error_message
+
+    monkeypatch.setenv("TEST_API_KEY", "sensitive-test-key")
+    message = (
+        "500: Sandbox exited with status code 1\n"
+        + "metadata and traceback context\n" * 100
+        + "TypeError: Object of type int64 is not JSON serializable sensitive-test-key"
+    )
+    result = sanitize_error_message(message)
+    assert len(result) <= 1200
+    assert result.startswith("500: Sandbox exited")
+    assert "TypeError: Object of type int64 is not JSON serializable" in result
+    assert "sensitive-test-key" not in result

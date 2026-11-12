@@ -3,6 +3,8 @@ import os
 import sys
 import traceback
 import warnings
+from types import ModuleType
+from typing import Any
 
 import numpy as np
 import rasterio
@@ -27,6 +29,41 @@ _RASTER_INPUT_SUFFIXES = (
     ".jp2",
 )
 _VECTOR_INPUT_SUFFIXES = (".geojson", ".json")
+MAX_GEOJSON_BYTES = 20 * 1024 * 1024
+
+
+class NumpyJSONEncoder(json.JSONEncoder):
+    """Keep scientific scalar values numeric when scripts serialize results."""
+
+    def default(self, value: Any) -> Any:
+        if isinstance(value, np.bool_):
+            return bool(value)
+        if isinstance(value, np.integer):
+            return int(value)
+        if isinstance(value, np.floating):
+            return float(value)
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        return super().default(value)
+
+
+def _json_dump(value: Any, file: Any, **kwargs: Any) -> None:
+    kwargs.setdefault("cls", NumpyJSONEncoder)
+    json.dump(value, file, **kwargs)
+
+
+def _json_dumps(value: Any, **kwargs: Any) -> str:
+    kwargs.setdefault("cls", NumpyJSONEncoder)
+    return json.dumps(value, **kwargs)
+
+
+# Only user scripts receive this adapter. Do not monkeypatch the json module
+# used by rasterio, other libraries, or the executor's own metadata handling.
+_SANDBOX_JSON = ModuleType("json")
+_SANDBOX_JSON.__dict__.update(json.__dict__)
+_SANDBOX_JSON.dump = _json_dump
+_SANDBOX_JSON.dumps = _json_dumps
+
 _ALLOWED_MODULE_ROOTS = {
     "__future__",
     "affine",
@@ -78,6 +115,8 @@ def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     if root_name not in _ALLOWED_MODULE_ROOTS:
         raise ImportError(f"Import of '{name}' is not allowed in the sandbox")
 
+    if name == "json" and not level:
+        return _SANDBOX_JSON
     return _REAL_IMPORT(name, globals, locals, fromlist, level)
 
 
@@ -507,6 +546,19 @@ def main():
         save_raster_helper(data, output, next_profile)
         return output
 
+    def write_geojson_helper(document: dict, path: str | None = None) -> str:
+        if document.get("type") != "FeatureCollection" or not isinstance(document.get("features"), list):
+            raise ValueError("write_geojson requires a WGS84 FeatureCollection")
+        output = _safe_container_path(path or output_file, for_write=True)
+        if not output.lower().endswith(_VECTOR_INPUT_SUFFIXES):
+            raise ValueError("GeoJSON output must use a .geojson or .json filename")
+        content = _json_dumps(document, ensure_ascii=False, allow_nan=False)
+        if len(content.encode("utf-8")) > MAX_GEOJSON_BYTES:
+            raise ValueError("Sandbox GeoJSON exceeds 20 MiB")
+        with sandbox_open(output, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        return output
+
     exec_globals = {
         "__builtins__": SAFE_BUILTINS,
         "__name__": "__sandbox__",
@@ -556,6 +608,7 @@ def main():
         "read_raster": read_raster_helper,
         "read_array": read_array_helper,
         "write_raster": write_raster_helper,
+        "write_geojson": write_geojson_helper,
         "save_raster": save_raster_helper,
     }
     exec_globals.update({name: module for name, module in optional_modules.items() if module is not None})
@@ -609,14 +662,14 @@ def main():
 
         generated_files = [
             file_name for file_name in os.listdir(output_dir)
-            if file_name.lower().endswith((".tif", ".tiff"))
+            if file_name.lower().endswith((".tif", ".tiff", ".geojson", ".json"))
         ]
         if generated_files:
             print(f"Generated output file(s): {', '.join(generated_files)}")
         else:
             print(
-                "WARNING: no output raster detected. "
-                "Make sure the script writes a raster into OUTPUT_DIR or OUTPUT_FILE."
+                "WARNING: no raster or GeoJSON output detected. "
+                "For data-producing tasks, write the selected format to OUTPUT_FILE."
             )
     except Exception:
         exc_info = traceback.format_exc()

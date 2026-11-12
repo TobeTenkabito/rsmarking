@@ -79,8 +79,8 @@ def summarize_geojson(document: dict, expected_bbox: list[float] | None = None) 
 
 def create_geojson_artifact(filename: str, document: dict) -> dict:
     data = json.dumps(document, ensure_ascii=False, allow_nan=False).encode("utf-8")
-    if len(data) > 5 * 1024 * 1024:
-        raise ValueError("Sandbox GeoJSON exceeds 5 MiB")
+    if len(data) > artifacts.MAX_ARTIFACT_BYTES:
+        raise ValueError("Sandbox GeoJSON exceeds 20 MiB")
     summary = summarize_geojson(document)
     artifact = artifacts._write_artifact(
         filename=artifacts._safe_filename(filename, ".geojson"),
@@ -93,8 +93,11 @@ def create_geojson_artifact(filename: str, document: dict) -> dict:
 
 def inspect_geojson_artifact(artifact_id: str, expected_bbox: list[float] | None = None) -> dict:
     metadata, path = artifacts.get_artifact(artifact_id)
-    if path.suffix.lower() not in {".json", ".geojson"} or path.stat().st_size > 5 * 1024 * 1024:
-        raise ValueError("Inspection requires a JSON/GeoJSON artifact no larger than 5 MiB")
+    if (
+        path.suffix.lower() not in {".json", ".geojson"}
+        or path.stat().st_size > artifacts.MAX_ARTIFACT_BYTES
+    ):
+        raise ValueError("Inspection requires a JSON/GeoJSON artifact no larger than 20 MiB")
     data = path.read_bytes()
     summary = summarize_geojson(json.loads(data), expected_bbox)
     return {

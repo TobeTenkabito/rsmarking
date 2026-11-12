@@ -17,6 +17,7 @@ logger = logging.getLogger("data_service.executor_bridge")
 EXECUTOR_URL = os.getenv("EXECUTOR_SERVICE_URL", "http://localhost:8004/execute")
 MAX_EXECUTOR_LOG_LINES = 40
 MAX_EXECUTOR_LOG_CHARS = 4000
+MAX_GEOJSON_BYTES = 20 * 1024 * 1024
 
 
 def _sandbox_raster_alias(raster_id: int) -> str:
@@ -142,8 +143,8 @@ async def dispatch_user_script(
         expected = (Path(UPLOAD_DIR) / raw_output_filename).resolve()
         if not tmp_path or Path(tmp_path).resolve() != expected or not expected.is_file():
             raise HTTPException(status_code=500, detail="Executor did not produce the expected GeoJSON")
-        if expected.stat().st_size > 5 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Sandbox GeoJSON exceeds 5 MiB")
+        if expected.stat().st_size > MAX_GEOJSON_BYTES:
+            raise HTTPException(status_code=413, detail="Sandbox GeoJSON exceeds 20 MiB")
         return {
             "status": "success",
             "geojson": json.loads(expected.read_text(encoding="utf-8")),

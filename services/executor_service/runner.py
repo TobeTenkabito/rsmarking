@@ -425,10 +425,15 @@ def run_in_sandbox(
             }
 
         sandbox_output_path = os.path.join(temp_output_dir, safe_output_name)
-        if not os.path.exists(sandbox_output_path):
+        output_suffix = os.path.splitext(safe_output_name)[1].lower()
+        if output_suffix in {".geojson", ".json"}:
+            output_suffixes = (".geojson", ".json")
+        else:
+            output_suffixes = (".tif", ".tiff")
+        if not os.path.lexists(sandbox_output_path):
             created_files = [
                 name for name in os.listdir(temp_output_dir)
-                if name.lower().endswith((".tif", ".tiff"))
+                if name.lower().endswith(output_suffixes)
             ]
 
             if len(created_files) == 1:
@@ -450,9 +455,25 @@ def run_in_sandbox(
             else:
                 return {
                     "status": "error",
-                    "message": "Script completed but did not produce the expected output raster",
+                    "message": (
+                        "Script completed but did not produce one unambiguous output "
+                        f"in the expected format ({', '.join(output_suffixes)}). Write OUTPUT_FILE."
+                    ),
                     "logs": logs,
                 }
+
+        resolved_output = os.path.realpath(sandbox_output_path)
+        if (
+            os.path.islink(sandbox_output_path)
+            or not os.path.isfile(sandbox_output_path)
+            or os.path.commonpath([resolved_output, os.path.realpath(temp_output_dir)])
+            != os.path.realpath(temp_output_dir)
+        ):
+            return {
+                "status": "error",
+                "message": "Sandbox output must be a regular file inside its output directory",
+                "logs": logs,
+            }
 
         output_path = os.path.join(HOST_RAW_DIR, safe_output_name)
         os.replace(sandbox_output_path, output_path)

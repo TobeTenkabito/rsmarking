@@ -58,8 +58,8 @@ async def import_generated_artifact(
 
 
 def _read_geojson(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    if path.stat().st_size > 5 * 1024 * 1024:
-        raise ValueError("Workspace GeoJSON cannot exceed 5 MiB")
+    if path.stat().st_size > artifacts.MAX_ARTIFACT_BYTES:
+        raise ValueError("Workspace GeoJSON cannot exceed 20 MiB")
     document = json.loads(path.read_bytes())
     # Reject non-finite properties as well as invalid geometry before any DB write.
     json.dumps(document, allow_nan=False)

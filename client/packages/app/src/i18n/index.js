@@ -1448,7 +1448,7 @@ Object.assign(literalCatalog.zh, {
     'Assigned tools': '分配工具',
     'Plan, execute and verify': '规划、执行与验收',
     'Direct agent': '直接执行',
-    'Collaboration shares one budget and allows one automatic repair.': '所有智能体共用预算，最多自动返工一次。',
+    'No usage budget by default. Outputs are independently verified, with one automatic repair.': '默认不设用量预算上限，独立验收成果，最多自动返工一次。',
     'Planner': '规划者',
     'Executor': '执行者',
     'Verifier': '验收者',

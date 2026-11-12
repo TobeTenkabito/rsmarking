@@ -66,7 +66,7 @@ export const aiModal = `
                                         <option value="single">Direct agent</option>
                                     </select>
                                 </label>
-                                <p class="ai-setting-note">Collaboration shares one budget and allows one automatic repair.</p>
+                                <p class="ai-setting-note">No usage budget by default. Outputs are independently verified, with one automatic repair.</p>
                                 <div id="ai-permission-banner" class="ai-setting-note"></div>
                                 <label class="ai-setting-check">
                                     <input id="ai-task-autonomy" type="checkbox" checked>

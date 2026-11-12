@@ -409,7 +409,8 @@ class ScriptSandboxArgs(BaseModel):
         default="raster",
         description=(
             "Use geojson for vector delivery: write a WGS84 FeatureCollection to OUTPUT_FILE "
-            "with json.dump and sandbox_open. The gateway persists it as a downloadable artifact "
+            "with write_geojson(document), or json.dump and sandbox_open. "
+            "The gateway persists it as a downloadable artifact "
             "without copying coordinates through model tokens. This always requires OUTPUT_FILE. "
             "Use raster plus require_raster_output=false for log-only diagnostics."
         ),
@@ -425,8 +426,10 @@ class ScriptSandboxArgs(BaseModel):
             "raster_files[<index_id>], inputs[\"actual_filename.tif\"], or ordered input_0/input_1; "
             "read injected GeoJSON through feature_0, features, feature_by_id, layer_features, "
             "feature_geometry(), feature_shape(), or read_geojson(); "
-            "helpers include input_path(), read_raster(), read_array(), write_raster(), "
-            "sandbox_open(), output_path(), and list_inputs(); write OUTPUT_FILE in the selected output_format."
+            "helpers include input_path(), read_raster(), read_array(), write_raster(), write_geojson(), "
+            "sandbox_open(), output_path(), and list_inputs(); write OUTPUT_FILE in the selected output_format. "
+            "The sandbox json.dump/json.dumps adapter supports NumPy scalars and arrays "
+            "without converting them to strings."
         ),
     )
 

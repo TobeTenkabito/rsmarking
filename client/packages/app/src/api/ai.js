@@ -108,7 +108,7 @@ export const AIAPI = {
     async agent(payload) {
         return requestAI('/ai/agent', {
             ...payload,
-            max_steps: payload.max_steps ?? 4,
+            max_steps: payload.max_steps ?? null,
         }, 'Agent request failed');
     },
 

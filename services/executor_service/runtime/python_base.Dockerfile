@@ -1,7 +1,5 @@
 # text slim text
 FROM python:3.10-slim
-ARG RS_SANDBOX_SPEC_HASH=unknown
-LABEL rsmarking.sandbox.spec_hash=$RS_SANDBOX_SPEC_HASH
 
 # text,text .pyc text,text
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -40,6 +38,10 @@ RUN chown sandboxuser:sandboxuser /app/sandbox_entry.py && chmod +x /app/sandbox
 
 # text root text
 USER sandboxuser
+
+# Runtime revisions must not invalidate the system and Python dependency layers.
+ARG RS_SANDBOX_SPEC_HASH=unknown
+LABEL rsmarking.sandbox.spec_hash=$RS_SANDBOX_SPEC_HASH
 
 # text
 ENTRYPOINT ["python", "/app/sandbox_entry.py"]

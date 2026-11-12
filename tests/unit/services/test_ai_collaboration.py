@@ -257,6 +257,43 @@ def test_all_agents_share_a_hard_budget(monkeypatch, limits, expected_calls):
     assert not result["workflow"].get("review")
 
 
+def test_default_workflow_continues_past_previous_call_and_token_limits(monkeypatch):
+    from services.ai_gateway.agent_collaboration import (
+        new_workflow,
+        reserve_model_call,
+        workflow_report,
+    )
+
+    payload = request()
+    assert payload.max_steps is None
+    assert payload.max_tool_calls is None
+    assert payload.max_model_calls is None
+    assert payload.agent_token_budget is None
+
+    responses = [response(json.dumps(plan()))]
+    for index in range(33):
+        responses.append(
+            response(
+                tool="run_script_sandbox",
+                arguments={"script": f"print('operation {index}')"},
+            )
+        )
+    responses.extend([response("Created output 88"), *verification("evidence-34")])
+    calls, invocations = mock_model(monkeypatch, responses)
+
+    result = run(payload)
+
+    assert result["status"] == "success", result
+    assert len(calls) == 37
+    assert len(invocations) == 34
+    assert result["workflow"]["tool_calls"] == 34
+    assert result["workflow"]["limits"]["max_tool_calls"] is None
+
+    workflow = new_workflow(payload)
+    reserve_model_call(workflow, 1_100_000, 4096)
+    assert workflow_report(workflow)["estimated_tokens"] == 1_104_096
+
+
 def test_resume_preserves_completed_workers_and_cumulative_budget(monkeypatch):
     calls, invocations = mock_model(
         monkeypatch,
@@ -586,7 +623,7 @@ def test_resume_keeps_completed_review_rounds_and_goes_directly_to_final_handoff
             response(json.dumps(review("evidence-3"))),
         ],
     )
-    payload = request()
+    payload = request(max_steps=2)
     assert run(payload)["status"] == "interrupted"
     result = run(payload)
     assert result["status"] == "success", result

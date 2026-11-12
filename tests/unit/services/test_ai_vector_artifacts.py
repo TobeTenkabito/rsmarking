@@ -2,7 +2,7 @@ import asyncio
 import json
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from services.ai_gateway import artifacts, function_registry
@@ -52,6 +52,74 @@ def test_saved_coordinates_download_and_independent_inspection(monkeypatch, tmp_
     reread = inspect_geojson_artifact(artifact["artifact_id"])
     assert reread["feature_count"] == 0
     assert reread["sha256"] != inspection["sha256"]
+
+
+@pytest.mark.parametrize("size_mb", [6, 21])
+def test_sandbox_file_size_is_consistent_across_delivery_and_workspace_import(
+    monkeypatch, tmp_path, size_mb
+):
+    from services.ai_gateway.workspace_import import _read_geojson
+    from services.data_service.bridges import executor_bridge
+
+    document = collection()
+    document["features"][0]["properties"]["note"] = "x" * (size_mb * 1024 * 1024)
+    content = json.dumps(document)
+    monkeypatch.setattr(executor_bridge, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(artifacts, "ARTIFACT_DIR", tmp_path / "artifacts")
+
+    class ExecutorClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, json):
+            path = tmp_path / json["output_name"]
+            path.write_text(content, encoding="utf-8")
+
+            class Response:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {"status": "success", "output_path": str(path)}
+
+            return Response()
+
+    monkeypatch.setattr(executor_bridge.httpx, "AsyncClient", ExecutorClient)
+
+    async def dispatch():
+        return await executor_bridge.dispatch_user_script(
+            db=object(),
+            script="print('done')",
+            raster_ids=[],
+            output_name="coastline",
+            output_format="geojson",
+        )
+
+    if size_mb > 20:
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(dispatch())
+        assert error.value.status_code == 413
+        with pytest.raises(ValueError, match="20 MiB"):
+            create_geojson_artifact("coastline", document)
+        path = next(tmp_path.glob("*.geojson"))
+        with pytest.raises(ValueError, match="20 MiB"):
+            _read_geojson(path)
+        return
+
+    response = asyncio.run(dispatch())
+    artifact = create_geojson_artifact("coastline", response["geojson"])
+    inspection = inspect_geojson_artifact(artifact["artifact_id"])
+    _, path = artifacts.get_artifact(artifact["artifact_id"])
+    imported, summary = _read_geojson(path)
+    assert imported == document
+    assert inspection["feature_count"] == summary["feature_count"] == 1
+    assert inspection["size"] > 5 * 1024 * 1024
 
 
 def test_inspection_detects_outside_extent_and_rejects_projected_coordinates(monkeypatch, tmp_path):

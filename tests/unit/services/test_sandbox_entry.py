@@ -9,6 +9,70 @@ rasterio = pytest.importorskip("rasterio")
 from services.executor_service.runtime import sandbox_entry
 
 
+def test_script_json_adapter_preserves_numpy_values_and_standard_json():
+    adapter = sandbox_entry.safe_import("json")
+    values = {
+        "vertices": np.int64(17),
+        "accepted": np.bool_(True),
+        "threshold": np.float32(0.125),
+        "coordinates": np.array([[121.0, 31.0], [122.0, 32.0]]),
+    }
+    assert json.loads(adapter.dumps(values)) == {
+        "vertices": 17,
+        "accepted": True,
+        "threshold": 0.125,
+        "coordinates": [[121.0, 31.0], [122.0, 32.0]],
+    }
+    with pytest.raises(TypeError):
+        json.dumps(np.int64(17))
+    with pytest.raises(TypeError):
+        adapter.dumps(object())
+    with pytest.raises(ValueError):
+        adapter.dumps(np.float32(np.nan), allow_nan=False)
+    assert adapter.dumps(np.int64(17), default=lambda value: "custom") == '"custom"'
+
+
+def test_runtime_delivers_geojson_when_numpy_statistics_are_printed(tmp_path, monkeypatch, capsys):
+    input_dir = tmp_path / "inputs"
+    output_dir = tmp_path / "outputs"
+    input_dir.mkdir()
+    output_dir.mkdir()
+    script_path = tmp_path / "script.py"
+    script_path.write_text(
+        "\n".join([
+            "import json",
+            "from json import dumps",
+            "document = {'type': 'FeatureCollection', 'features': [{",
+            "    'type': 'Feature',",
+            "    'geometry': {'type': 'LineString', 'coordinates': [[121, 31], [121.1, 31.1]]},",
+            "    'properties': {'vertices': np.int64(2)},",
+            "}]}",
+            "write_geojson(document)",
+            "print(dumps({'source_vertices': np.int64(2)}))",
+            "try:",
+            "    write_geojson(document, '../escape.geojson')",
+            "except ValueError:",
+            "    print('path rejected')",
+            "else:",
+            "    raise AssertionError('output escaped its directory')",
+        ]),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sandbox_entry, "INPUT_DIR", str(input_dir))
+    monkeypatch.setattr(sandbox_entry, "OUTPUT_DIR", str(output_dir))
+    monkeypatch.setattr(sandbox_entry, "SCRIPT_PATH", str(script_path))
+    monkeypatch.setenv("OUTPUT_FILENAME", "coastline.geojson")
+    monkeypatch.setenv("SANDBOX_INPUT_MAP", "[]")
+    monkeypatch.setenv("SANDBOX_VECTOR_MAP", "[]")
+
+    sandbox_entry.main()
+
+    document = json.loads((output_dir / "coastline.geojson").read_text(encoding="utf-8"))
+    assert document["features"][0]["properties"]["vertices"] == 2
+    assert '"source_vertices": 2' in capsys.readouterr().out
+    assert not (tmp_path / "escape.geojson").exists()
+
+
 def test_runtime_injects_real_geojson_features_into_user_code(tmp_path, monkeypatch):
     input_dir = tmp_path / "inputs"
     output_dir = tmp_path / "outputs"

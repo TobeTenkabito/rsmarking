@@ -27,6 +27,7 @@ from services.ai_gateway.agent_collaboration import (
     AgentCoordinator,
     AgentPlan,
     new_workflow,
+    remaining_budget,
     reserve_model_call,
     settle_model_usage,
     workflow_report,
@@ -109,8 +110,8 @@ class AgentRequestPayload(BaseModel):
     )
     max_agents: int = Field(default=6, ge=3, le=6)
     max_replans: int = Field(default=1, ge=0, le=2)
-    max_model_calls: int = Field(default=24, ge=3, le=32)
-    agent_token_budget: int = Field(default=300000, ge=8192, le=1000000)
+    max_model_calls: int | None = Field(default=None, ge=3)
+    agent_token_budget: int | None = Field(default=None, ge=8192)
     target_id: Optional[Union[int, str]] = Field(
         default=None,
         description="Optional raster index_id or vector layer UUID for context.",
@@ -163,17 +164,15 @@ class AgentRequestPayload(BaseModel):
         le=100,
         description="Maximum number of rasters/projects to summarize for the agent.",
     )
-    max_steps: int = Field(
-        default=4,
+    max_steps: int | None = Field(
+        default=None,
         ge=1,
-        le=8,
-        description="Maximum number of model tool-call turns before forcing a final answer.",
+        description="Optional model tool-call turn limit; null leaves the task unlimited.",
     )
-    max_tool_calls: int = Field(
-        default=12,
+    max_tool_calls: int | None = Field(
+        default=None,
         ge=1,
-        le=24,
-        description="Maximum number of tool calls accepted during one agent request.",
+        description="Optional tool-call limit; null leaves the task unlimited.",
     )
     tool_names: Optional[list[str]] = Field(
         default=None,
@@ -421,8 +420,8 @@ async def _handle_agent_locked(
                     for record in current_snapshot.get("tool_results", [])
                 ],
                 "remaining_budget": {
-                    "model_calls": workflow["limits"]["max_model_calls"] - workflow["model_calls"],
-                    "tool_calls": workflow["limits"]["max_tool_calls"] - workflow["tool_calls"],
+                    "model_calls": remaining_budget(workflow, "max_model_calls", "model_calls"),
+                    "tool_calls": remaining_budget(workflow, "max_tool_calls", "tool_calls"),
                 },
             }
             criteria = handoff.get("criteria", [])
@@ -528,7 +527,7 @@ async def _run_agent_worker(
     accepted_tool_calls = 0
     stop_tool_execution = False
 
-    round_limit = payload.max_steps if role in {"single", "executor"} else 2
+    round_limit = payload.max_steps
     resumed_steps = [
         step
         for step in steps
@@ -544,7 +543,9 @@ async def _run_agent_worker(
             )
         )
     first_step = max((step.step for step in resumed_steps), default=0) + 1
-    for step_number in range(first_step, round_limit + 1):
+    step_number = first_step - 1
+    while round_limit is None or step_number < round_limit:
+        step_number += 1
         response = await complete(
             model_name=current_model,
             messages=messages,
@@ -584,8 +585,9 @@ async def _run_agent_worker(
             else:
                 arguments, parse_error = _parse_tool_arguments(raw_arguments)
             accepted_tool_calls += 1
-            if workflow is not None:
-                if workflow["tool_calls"] >= workflow["limits"]["max_tool_calls"]:
+            if workflow is not None and call_index <= MAX_EXECUTED_TOOL_CALLS_PER_TURN:
+                tool_limit = workflow["limits"]["max_tool_calls"]
+                if tool_limit is not None and workflow["tool_calls"] >= tool_limit:
                     raise AgentBudgetExceeded("Shared tool-call limit reached.")
                 workflow["tool_calls"] += 1
                 checkpoint_workflow(session_id, workflow)
@@ -614,7 +616,7 @@ async def _run_agent_worker(
                 turn=turn,
                 delegation=delegation,
             )
-            if accepted_tool_calls > payload.max_tool_calls:
+            if payload.max_tool_calls is not None and accepted_tool_calls > payload.max_tool_calls:
                 stop_tool_execution = True
             trace_observation = _sanitize_tool_observation(
                 _tool_observation_without_arguments(observation)
@@ -746,7 +748,7 @@ async def _execute_agent_tool_call(
             "status": "error",
             "error": "Tool-call turn limit reached. Re-plan using the observations from the accepted calls.",
         }
-    if accepted_tool_calls > payload.max_tool_calls:
+    if payload.max_tool_calls is not None and accepted_tool_calls > payload.max_tool_calls:
         return {
             "status": "error",
             "error": "Tool-call request budget exhausted. Provide a final answer without additional tools.",

@@ -803,7 +803,16 @@ def sanitize_error_message(error: Any, max_chars: int = 1200) -> str:
     text = sanitize_model_output(str(error or "Tool execution failed."))
     text = _WINDOWS_PATH_RE.sub("<internal-path>", text)
     text = _POSIX_INTERNAL_PATH_RE.sub("<internal-path>", text)
-    return text[:max_chars]
+    if len(text) <= max_chars:
+        return text
+    marker = "\n[... error details truncated ...]\n"
+    if max_chars <= len(marker):
+        return text[-max_chars:] if max_chars > 0 else ""
+    # Tracebacks end with the exception type and cause. Keep that information
+    # together with the leading tool/HTTP error after redacting the whole text.
+    head_chars = (max_chars - len(marker)) // 3
+    tail_chars = max_chars - len(marker) - head_chars
+    return text[:head_chars] + marker + text[-tail_chars:]
 
 
 def sanitize_tool_observation(value: Any) -> Any:
