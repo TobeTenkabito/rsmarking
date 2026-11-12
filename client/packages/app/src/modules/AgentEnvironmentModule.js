@@ -15,15 +15,15 @@ export class AgentEnvironmentModule {
         if (this.dialog.open) return;
         this.returnFocus = document.activeElement;
         this.dialog.showModal();
-        this._status('Loading configuration…');
-        this._busy(true);
+        this._showStatus('Loading configuration…');
+        this._setLoading(true);
         try {
-            this._populate(await AIAPI.getEnvironment());
-            this._status('');
+            this._populateSettings(await AIAPI.getEnvironment());
+            this._showStatus('');
         } catch (error) {
-            this._status(error.message, true);
+            this._showStatus(error.message, true);
         } finally {
-            this._busy(false);
+            this._setLoading(false);
         }
     }
 
@@ -32,111 +32,124 @@ export class AgentEnvironmentModule {
         document.body.insertAdjacentHTML('beforeend', agentEnvironment);
         this.dialog = document.getElementById('ai-environment-dialog');
         this.dialog.addEventListener('close', () => {
-            this._input('key').value = '';
+            this._getElement('key').value = '';
             this.returnFocus?.focus();
         });
-        this.dialog.querySelector('[data-environment-close]').addEventListener('click', () => this.dialog.close());
+        this.dialog.querySelector('[data-environment-close]').addEventListener('click', () => {
+            this.dialog.close();
+        });
         this.dialog.addEventListener('submit', event => {
             event.preventDefault();
             void this.save();
         });
-        this._input('reset').addEventListener('click', () => { void this.reset(); });
-        this._input('provider').addEventListener('change', () => this._providerChanged());
-        this._input('base').addEventListener('input', () => this._keyHint());
+        this._getElement('reset').addEventListener('click', () => {
+            void this.reset();
+        });
+        this._getElement('provider').addEventListener('change', () => this._handleProviderChange());
+        this._getElement('base').addEventListener('input', () => this._updateKeyHint());
         applyTranslations(this.dialog);
     }
 
-    _input(name) {
+    _getElement(name) {
         return this.dialog.querySelector(`#ai-environment-${name}`);
     }
 
-    _populate(data) {
+    _populateSettings(data) {
         this.saved = data.settings;
         this.providers = data.providers;
-        const select = this._input('provider');
-        select.replaceChildren(...this.providers.map(provider => new Option(provider.name, provider.id)));
-        select.value = this.providers.some(item => item.id === this.saved.provider) ? this.saved.provider : 'compatible';
-        const preset = this.providers.find(item => item.id === select.value);
-        this._input('model').value = (this.saved.model || '').replace(new RegExp(`^${select.value}/`), '');
-        this._input('model').placeholder = t(preset?.model_hint || 'Model ID');
-        this._input('base').value = this.saved.base_url || preset?.base_url || '';
-        this._input('key').value = '';
-        this._input('timeout').value = (this.saved.timeout_ms || 90000) / 1000;
-        this._input('tokens').value = this.saved.max_tokens || 4096;
-        this._input('reasoning').value = this.saved.tool_reasoning_effort || '';
-        this._input('source').textContent = t(this.saved.source === 'ui' ? 'Using saved configuration' : 'Using .env / server environment');
-        this._keyHint();
+        const providerSelect = this._getElement('provider');
+        const providerOptions = this.providers.map(provider => new Option(provider.name, provider.id));
+        providerSelect.replaceChildren(...providerOptions);
+        providerSelect.value = this.providers.some(provider => provider.id === this.saved.provider)
+            ? this.saved.provider
+            : 'compatible';
+        const preset = this.providers.find(provider => provider.id === providerSelect.value);
+        this._getElement('model').value = (this.saved.model || '').replace(new RegExp(`^${providerSelect.value}/`), '');
+        this._getElement('model').placeholder = t(preset?.model_hint || 'Model ID');
+        this._getElement('base').value = this.saved.base_url || preset?.base_url || '';
+        this._getElement('key').value = '';
+        this._getElement('timeout').value = (this.saved.timeout_ms || 90000) / 1000;
+        this._getElement('tokens').value = this.saved.max_tokens || 4096;
+        this._getElement('reasoning').value = this.saved.tool_reasoning_effort || '';
+        this._getElement('source').textContent = t(this.saved.source === 'ui'
+            ? 'Using saved configuration'
+            : 'Using .env / server environment');
+        this._updateKeyHint();
     }
 
-    _providerChanged() {
-        const preset = this.providers.find(item => item.id === this._input('provider').value);
-        this._input('base').value = preset?.base_url || '';
-        this._input('model').value = '';
-        this._input('model').placeholder = t(preset?.model_hint || 'Model ID');
-        this._input('key').value = '';
-        this._input('reasoning').value = '';
-        this._keyHint();
+    _handleProviderChange() {
+        const preset = this.providers.find(item => item.id === this._getElement('provider').value);
+        this._getElement('base').value = preset?.base_url || '';
+        this._getElement('model').value = '';
+        this._getElement('model').placeholder = t(preset?.model_hint || 'Model ID');
+        this._getElement('key').value = '';
+        this._getElement('reasoning').value = '';
+        this._updateKeyHint();
     }
 
-    _keyHint() {
-        const same = this.saved?.source === 'ui' && this.saved.has_api_key
-            && this.saved.provider === this._input('provider').value
-            && this.saved.base_url === this._input('base').value.replace(/\/+$/, '');
-        const optional = this._input('provider').value === 'ollama';
-        this._input('key').required = !same && !optional;
-        this._input('key-hint').textContent = t(same
-            ? 'Key saved. Leave blank to keep it for this provider and address.'
-            : optional ? 'A local Ollama server does not require a key.'
-                : 'Enter the key for this provider. Keys from .env are never shown or copied.');
+    _updateKeyHint() {
+        const hasSavedKey = this.saved?.source === 'ui' && this.saved.has_api_key
+            && this.saved.provider === this._getElement('provider').value
+            && this.saved.base_url === this._getElement('base').value.replace(/\/+$/, '');
+        const isOllama = this._getElement('provider').value === 'ollama';
+        this._getElement('key').required = !hasSavedKey && !isOllama;
+
+        let hint = 'Enter the key for this provider. Keys from .env are never shown or copied.';
+        if (hasSavedKey) {
+            hint = 'Key saved. Leave blank to keep it for this provider and address.';
+        } else if (isOllama) {
+            hint = 'A local Ollama server does not require a key.';
+        }
+        this._getElement('key-hint').textContent = t(hint);
     }
 
-    _busy(value) {
+    _setLoading(value) {
         this.busy = value;
-        this._input('fields').disabled = value || !this.saved;
-        this._input('save').disabled = value || !this.saved;
-        this._input('reset').disabled = value;
+        this._getElement('fields').disabled = value || !this.saved;
+        this._getElement('save').disabled = value || !this.saved;
+        this._getElement('reset').disabled = value;
     }
 
-    _status(message, error = false) {
-        this._input('status').textContent = t(message);
-        this._input('status').dataset.error = String(error);
+    _showStatus(message, error = false) {
+        this._getElement('status').textContent = t(message);
+        this._getElement('status').dataset.error = String(error);
     }
 
     async save() {
         if (this.busy || !this.dialog.querySelector('form').reportValidity()) return;
         const payload = {
-            provider: this._input('provider').value,
-            model: this._input('model').value.trim(),
-            base_url: this._input('base').value.trim(),
-            api_key: this._input('key').value || null,
-            timeout_ms: Math.round(Number(this._input('timeout').value) * 1000),
-            max_tokens: Number(this._input('tokens').value),
-            tool_reasoning_effort: this._input('reasoning').value || null,
+            provider: this._getElement('provider').value,
+            model: this._getElement('model').value.trim(),
+            base_url: this._getElement('base').value.trim(),
+            api_key: this._getElement('key').value || null,
+            timeout_ms: Math.round(Number(this._getElement('timeout').value) * 1000),
+            max_tokens: Number(this._getElement('tokens').value),
+            tool_reasoning_effort: this._getElement('reasoning').value || null,
         };
-        this._busy(true);
-        this._status('Saving configuration…');
+        this._setLoading(true);
+        this._showStatus('Saving configuration…');
         try {
-            this._populate(await AIAPI.saveEnvironment(payload));
-            this._status('Saved. The next AI request will use this configuration.');
+            this._populateSettings(await AIAPI.saveEnvironment(payload));
+            this._showStatus('Saved. The next AI request will use this configuration.');
         } catch (error) {
-            this._status(error.message, true);
+            this._showStatus(error.message, true);
         } finally {
-            this._input('key').value = '';
+            this._getElement('key').value = '';
             payload.api_key = null;
-            this._busy(false);
+            this._setLoading(false);
         }
     }
 
     async reset() {
         if (this.busy) return;
-        this._busy(true);
+        this._setLoading(true);
         try {
-            this._populate(await AIAPI.resetEnvironment());
-            this._status('Restored .env / server environment defaults.');
+            this._populateSettings(await AIAPI.resetEnvironment());
+            this._showStatus('Restored .env / server environment defaults.');
         } catch (error) {
-            this._status(error.message, true);
+            this._showStatus(error.message, true);
         } finally {
-            this._busy(false);
+            this._setLoading(false);
         }
     }
 }

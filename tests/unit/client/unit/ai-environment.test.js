@@ -1,20 +1,31 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { AIAPI } from '../../../../client/packages/app/src/api/ai.js';
-import { AIModule } from '../../../../client/packages/app/src/modules/AIModule.js';
-import { AgentEnvironmentModule } from '../../../../client/packages/app/src/modules/AgentEnvironmentModule.js';
-import { Store } from '../../../../client/packages/app/src/store/index.js';
+import { AIAPI } from '@app/api/ai.js';
+import { AIModule } from '@app/modules/AIModule.js';
+import { AgentEnvironmentModule } from '@app/modules/AgentEnvironmentModule.js';
+import { Store } from '@app/store/index.js';
 
 const provider = { id: 'openai', name: 'OpenAI', base_url: 'https://api.openai.com/v1' };
 const configured = {
-    settings: { source: 'ui', provider: 'openai', model: 'test-model', base_url: provider.base_url, has_api_key: true },
+    settings: {
+        source: 'ui',
+        provider: 'openai',
+        model: 'test-model',
+        base_url: provider.base_url,
+        has_api_key: true,
+    },
     providers: [provider, { id: 'compatible', name: 'Custom', base_url: '' }],
 };
 
 beforeEach(() => {
     document.body.innerHTML = '';
     localStorage.clear();
-    HTMLDialogElement.prototype.showModal = vi.fn(function () { this.open = true; });
-    HTMLDialogElement.prototype.close = vi.fn(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    HTMLDialogElement.prototype.showModal = vi.fn(function () {
+        this.open = true;
+    });
+    HTMLDialogElement.prototype.close = vi.fn(function () {
+        this.open = false;
+        this.dispatchEvent(new Event('close'));
+    });
 });
 afterEach(() => {
     vi.restoreAllMocks();
@@ -79,8 +90,14 @@ describe('Workspace imports on the map', () => {
     it('refreshes projects, selects the new project and enables its imported layer once', async () => {
         Store.state.visibleVectorLayerIds = new Set();
         const app = {
-            project: { refreshProjects: vi.fn(), handleSelectProject: vi.fn() },
-            mapController: { toggleVectorLayer: vi.fn(id => Store.state.visibleVectorLayerIds.add(id)), updateUI: vi.fn() },
+            project: {
+                refreshProjects: vi.fn(),
+                handleSelectProject: vi.fn(),
+            },
+            mapController: {
+                toggleVectorLayer: vi.fn(id => Store.state.visibleVectorLayerIds.add(id)),
+                updateUI: vi.fn(),
+            },
         };
         const ai = new AIModule(app);
         const result = [{ data_type: 'vector', project_id: 'project', layer_id: 'layer' }];

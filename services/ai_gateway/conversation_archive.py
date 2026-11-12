@@ -201,11 +201,18 @@ def _create_conversation_copy(messages, *, title=None, note="", pinned=False, me
     archive_id = uuid.uuid4().hex
     now = _timestamp()
     record = {
-        "archive_id": archive_id, "session_id": f"chat-{uuid.uuid4().hex}",
-        "title": _archive_title(title, messages), "title_edited": True,
-        "note": note.strip(), "pinned": pinned, "pinned_at": now if pinned else None,
-        "created_at": now, "updated_at": now, "message_count": len(messages),
-        "messages": messages, "metadata": metadata or {},
+        "archive_id": archive_id,
+        "session_id": f"chat-{uuid.uuid4().hex}",
+        "title": _archive_title(title, messages),
+        "title_edited": True,
+        "note": note.strip(),
+        "pinned": pinned,
+        "pinned_at": now if pinned else None,
+        "created_at": now,
+        "updated_at": now,
+        "message_count": len(messages),
+        "messages": messages,
+        "metadata": metadata or {},
     }
     _write_archive(record)
     return _summary(record)

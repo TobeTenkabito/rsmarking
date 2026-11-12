@@ -137,8 +137,19 @@ def test_base_url_requires_root_and_azure_version(monkeypatch):
 @pytest.mark.parametrize('model', ['anthropic/claude-sonnet-4-6','gemini/gemini-2.5-flash','deepseek/deepseek-reasoner','dashscope/qwen-plus'])
 def test_tool_roundtrip_preserves_provider_state(monkeypatch,model):
     monkeypatch.setenv('AI_API_KEY','offline-test-key')
-    tool = {'id':'call-1','type':'function','function':{'name':'inspect_raster','arguments':{'raster_id':1}}, 'provider_specific_fields':{'thought_signature':'signature'}}
-    message = {'role':'assistant','content':[{'type':'text','text':'Checking'}], 'tool_calls':[tool], 'reasoning_content':'opaque reasoning', 'thinking_blocks':[{'type':'thinking','signature':'signed-state'}]}
+    tool = {
+        'id': 'call-1',
+        'type': 'function',
+        'function': {'name':'inspect_raster','arguments':{'raster_id':1}},
+        'provider_specific_fields': {'thought_signature':'signature'},
+    }
+    message = {
+        'role': 'assistant',
+        'content': [{'type':'text','text':'Checking'}],
+        'tool_calls': [tool],
+        'reasoning_content': 'opaque reasoning',
+        'thinking_blocks': [{'type':'thinking','signature':'signed-state'}],
+    }
     messages=[{'role':'user','content':'Inspect raster 1'}]
     calls=[]
     async def completion(**request):

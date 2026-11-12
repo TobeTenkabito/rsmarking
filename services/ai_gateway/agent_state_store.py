@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ STATE_DB = Path(__file__).resolve().parents[2] / "storage" / "ai_agent_state.sql
 
 
 @contextmanager
-def connection():
+def connection() -> Iterator[sqlite3.Connection]:
     Path(STATE_DB).parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(str(STATE_DB), timeout=15)
     try:
@@ -88,7 +89,12 @@ def resources(session_id: str, kind: str | None = None, limit: int = 16) -> list
             (session_id, kind, kind, limit),
         ).fetchall()
     return [
-        {"id": row[0], "kind": row[1], "name": row[2], "data": json.loads(row[3])} for row in rows
+        {
+            "id": row[0],
+            "kind": row[1],
+            "name": row[2],
+            "data": json.loads(row[3]),
+        } for row in rows
     ]
 
 
@@ -134,7 +140,7 @@ def read_resource(
 
 
 def claim_operation(
-    session_id: str, run_id: str, fingerprint: str, name: str, *, recovering=False
+    session_id: str, run_id: str, fingerprint: str, name: str, *, recovering: bool = False
 ) -> tuple[bool, dict]:
     """Commit the intent before invoking a side-effectful tool, even across processes."""
     with connection() as db:

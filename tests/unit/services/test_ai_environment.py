@@ -21,8 +21,11 @@ def clean_environment(monkeypatch):
 
 def settings(**changes):
     return environment.EnvironmentSettings(**{
-        "provider": "openai", "model": "test-model", "base_url": "https://api.openai.com/v1",
-        "api_key": "unit-test-key-only", **changes,
+        "provider": "openai",
+        "model": "test-model",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "unit-test-key-only",
+        **changes,
     })
 
 
@@ -73,7 +76,12 @@ def test_local_ollama_never_falls_back_to_environment_key(monkeypatch):
 def test_request_snapshot_survives_settings_change_and_reset():
     environment.save_environment(settings())
     with ai_settings_scope():
-        environment.save_environment(settings(provider="deepseek", model="next-model", base_url="https://api.deepseek.com", api_key="next-test-key"))
+        environment.save_environment(settings(
+            provider="deepseek",
+            model="next-model",
+            base_url="https://api.deepseek.com",
+            api_key="next-test-key",
+        ))
         assert get_ai_settings().model == "openai/test-model"
         assert build_litellm_kwargs(model_name="openai/test-model", messages=[])["api_key"] == "unit-test-key-only"
     assert get_ai_settings().model == "deepseek/next-model"
@@ -104,7 +112,12 @@ def request(method, payload=None, *, origin="http://localhost:8002", client="127
 
 
 def test_settings_routes_save_read_reset_and_do_not_echo_rejected_keys():
-    payload = {"provider": "openai", "model": "test-model", "base_url": "https://api.openai.com/v1", "api_key": "secret-to-hide"}
+    payload = {
+        "provider": "openai",
+        "model": "test-model",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "secret-to-hide",
+    }
     response = request("PUT", payload)
     assert response.status_code == 200
     assert "secret-to-hide" not in response.text

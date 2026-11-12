@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -51,8 +52,21 @@ class AISettings:
         return self.model
 
 
-_ALIASES = {"google": "gemini", "qwen": "dashscope", "doubao": "ark", "volcengine": "ark", "baidu": "qianfan", "compatible": "openai", "ollama": "ollama_chat"}
-_PREFIXES = {"gemini": ("GEMINI", "GOOGLE"), "dashscope": ("DASHSCOPE", "QWEN"), "ark": ("ARK", "DOUBAO"), "ollama_chat": ("OLLAMA",)}
+_ALIASES = {
+    "google": "gemini",
+    "qwen": "dashscope",
+    "doubao": "ark",
+    "volcengine": "ark",
+    "baidu": "qianfan",
+    "compatible": "openai",
+    "ollama": "ollama_chat",
+}
+_PREFIXES = {
+    "gemini": ("GEMINI", "GOOGLE"),
+    "dashscope": ("DASHSCOPE", "QWEN"),
+    "ark": ("ARK", "DOUBAO"),
+    "ollama_chat": ("OLLAMA",),
+}
 _COMPATIBLE_BASES = {
     "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "ark": "https://ark.cn-beijing.volces.com/api/v3",
@@ -61,7 +75,19 @@ _COMPATIBLE_BASES = {
     "siliconflow": "https://api.siliconflow.cn/v1",
     "zhipu": "https://open.bigmodel.cn/api/paas/v4",
 }
-_PROVIDERS = {"openai", "anthropic", "gemini", "deepseek", "openrouter", "groq", "mistral", "xai", "azure", "ollama_chat", *_COMPATIBLE_BASES}
+_PROVIDERS = {
+    "openai",
+    "anthropic",
+    "gemini",
+    "deepseek",
+    "openrouter",
+    "groq",
+    "mistral",
+    "xai",
+    "azure",
+    "ollama_chat",
+    *_COMPATIBLE_BASES,
+}
 _EMPTY_VALUES.update({"your_api_key", "your-api-key", "your_model", "<your-api-key>", "hidden", "redacted", "***"})
 
 
@@ -74,13 +100,15 @@ def get_ai_settings(model_name: str | None = None) -> AISettings:
         from .environment_settings import saved_ai_settings
 
         settings = saved_ai_settings()
-    if settings is not None and (model_name is None or model_name in {settings.model, settings.litellm_model}):
+    if settings is not None and (
+        model_name is None or model_name in {settings.model, settings.litellm_model}
+    ):
         return settings
     return _get_environment_settings(model_name)
 
 
 @contextmanager
-def ai_settings_scope():
+def ai_settings_scope() -> Iterator[None]:
     """One request keeps one provider/key snapshot even if settings change mid-task."""
     token = _request_settings.set(get_ai_settings())
     try:
@@ -178,7 +206,15 @@ def log_ai_settings() -> None:
 
 def _infer_provider(model: str) -> str:
     lower = model.lower()
-    for prefix, provider in (("claude-", "anthropic"), ("gemini-", "gemini"), ("deepseek-", "deepseek"), ("qwen", "dashscope"), ("qwq", "dashscope"), ("doubao-", "ark"), ("ernie-", "qianfan")):
+    for prefix, provider in (
+        ("claude-", "anthropic"),
+        ("gemini-", "gemini"),
+        ("deepseek-", "deepseek"),
+        ("qwen", "dashscope"),
+        ("qwq", "dashscope"),
+        ("doubao-", "ark"),
+        ("ernie-", "qianfan"),
+    ):
         if lower.startswith(prefix):
             return provider
     return "openai"

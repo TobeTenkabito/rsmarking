@@ -19,14 +19,32 @@ def artifact_directory(monkeypatch, tmp_path):
 
 
 def document():
-    return {"type": "FeatureCollection", "features": [
-        {"type": "Feature", "geometry": {"type": "LineString", "coordinates": [[121, 31], [121.1, 31.2]]},
-         "properties": {"label": "shore", "score": 0.8, "verified": False, "category": "coastline"}},
-    ]}
+    return {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[121, 31], [121.1, 31.2]],
+                },
+                "properties": {
+                    "label": "shore",
+                    "score": 0.8,
+                    "verified": False,
+                    "category": "coastline",
+                },
+            },
+        ],
+    }
 
 
 def generated(data=None):
-    return artifacts.create_document_artifact("coastline.json", json.dumps(data or document()), "json")
+    return artifacts.create_document_artifact(
+        "coastline.json",
+        json.dumps(data or document()),
+        "json",
+    )
 
 
 class VectorDB:
@@ -67,7 +85,11 @@ def test_generated_json_import_registers_layer_fields_and_exact_geometry():
     assert [list(point) for point in to_shape(db.rows[0]["geom"]).coords] == document()["features"][0]["geometry"]["coordinates"]
     assert db.rows[0]["properties"] == document()["features"][0]["properties"]
     assert {row.field_name: row.field_type for row in db.added if hasattr(row, "field_name")} == {
-        "label": "string", "score": "number", "verified": "boolean", "category": "string"}
+        "label": "string",
+        "score": "number",
+        "verified": "boolean",
+        "category": "string",
+    }
     assert db.rows[0]["category"] == "coastline"
     db.commit.assert_awaited_once()
     assert artifacts.get_artifact(artifact["artifact_id"])[1].is_file()
@@ -79,7 +101,11 @@ def test_reimport_is_idempotent_and_does_not_overwrite():
     args = workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="First name")
     first = asyncio.run(workspace.import_generated_artifact(args, None, db))
     db.existing = SimpleNamespace(name="First name")
-    second = asyncio.run(workspace.import_generated_artifact(args.model_copy(update={"name": "Do not rename"}), None, db))
+    second = asyncio.run(workspace.import_generated_artifact(
+        args.model_copy(update={"name": "Do not rename"}),
+        None,
+        db,
+    ))
     assert second["workspace_import"]["reused"] is True
     assert second["workspace_import"]["name"] == "First name"
     assert first["workspace_import"]["layer_id"] == second["workspace_import"]["layer_id"]
@@ -91,7 +117,11 @@ def test_insert_failure_rolls_back_project_layer_and_features():
     db.fail = True
     artifact = generated()
     with pytest.raises(RuntimeError, match="insert failed"):
-        asyncio.run(workspace.import_generated_artifact(workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Test"), None, db))
+        asyncio.run(workspace.import_generated_artifact(
+            workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Test"),
+            None,
+            db,
+        ))
     db.rollback.assert_awaited_once()
     db.commit.assert_not_awaited()
 
@@ -107,7 +137,11 @@ def test_invalid_geometry_never_writes_to_database(data):
     db = VectorDB()
     artifact = generated(data)
     with pytest.raises(ValueError):
-        asyncio.run(workspace.import_generated_artifact(workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Invalid"), None, db))
+        asyncio.run(workspace.import_generated_artifact(
+            workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Invalid"),
+            None,
+            db,
+        ))
     assert db.rows == [] and db.added == []
     db.commit.assert_not_awaited()
 
@@ -128,7 +162,12 @@ def test_import_respects_permission_tier_and_derived_assignment():
     assert authorize_tool_call("import_generated_artifact", args, task).allowed
     assert not authorize_tool_call("import_generated_artifact", args, task, permission_level="read_only").allowed
     assert not authorize_tool_call("import_generated_artifact", args, "不要创建任何输出").allowed
-    assignment = DelegatedTaskGrant(task_id="save", instruction="Import the validated coastline as a new workspace layer", tool_names=frozenset({"import_generated_artifact"}), write_targets=frozenset())
+    assignment = DelegatedTaskGrant(
+        task_id="save",
+        instruction="Import the validated coastline as a new workspace layer",
+        tool_names=frozenset({"import_generated_artifact"}),
+        write_targets=frozenset(),
+    )
     assert authorize_tool_call("import_generated_artifact", args, task, delegation=assignment).allowed
 
 
@@ -139,7 +178,11 @@ def test_paths_and_nonspatial_documents_are_rejected():
         workspace.WorkspaceImportArgs(artifact_id="a" * 32, name="Unsafe", path="/etc/passwd")
     artifact = artifacts.create_document_artifact("report.md", "Report", "md")
     with pytest.raises(ValueError, match="GeoJSON or georeferenced GeoTIFF"):
-        asyncio.run(workspace.import_generated_artifact(workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Report"), None, VectorDB()))
+        asyncio.run(workspace.import_generated_artifact(
+            workspace.WorkspaceImportArgs(artifact_id=artifact["artifact_id"], name="Report"),
+            None,
+            VectorDB(),
+        ))
 
 
 @pytest.mark.parametrize("constraint", ["只要下载", "不要导入工作区", "download only", "do not import"])
@@ -148,7 +191,12 @@ def test_download_only_constraints_survive_continuation_and_delegation(constrain
 
     retained = extract_task_constraints(constraint)
     assert retained == [constraint]
-    assignment = DelegatedTaskGrant(task_id="save", instruction="Import the output", tool_names=frozenset({"import_generated_artifact"}), write_targets=frozenset())
+    assignment = DelegatedTaskGrant(
+        task_id="save",
+        instruction="Import the output",
+        tool_names=frozenset({"import_generated_artifact"}),
+        write_targets=frozenset(),
+    )
     decision = authorize_tool_call("import_generated_artifact", {"artifact_id": "a" * 32, "name": "Coastline"},
                                    "继续", task_scope="帮我提取海岸线", constraints=tuple(retained), delegation=assignment)
     assert not decision.allowed
@@ -158,11 +206,31 @@ def test_agent_response_exposes_only_successful_workspace_imports():
     from services.ai_gateway.agent_handler import AgentRequestPayload, AgentStep, _agent_response
 
     result = {"data_type": "vector", "project_id": str(uuid4()), "layer_id": str(uuid4())}
-    steps = [AgentStep(step=1, type="tool", tool_call_id="import", name="import_generated_artifact", arguments={}, status="success", result={"result": {"workspace_import": result}})]
-    response = _agent_response(payload=AgentRequestPayload(user_prompt="Import the coastline"), session_id="import-response-test", status="success", answer="Imported", steps=steps)
+    steps = [AgentStep(
+        step=1,
+        type="tool",
+        tool_call_id="import",
+        name="import_generated_artifact",
+        arguments={},
+        status="success",
+        result={"result": {"workspace_import": result}},
+    )]
+    response = _agent_response(
+        payload=AgentRequestPayload(user_prompt="Import the coastline"),
+        session_id="import-response-test",
+        status="success",
+        answer="Imported",
+        steps=steps,
+    )
     assert response["workspace_imports"] == [result]
     steps[0].status = "error"
-    response = _agent_response(payload=AgentRequestPayload(user_prompt="Import the coastline"), session_id="import-response-test", status="interrupted", answer="Failed", steps=steps)
+    response = _agent_response(
+        payload=AgentRequestPayload(user_prompt="Import the coastline"),
+        session_id="import-response-test",
+        status="interrupted",
+        answer="Failed",
+        steps=steps,
+    )
     assert response["workspace_imports"] == []
 
 
@@ -174,7 +242,17 @@ def test_raster_import_preserves_original_bytes_across_conversion_and_retry(monk
     from services.data_service.processor import RasterProcessor
 
     source = tmp_path / "source.tif"
-    with rasterio.open(source, "w", driver="GTiff", width=2, height=2, count=1, dtype="uint8", crs="EPSG:4326", transform=from_origin(121, 31, .01, .01)) as output:
+    with rasterio.open(
+        source,
+        "w",
+        driver="GTiff",
+        width=2,
+        height=2,
+        count=1,
+        dtype="uint8",
+        crs="EPSG:4326",
+        transform=from_origin(121, 31, .01, .01),
+    ) as output:
         output.write(np.ones((1, 2, 2), dtype="uint8"))
     original = source.read_bytes()
 

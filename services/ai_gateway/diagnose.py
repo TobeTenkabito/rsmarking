@@ -28,16 +28,22 @@ def main():
     except PackageNotFoundError:
         library_version = "not installed"
     print(json.dumps({
-        "env_file": str(env_path), "env_file_exists": env_path.is_file(),
-        "process_overrides": overrides, "model": settings.model,
-        "provider": settings.provider, "request_model": settings.litellm_model,
+        "env_file": str(env_path),
+        "env_file_exists": env_path.is_file(),
+        "process_overrides": overrides,
+        "model": settings.model,
+        "provider": settings.provider,
+        "request_model": settings.litellm_model,
         "configuration_source": configuration_source,
         "api_base": f"{parsed.scheme}://{parsed.hostname}{parsed.path}" if settings.api_base else "provider default",
-        "api_key_configured": bool(settings.api_key), "api_key_source": key_source,
-        "timeout_seconds": settings.timeout, "max_tokens": settings.max_tokens,
+        "api_key_configured": bool(settings.api_key),
+        "api_key_source": key_source,
+        "timeout_seconds": settings.timeout,
+        "max_tokens": settings.max_tokens,
         "reasoning_enabled": settings.reasoning_enabled,
         "reasoning_effort": request.get("reasoning_effort"),
-        "request_parameter_names": sorted(request), "litellm_version": library_version,
+        "request_parameter_names": sorted(request),
+        "litellm_version": library_version,
         "live_request_sent": False,
         "note": "Offline checks cannot verify credentials, model access, billing or connectivity. Restart ai_gateway after editing .env.",
     }, indent=2, ensure_ascii=True))

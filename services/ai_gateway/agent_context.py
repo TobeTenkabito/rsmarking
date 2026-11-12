@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from typing import Any
 
 from .agent_security import build_untrusted_context_message
 
@@ -47,11 +48,11 @@ def excerpt(text: str, limit: int = 1200) -> str:
     )
 
 
-def result_digest(value, limit: int = 2000) -> dict:
+def result_digest(value: Any, limit: int = 2000) -> dict:
     """Keep output identifiers even when large arrays dominate the tool response."""
     identifiers = {}
 
-    def visit(item, path="", depth=0):
+    def visit(item: Any, path: str = "", depth: int = 0) -> None:
         if depth > 8:
             return
         if isinstance(item, dict):
@@ -75,10 +76,10 @@ def result_digest(value, limit: int = 2000) -> dict:
     }
 
 
-def estimated_tokens(messages, tools=None) -> int:
+def estimated_tokens(messages: list[dict], tools: list[dict] | None = None) -> int:
     # Conservative text estimate: a UTF-8 byte can consume at most one byte-level
     # token. Image accounting is a reserve, not a provider-independent guarantee.
-    def weight(item):
+    def weight(item: Any) -> int:
         if isinstance(item, dict):
             if item.get("type") == "image_url":
                 return 4096

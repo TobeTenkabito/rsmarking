@@ -6,10 +6,12 @@ import json
 import shutil
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, insert, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import artifacts
 from .vector_artifacts import summarize_geojson
@@ -20,11 +22,18 @@ class WorkspaceImportArgs(BaseModel):
 
     artifact_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     name: str = Field(min_length=1, max_length=180)
-    project_id: UUID | None = Field(default=None, description="Existing vector project; omitted creates/uses Agent outputs.")
+    project_id: UUID | None = Field(
+        default=None,
+        description="Existing vector project; omitted creates/uses Agent outputs.",
+    )
     source_raster_index_id: int | None = Field(default=None, gt=0)
 
 
-async def import_generated_artifact(args, db, vector_db):
+async def import_generated_artifact(
+    args: WorkspaceImportArgs,
+    db: AsyncSession,
+    vector_db: AsyncSession,
+) -> dict[str, Any]:
     metadata, path = artifacts.get_artifact(args.artifact_id)
     suffix = path.suffix.lower()
     if suffix in {".json", ".geojson"}:
@@ -32,9 +41,10 @@ async def import_generated_artifact(args, db, vector_db):
         if args.source_raster_index_id is not None:
             from services.data_service.models import RasterMetadata
 
-            source = await db.scalar(select(RasterMetadata.index_id).where(
+            query = select(RasterMetadata.index_id).where(
                 RasterMetadata.index_id == args.source_raster_index_id
-            ))
+            )
+            source = await db.scalar(query)
             if source is None:
                 raise ValueError("Source raster does not exist")
         result = await _import_vector(args, document, summary, vector_db)
@@ -47,7 +57,7 @@ async def import_generated_artifact(args, db, vector_db):
     return {"status": "success", "workspace_import": result, "artifact": metadata}
 
 
-def _read_geojson(path):
+def _read_geojson(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if path.stat().st_size > 5 * 1024 * 1024:
         raise ValueError("Workspace GeoJSON cannot exceed 5 MiB")
     document = json.loads(path.read_bytes())
@@ -65,12 +75,17 @@ def _read_geojson(path):
     return document, summary
 
 
-async def _lock_import(db):
+async def _lock_import(db: AsyncSession) -> None:
     # Serialize short imports across gateway workers, including default-project creation.
     await db.execute(text("SELECT pg_advisory_xact_lock(731948210)"))
 
 
-async def _import_vector(args, document, summary, db):
+async def _import_vector(
+    args: WorkspaceImportArgs,
+    document: dict[str, Any],
+    summary: dict[str, Any],
+    db: AsyncSession,
+) -> dict[str, Any]:
     from geoalchemy2.shape import from_shape
     from shapely.geometry import shape
     from services.annotation_service.models.feature import Feature, Layer, LayerField, Project
@@ -85,45 +100,77 @@ async def _import_vector(args, document, summary, db):
         await _lock_import(db)
         existing = await db.get(Layer, layer_id)
         if existing is not None:
-            count = await db.scalar(select(func.count()).select_from(Feature).where(Feature.layer_id == layer_id))
+            query = select(func.count()).select_from(Feature).where(Feature.layer_id == layer_id)
+            count = await db.scalar(query)
             await db.commit()
-            return {"data_type": "vector", "project_id": str(project_id), "layer_id": str(layer_id),
-                    "name": existing.name, "feature_count": count, "reused": True}
+            return {
+                "data_type": "vector",
+                "project_id": str(project_id),
+                "layer_id": str(layer_id),
+                "name": existing.name,
+                "feature_count": count,
+                "reused": True,
+            }
         project = await db.get(Project, project_id)
         if project is None:
             if args.project_id is not None:
                 raise ValueError("Vector project does not exist")
             db.add(Project(id=project_id, name="Agent outputs"))
             await db.flush()
-        db.add(Layer(id=layer_id, project_id=project_id, name=args.name,
-                     source_raster_index_id=args.source_raster_index_id))
+        db_layer = Layer(
+            id=layer_id,
+            project_id=project_id,
+            name=args.name,
+            source_raster_index_id=args.source_raster_index_id,
+        )
+        db.add(db_layer)
         await db.flush()
         for order, key in enumerate(fields):
             values = [row[key] for row in properties if row.get(key) is not None]
             field_type = "string"
             if values and all(isinstance(value, bool) for value in values):
                 field_type = "boolean"
-            elif values and all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+            elif values and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                for value in values
+            ):
                 field_type = "number"
-            db.add(LayerField(layer_id=layer_id, field_name=key, field_alias=key,
-                              field_type=field_type, field_order=order))
+            db_field = LayerField(
+                layer_id=layer_id,
+                field_name=key,
+                field_alias=key,
+                field_type=field_type,
+                field_order=order,
+            )
+            db.add(db_field)
         rows = []
         for index, feature in enumerate(document["features"]):
-            rows.append({"id": uuid5(layer_id, str(index)), "layer_id": layer_id,
-                         "geom": from_shape(shape(feature["geometry"]), srid=4326),
-                         "properties": properties[index], "category": properties[index].get("category"),
-                         "meta": {"artifact_id": args.artifact_id, "source_srid": 4326}})
+            rows.append({
+                "id": uuid5(layer_id, str(index)),
+                "layer_id": layer_id,
+                "geom": from_shape(shape(feature["geometry"]), srid=4326),
+                "properties": properties[index],
+                "category": properties[index].get("category"),
+                "meta": {"artifact_id": args.artifact_id, "source_srid": 4326},
+            })
         for offset in range(0, len(rows), 500):
             await db.execute(insert(Feature), rows[offset:offset + 500])
         await db.commit()
     except Exception:
         await db.rollback()
         raise
-    return {"data_type": "vector", "project_id": str(project_id), "layer_id": str(layer_id),
-            "name": args.name, "feature_count": summary["feature_count"], "bbox": summary["bbox"], "reused": False}
+    return {
+        "data_type": "vector",
+        "project_id": str(project_id),
+        "layer_id": str(layer_id),
+        "name": args.name,
+        "feature_count": summary["feature_count"],
+        "bbox": summary["bbox"],
+        "reused": False,
+    }
 
 
-def _prepare_raster(path, artifact_id):
+def _prepare_raster(path: Path, artifact_id: str) -> tuple[Path, Path, int]:
     import rasterio
     from services.data_service.processor import RasterProcessor
 
@@ -163,7 +210,11 @@ def _prepare_raster(path, artifact_id):
     return raw, cog, bands
 
 
-async def _import_raster(args, path, db):
+async def _import_raster(
+    args: WorkspaceImportArgs,
+    path: Path,
+    db: AsyncSession,
+) -> dict[str, Any]:
     from services.data_service.models import RasterMetadata
     from services.data_service.db_ops import save_to_db
 
@@ -175,12 +226,27 @@ async def _import_raster(args, path, db):
         reused = existing is not None
         if existing is None:
             raw, cog, bands = await asyncio.to_thread(_prepare_raster, path, args.artifact_id)
-            await save_to_db(db, args.artifact_id, args.name, str(raw), cog.name, str(cog),
-                             "agent_artifact", bands_count=bands, metadata_source=str(raw), bundle_id=bundle_id)
+            await save_to_db(
+                db,
+                args.artifact_id,
+                args.name,
+                str(raw),
+                cog.name,
+                str(cog),
+                "agent_artifact",
+                bands_count=bands,
+                metadata_source=str(raw),
+                bundle_id=bundle_id,
+            )
             existing = await db.scalar(query)
         await db.commit()
     except Exception:
         await db.rollback()
         raise
-    return {"data_type": "raster", "id": existing.id, "index_id": existing.index_id,
-            "name": existing.file_name, "reused": reused}
+    return {
+        "data_type": "raster",
+        "id": existing.id,
+        "index_id": existing.index_id,
+        "name": existing.file_name,
+        "reused": reused,
+    }

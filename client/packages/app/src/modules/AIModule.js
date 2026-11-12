@@ -1841,11 +1841,23 @@ export class AIModule {
         if (!messagesEl) return;
 
         const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+        const suggestions = [
+            'Summarize my workspace',
+            'Help me analyze this imagery',
+            'What can you do?',
+        ];
         messagesEl.innerHTML = this._agentConversation.length
             ? this._agentConversation.map(message => this._renderAgentMessage(message)).join('')
-            : `<div class="ai-empty"><span class="ai-brand-mark">RS</span><h3>${this._escapeHTML(t('What would you like to explore?'))}</h3>
+            : `<div class="ai-empty">
+                <span class="ai-brand-mark">RS</span>
+                <h3>${this._escapeHTML(t('What would you like to explore?'))}</h3>
                 <p>${this._escapeHTML(t('Ask about your maps, analyze imagery, or turn an idea into a result.'))}</p>
-                <div class="ai-suggestions">${['Summarize my workspace', 'Help me analyze this imagery', 'What can you do?'].map(label => `<button type="button" data-ai-suggestion="${label}">${this._escapeHTML(t(label))}</button>`).join('')}</div></div>`;
+                <div class="ai-suggestions">
+                    ${suggestions.map(label => `
+                        <button type="button" data-ai-suggestion="${label}">${this._escapeHTML(t(label))}</button>
+                    `).join('')}
+                </div>
+            </div>`;
         if (nearBottom) this._scrollAgentChatToBottom();
     }
 
@@ -1862,17 +1874,35 @@ export class AIModule {
         const list = document.getElementById('ai-agent-archive-list');
         if (!list) return;
         const query = (document.getElementById('ai-history-search')?.value || '').trim().toLocaleLowerCase();
-        const items = this._conversationArchives.filter(item => item.archive_id === this._archiveEdit?.id || `${item.title || ''} ${item.note || ''}`.toLocaleLowerCase().includes(query))
-            .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
-                || String((b.pinned ? b.pinned_at : b.updated_at) || '').localeCompare(String((a.pinned ? a.pinned_at : a.updated_at) || ''))
-                || String(b.archive_id).localeCompare(String(a.archive_id)));
+        const items = this._conversationArchives.filter(archive => {
+            return archive.archive_id === this._archiveEdit?.id
+                || `${archive.title || ''} ${archive.note || ''}`.toLocaleLowerCase().includes(query);
+        }).sort((a, b) => {
+            const pinOrder = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+            if (pinOrder) return pinOrder;
+            const firstDate = String((a.pinned ? a.pinned_at : a.updated_at) || '');
+            const secondDate = String((b.pinned ? b.pinned_at : b.updated_at) || '');
+            return secondDate.localeCompare(firstDate)
+                || String(b.archive_id).localeCompare(String(a.archive_id));
+        });
         if (!items.length) {
-            const label = this._archivesLoading ? 'Loading conversations…' : this._historyError || (query ? 'No matching conversations' : 'Your conversations will appear here');
+            let label = query ? 'No matching conversations' : 'Your conversations will appear here';
+            if (this._archivesLoading) {
+                label = 'Loading conversations…';
+            } else if (this._historyError) {
+                label = this._historyError;
+            }
             list.innerHTML = `<p class="ai-history-note">${this._escapeHTML(t(label))}</p>`;
             return;
         }
-        const focused = list.contains(document.activeElement) && document.activeElement.dataset.aiEditField
-            ? { id: document.activeElement.id, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
+        let focused = null;
+        if (list.contains(document.activeElement) && document.activeElement.dataset.aiEditField) {
+            focused = {
+                id: document.activeElement.id,
+                start: document.activeElement.selectionStart,
+                end: document.activeElement.selectionEnd,
+            };
+        }
         const label = text => this._escapeHTML(t(text));
         const disabled = this._historyBusy ? 'disabled' : '';
         list.innerHTML = items.map(archive => {
@@ -1882,16 +1912,26 @@ export class AIModule {
             const date = archive.updated_at ? new Date(archive.updated_at).toLocaleDateString() : '';
             if (this._archiveEdit?.id === archive.archive_id) {
                 const draft = this._archiveEdit;
-                return `<div class="ai-history-item ai-history-editing"><form data-ai-edit-form class="ai-history-editor">
-                    <label for="ai-history-edit-title">${label('Conversation title')}</label>
-                    <input id="ai-history-edit-title" data-ai-edit-field="title" value="${this._escapeHTML(draft.title)}" maxlength="120" required ${draft.saving ? 'disabled' : ''}>
-                    <label for="ai-history-edit-note">${label('Conversation note')}</label>
-                    <textarea id="ai-history-edit-note" data-ai-edit-field="note" rows="4" maxlength="4000" placeholder="${label('Add a note (optional)')}" ${draft.saving ? 'disabled' : ''}>${this._escapeHTML(draft.note)}</textarea>
-                    ${draft.error ? `<p class="ai-history-edit-error" role="alert">${this._escapeHTML(draft.error)}</p>` : ''}
-                    <div class="ai-history-edit-actions"><button type="button" data-ai-cancel-edit ${draft.saving ? 'disabled' : ''}>${label('Cancel')}</button><button type="submit" ${draft.saving ? 'disabled' : ''}>${label(draft.saving ? 'Saving…' : 'Save')}</button></div>
-                </form></div>`;
+                return `<div class="ai-history-item ai-history-editing">
+                    <form data-ai-edit-form class="ai-history-editor">
+                        <label for="ai-history-edit-title">${label('Conversation title')}</label>
+                        <input id="ai-history-edit-title" data-ai-edit-field="title"
+                            value="${this._escapeHTML(draft.title)}" maxlength="120" required ${draft.saving ? 'disabled' : ''}>
+                        <label for="ai-history-edit-note">${label('Conversation note')}</label>
+                        <textarea id="ai-history-edit-note" data-ai-edit-field="note" rows="4" maxlength="4000"
+                            placeholder="${label('Add a note (optional)')}" ${draft.saving ? 'disabled' : ''}>${this._escapeHTML(draft.note)}</textarea>
+                        ${draft.error ? `<p class="ai-history-edit-error" role="alert">${this._escapeHTML(draft.error)}</p>` : ''}
+                        <div class="ai-history-edit-actions">
+                            <button type="button" data-ai-cancel-edit ${draft.saving ? 'disabled' : ''}>${label('Cancel')}</button>
+                            <button type="submit" ${draft.saving ? 'disabled' : ''}>${label(draft.saving ? 'Saving…' : 'Save')}</button>
+                        </div>
+                    </form>
+                </div>`;
             }
-            const note = archive.note ? `<button type="button" class="ai-history-annotation" data-ai-note aria-expanded="false" title="${label('Click to expand or collapse note')}">${this._escapeHTML(archive.note)}</button>` : '';
+            const note = archive.note
+                ? `<button type="button" class="ai-history-annotation" data-ai-note aria-expanded="false"
+                    title="${label('Click to expand or collapse note')}">${this._escapeHTML(archive.note)}</button>`
+                : '';
             const menuOpen = this._historyMenuId === archive.archive_id;
             const menu = menuOpen ? `<div class="ai-history-menu">
                 <button type="button" data-ai-pin-chat="${id}" ${disabled}>${label(archive.pinned ? 'Unpin chat' : 'Pin chat')}</button>
@@ -1903,8 +1943,15 @@ export class AIModule {
                 <button type="button" class="ai-history-open" data-ai-open-chat="${id}" ${active ? 'aria-current="page"' : ''} title="${title}">
                     <strong>${title}</strong>
                 </button>
-                <div class="ai-history-actions"><button type="button" class="ai-history-edit" data-ai-edit-chat="${id}" aria-label="${label('Edit title and note')}" title="${label('Edit title and note')}">✎</button><button type="button" class="ai-history-more" data-ai-history-menu="${id}" aria-expanded="${menuOpen}" aria-label="${label('Conversation actions')}" title="${label('Conversation actions')}">⋯</button></div>
-                ${note}<small class="ai-history-date">${archive.pinned ? `<span class="ai-history-pin">${label('Pinned')} · </span>` : ''}${this._escapeHTML(date)}</small>${menu}
+                <div class="ai-history-actions">
+                    <button type="button" class="ai-history-edit" data-ai-edit-chat="${id}"
+                        aria-label="${label('Edit title and note')}" title="${label('Edit title and note')}">✎</button>
+                    <button type="button" class="ai-history-more" data-ai-history-menu="${id}" aria-expanded="${menuOpen}"
+                        aria-label="${label('Conversation actions')}" title="${label('Conversation actions')}">⋯</button>
+                </div>
+                ${note}
+                <small class="ai-history-date">${archive.pinned ? `<span class="ai-history-pin">${label('Pinned')} · </span>` : ''}${this._escapeHTML(date)}</small>
+                ${menu}
             </div>`;
         }).join('');
         if (focused) {
@@ -1917,15 +1964,25 @@ export class AIModule {
     _renderAgentMessage(message) {
         const isUser = message.role === 'user';
         const content = message.pending ? this._renderPendingAgentMessage(message) : this._renderAgentMarkdownOutput(message);
-        const copy = !message.pending && message.id ? `<button type="button" class="ai-message-copy" data-ai-copy-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Copy'))}</button>` : '';
-        const branch = !message.pending && message.id && message.content ? `<button type="button" class="ai-message-copy" data-ai-branch-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Branch from here'))}</button>` : '';
-        const retry = message.error && message.retryPayload && message === this._agentConversation.at(-1) ? `<button type="button" class="ai-message-copy" data-ai-retry-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Retry this request'))}</button>` : '';
+        const copy = !message.pending && message.id
+            ? `<button type="button" class="ai-message-copy"
+                data-ai-copy-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Copy'))}</button>`
+            : '';
+        const branch = !message.pending && message.id && message.content
+            ? `<button type="button" class="ai-message-copy"
+                data-ai-branch-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Branch from here'))}</button>`
+            : '';
+        const retry = message.error && message.retryPayload && message === this._agentConversation.at(-1)
+            ? `<button type="button" class="ai-message-copy"
+                data-ai-retry-message="${this._escapeHTML(message.id)}">${this._escapeHTML(t('Retry this request'))}</button>`
+            : '';
         return `<article class="ai-message ai-message-${isUser ? 'user' : 'assistant'}" data-ai-message="${this._escapeHTML(message.id || '')}">
             <div class="ai-bubble ${message.error ? 'ai-message-error' : ''}">
                 ${isUser ? '' : '<div class="ai-message-label">RS · Assistant</div>'}
                 ${content}${this._renderMessageAttachments(message.attachments ?? [], isUser)}
                 ${this._renderGeneratedArtifacts(message.artifacts ?? [])}
-                ${this._renderAgentWorkflow(message.workflow)}${this._renderAgentToolTrace(message.steps ?? [])}<div class="ai-message-actions">${copy}${branch}${retry}</div>
+                ${this._renderAgentWorkflow(message.workflow)}${this._renderAgentToolTrace(message.steps ?? [])}
+                <div class="ai-message-actions">${copy}${branch}${retry}</div>
             </div>
         </article>`;
     }

@@ -97,7 +97,12 @@ def inspect_geojson_artifact(artifact_id: str, expected_bbox: list[float] | None
         raise ValueError("Inspection requires a JSON/GeoJSON artifact no larger than 5 MiB")
     data = path.read_bytes()
     summary = summarize_geojson(json.loads(data), expected_bbox)
-    return {**metadata, "size": len(data), "sha256": hashlib.sha256(data).hexdigest(), **summary}
+    return {
+        **metadata,
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        **summary,
+    }
 
 
 def inspect_raster_boundary(

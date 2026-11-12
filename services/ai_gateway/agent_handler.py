@@ -1423,7 +1423,12 @@ async def _invoke_agent_tool(
                 'raster_<index_id>, raster_files[<index_id>], or inputs["actual_filename.tif"]. '
                 "Do not pass the literal string 'input_file'."
             )
-        return {"status": "error", "name": name, "arguments": arguments, "error": error}
+        return {
+            "status": "error",
+            "name": name,
+            "arguments": arguments,
+            "error": error,
+        }
 
 
 def _get_agent_tools(tool_names: list[str] | None) -> list[dict[str, Any]]:
@@ -1595,8 +1600,10 @@ def _agent_response(
         "used_tools": used_tools,
         "artifacts": _collect_generated_artifacts(steps),
         "workspace_imports": [
-            step.result["result"]["workspace_import"] for step in steps
-            if step.status == "success" and step.name == "import_generated_artifact"
+            step.result["result"]["workspace_import"]
+            for step in steps
+            if step.status == "success"
+            and step.name == "import_generated_artifact"
             and isinstance(step.result, dict)
             and isinstance(step.result.get("result"), dict)
             and isinstance(step.result["result"].get("workspace_import"), dict)

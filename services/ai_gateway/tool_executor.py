@@ -63,7 +63,12 @@ async def execute_vector_query(
                 params[param_name] = f"%{val}%" if op == "like" else str(val)
 
             value = bindparam(param_name)
-            comparisons = {"eq": db_col.__eq__, "gt": db_col.__gt__, "lt": db_col.__lt__, "like": db_col.ilike}
+            comparisons = {
+                "eq": db_col.__eq__,
+                "gt": db_col.__gt__,
+                "lt": db_col.__lt__,
+                "like": db_col.ilike,
+            }
             query = query.where(comparisons[op](value))
 
     try:

@@ -4,6 +4,7 @@ import asyncio
 import copy
 import time
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from threading import Lock
 from typing import Any
@@ -24,7 +25,7 @@ _SESSION_LOCK_RETRY_SECONDS = 0.025
 
 
 @asynccontextmanager
-async def session_execution_lock(session_id: str):
+async def session_execution_lock(session_id: str) -> AsyncIterator[None]:
     lock = None
     try:
         while lock is None:
@@ -37,7 +38,7 @@ async def session_execution_lock(session_id: str):
             lock.release()
 
 
-def _new_state():
+def _new_state() -> dict[str, Any]:
     return {
         "messages": [],
         "summary": [],
@@ -48,7 +49,7 @@ def _new_state():
     }
 
 
-def _load_locked(session_id: str, create=False):
+def _load_locked(session_id: str, create: bool = False) -> dict[str, Any] | None:
     if session_id not in _AGENT_SESSIONS:
         state = store.load_state(session_id)
         if state is None and create:
@@ -59,18 +60,29 @@ def _load_locked(session_id: str, create=False):
     return _AGENT_SESSIONS.get(session_id)
 
 
-def _save_locked(session_id, state):
+def _save_locked(session_id: str, state: dict[str, Any]) -> None:
     state["updated_at"] = time.time()
     store.save_state(session_id, state)
 
 
-def _add_message_locked(session_id, state, role, content, **extra):
+def _add_message_locked(
+    session_id: str,
+    state: dict[str, Any],
+    role: str,
+    content: str,
+    **extra: Any,
+) -> None:
     if len(content) > MAX_SESSION_ASSISTANT_CHARS:
         raise ValueError("A conversation message exceeds the 100000-character storage limit.")
     ref = store.put_resource(
         session_id, "message", f"{role} message", {"role": role, "content": content, **extra}
     )
-    state["messages"].append({"role": role, "content": content, "reference": ref, **extra})
+    state["messages"].append({
+        "role": role,
+        "content": content,
+        "reference": ref,
+        **extra,
+    })
     while len(state["messages"]) > MAX_SESSION_MESSAGES:
         old = state["messages"].pop(0)
         state["summary"].append(
