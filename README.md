@@ -44,6 +44,8 @@ The default Agent mode separates planning, execution, and acceptance. The planne
 - **Progress:** current planning/execution/review/repair phase, tool, task progress, and elapsed time. Progress displays operational status, not private model reasoning.
 - **Continuation:** persistent checkpoints and session-scoped references retain messages, attachments, tool observations, and sandbox scripts. Interrupted requests can resume without blindly repeating successful writes.
 - **Outputs:** downloadable documents, tables, images, and sandbox-generated GeoJSON. Vector acceptance tools inspect saved geometry and can sample actual raster pixels on either side of a line.
+- **Write back to the workspace:** `import_generated_artifact` registers saved GeoJSON as a new vector layer or georeferenced GeoTIFF as imagery. It also accepts small JSON FeatureCollections generated directly by the Agent, preserves original files, and reuses repeated imports. Imported data is selected on the map automatically.
+- **Environment settings:** the circular gear button at the bottom left opens provider, model, API address, and key settings. Changes apply to subsequent AI requests; restore `.env` defaults at any time. See [configuration and local access details](docs/ai-providers.md#在界面设置环境).
 
 Default collaborative limits are 6 logical agents, 1 repair round, 24 model calls, 12 tool calls, and a cumulative token budget of 300,000. Calls reserve a conservative estimate before execution; valid provider usage settles that reserve afterwards. Missing usage and timeouts retain the reserve. These limits bound work rather than guarantee completion or a particular bill.
 
@@ -437,6 +439,8 @@ You can also serve the repository root with any static file server and open `/cl
 For a separate frontend origin or non-default ports, set the service URLs in `client/runtime-config.js`; the launcher generates this file for its configured ports. Restart the relevant backend after changing server-side environment variables.
 
 ## AI Gateway Configuration
+
+Use the circular **Agent environment** button for local configuration without editing `.env`. The saved server configuration takes precedence for subsequent chat requests and never exposes its key in a settings response. The settings interface is limited to localhost access; running tasks retain their original provider settings. `.env` remains available as the fallback. The ignored `storage/ai_environment.json` file contains the saved key and must be protected with local filesystem permissions.
 
 The AI gateway loads `.env` from the repository root and calls LiteLLM. A minimal DeepSeek-style configuration looks like this:
 

@@ -32,7 +32,8 @@ from .conversation_archive import (
     get_conversation_archive,
     list_conversation_archives,
 )
-from .config import get_ai_model
+from .config import ai_settings_scope, get_ai_model
+from .environment_settings import router as environment_router
 from .agent_progress import get_agent_progress
 from .function_registry import (
     AIFunctionInvokeRequest,
@@ -49,6 +50,8 @@ router = APIRouter(
     tags=["AI Gateway - Intelligent Spatial Data Gateway"],
 )
 
+router.include_router(environment_router)
+
 
 @router.post("/process", summary="Handle AI data tasks in analyze or modify mode")
 async def handle_ai_task(
@@ -57,7 +60,8 @@ async def handle_ai_task(
     vector_db: AsyncSession = Depends(get_vector_db),
 ):
     try:
-        return await process_ai_task(payload, db, vector_db)
+        with ai_settings_scope():
+            return await process_ai_task(payload, db, vector_db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
@@ -114,7 +118,8 @@ async def run_ai_agent(
     vector_db: AsyncSession = Depends(get_vector_db),
 ):
     try:
-        return await handle_agent(payload, db, vector_db, get_ai_model())
+        with ai_settings_scope():
+            return await handle_agent(payload, db, vector_db, get_ai_model())
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:

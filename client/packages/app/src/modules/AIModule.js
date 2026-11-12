@@ -4,6 +4,7 @@ import { ModalComponent } from '../../../ui/src/components/Modal.js';
 import { SidebarComponent } from '../../../ui/src/components/Sidebar.js';
 import { getLanguage, t } from '../i18n/index.js';
 import { renderAgentMarkdown } from '../utils/agentMarkdown.js';
+import { AgentEnvironmentModule } from './AgentEnvironmentModule.js';
 
 const AGENT_ATTACHMENT_LIMIT = 6;
 const AGENT_TEXT_EXCERPT_CHARS = 12000;
@@ -19,6 +20,7 @@ const AGENT_IMAGE_MIME_TYPES = new Set([
 export class AIModule {
     constructor(app) {
         this.app = app;
+        this.environment = new AgentEnvironmentModule();
 
         // English AI English
         // English"English vs English"English
@@ -224,6 +226,7 @@ export class AIModule {
                 if ((result.used_tools ?? []).some(name => name !== 'clip_vector_by_raster')) {
                     await this._refreshSidebar('raster');
                 }
+                await this._applyWorkspaceImports(result.workspace_imports || []);
             } finally {
                 stopProgress();
                 await this._saveConversation();
@@ -794,6 +797,7 @@ export class AIModule {
             const result = await AIAPI.invokeFunction(this._selectedFunction.name, args);
             this._showFunctionResult(result);
             await this._refreshAfterFunctionRun();
+            if (result.result?.workspace_import) await this._applyWorkspaceImports([result.result.workspace_import]);
             this._showSuccess(`Function completed: ${this._selectedFunction.name}`);
         } catch (err) {
             this._showError(err.message);
@@ -937,6 +941,7 @@ export class AIModule {
         modal.addEventListener('click', async event => {
             const button = event.target.closest('button');
             if (!button) return;
+            if (button.hasAttribute('data-ai-environment')) await this.environment.open();
             if (button.hasAttribute('data-ai-new-chat')) await this.startNewAgentChat();
             if (button.hasAttribute('data-ai-refresh-history')) await this.loadConversationArchives({ force: true });
             if (button.hasAttribute('data-ai-save-chat')) await this._saveConversation();
@@ -2347,6 +2352,35 @@ export class AIModule {
      *
      * @param {'raster'|'vector'} dataType
      */
+    async _applyWorkspaceImports(imports) {
+        const vectors = imports.filter(item => item.data_type === 'vector' && item.project_id && item.layer_id);
+        const rasters = imports.filter(item => item.data_type === 'raster' && item.id != null);
+        if (rasters.length) {
+            await this._refreshSidebar('raster');
+            for (const item of rasters) {
+                if (!Store.state.activeLayerIds.has(item.id)) await this.app.mapController?.toggleLayer(item.id);
+            }
+        }
+        if (!vectors.length) return;
+        await this.app.project?.refreshProjects();
+        const projectId = vectors.at(-1).project_id;
+        await this.app.project?.handleSelectProject(projectId);
+        for (const item of vectors.filter(value => value.project_id === projectId)) {
+            if (!Store.state.visibleVectorLayerIds.has(item.layer_id)) {
+                await this.app.mapController?.toggleVectorLayer(item.layer_id);
+            }
+        }
+        const last = vectors.at(-1);
+        if (Store.state.activeVectorLayerId !== last.layer_id) {
+            Store.setActiveVectorLayer(last.layer_id);
+            await this.app.mapController?.fetchViewportFeatures?.();
+        }
+        if (Array.isArray(last.bbox) && last.bbox.length === 4 && last.bbox.every(Number.isFinite)) {
+            this.app.mapEngine?.fitLayer?.(last.layer_id, last.bbox);
+        }
+        this.app.mapController?.updateUI();
+    }
+
     async _refreshSidebar(dataType) {
         if (dataType === 'raster') {
             await this.app.raster?.refreshData();

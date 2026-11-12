@@ -316,6 +316,13 @@ _NO_ACTION_RE = re.compile(
     r"|\b(?:only|just)\s+(?:explain|describe|answer)\b|\b(?:stop|cancel)\s+(?:the\s+)?task\b",
     re.IGNORECASE,
 )
+_IMPORT_DENIAL_RE = re.compile(
+    r"(?:不要|别|勿|禁止|无需|不需要|不允许).{0,8}(?:导入|写回|写入工作区)"
+    r"|(?:仅|只需?|只要)(?:下载|导出)"
+    r"|\b(?:do\s+not|don't|never|no)\s+(?:import|write\s+back)\b"
+    r"|\bdownload[ -]only\b|\bonly\s+(?:download|export)\b",
+    re.IGNORECASE,
+)
 
 
 def resolve_task_scope(current_user_task: str, previous_live_task: str = "") -> str:
@@ -360,6 +367,7 @@ def extract_task_constraints(prompt: str) -> list[str]:
                     _CREATE_NEGATION_RE,
                     _EXECUTE_NEGATION_RE,
                     _SANDBOX_DENIAL_RE,
+                    _IMPORT_DENIAL_RE,
                 )
             )
         )
@@ -484,6 +492,8 @@ def wrap_untrusted_tool_observation(tool_name: str, observation: Any) -> dict[st
 
 
 def tool_effect(tool_name: str) -> Literal["read", "create", "update", "delete", "execute"]:
+    if tool_name == "import_generated_artifact":
+        return "create"
     if tool_name in READ_ONLY_TOOLS:
         return "read"
     if tool_name.startswith("delete_"):
@@ -567,6 +577,12 @@ def authorize_tool_call(
     hard_violation = hard_boundary_violation(tool_name, arguments)
     if hard_violation:
         return ToolAuthorization(False, effect, hard_violation)
+
+    if tool_name == "import_generated_artifact" and any(
+        _IMPORT_DENIAL_RE.search(prompt)
+        for prompt in (current_user_task, task_scope or "", *constraints)
+    ):
+        return ToolAuthorization(False, effect, "The user requested download-only output or prohibited workspace import.")
 
     if effect == "read":
         return ToolAuthorization(True, effect)
@@ -710,7 +726,12 @@ def authorize_tool_call(
     # This opt-in scope comes from the UI/request, never from model output or
     # retrieved data. Destructive operations have already taken their stricter
     # path. Unknown/third-party tools do not inherit this scope automatically.
+    if tool_name == "import_generated_artifact" and _tool_is_relevant(tool_name, prompt, arguments):
+        if _CREATE_RE.search(prompt) or _EXECUTE_RE.search(prompt) or re.search(r"\bimport\b|导入|写回", prompt, re.IGNORECASE):
+            return ToolAuthorization(True, effect)
+
     task_step_tools = (set(_TOOL_RELEVANCE_PATTERNS) - {"generate_ai_image"}) | {
+        "import_generated_artifact",
         "create_vector_project",
         "create_vector_layer",
         "create_vector_field",
@@ -814,6 +835,15 @@ def sanitize_model_output(text: Any, protected_text: str | None = None) -> str:
         if value and len(value) >= 8:
             clean = clean.replace(value, "<redacted-secret>")
 
+    from .config import get_ai_settings
+
+    try:
+        api_key = get_ai_settings().api_key
+        if api_key:
+            clean = clean.replace(api_key, "<redacted-secret>")
+    except ValueError:
+        pass
+
     if protected_text:
         protected_lines = [
             line.strip() for line in protected_text.splitlines() if len(line.strip()) >= 40
@@ -912,6 +942,8 @@ def _tool_is_relevant(
     prompt: str,
     arguments: dict[str, Any],
 ) -> bool:
+    if tool_name == "import_generated_artifact":
+        return bool(re.search(r"workspace|import|save|write|map|layer|geojson|coastline|工作区|导入|保存|写回|写入|图层|矢量|海岸线", prompt, re.IGNORECASE))
     specific_pattern = _TOOL_RELEVANCE_PATTERNS.get(tool_name)
     if specific_pattern is not None:
         if specific_pattern.search(prompt):

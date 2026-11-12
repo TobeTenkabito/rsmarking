@@ -25,7 +25,10 @@ logger = logging.getLogger("ai_gateway.service")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=== AI GATEWAY SERVICE STARTUP BEGIN ===")
-    log_ai_settings()
+    try:
+        log_ai_settings()
+    except ValueError:
+        logger.warning("AI configuration is invalid. Use the local Agent environment settings to correct or reset it.")
     logger.info("=== AI GATEWAY SERVICE STARTUP OK ===")
     yield
     logger.info("=== AI GATEWAY SERVICE SHUTDOWN ===")

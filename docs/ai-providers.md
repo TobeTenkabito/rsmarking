@@ -1,6 +1,19 @@
 # AI / Agent 多厂商配置与排障
 
-配置入口是仓库根目录 `.env`，由 `services/ai_gateway/config.py` 使用绝对路径加载，与启动工作目录无关。修改后重启 `ai_gateway`。真实密钥只放在服务端环境变量或忽略提交的 `.env` 中。
+配置入口有两种：Agent 左下角的圆形齿轮按钮，以及仓库根目录 `.env`。界面保存的配置优先用于后续 AI 对话请求，恢复默认后继续使用 `.env` / 服务端环境变量。`.env` 由 `services/ai_gateway/config.py` 使用绝对路径加载，与启动目录无关；修改 `.env` 后仍需重启网关。
+
+## 在界面设置环境
+
+点击 Agent 左下角圆形齿轮，弹窗中选择厂商、填写模型 ID、API 基础地址和密钥，再点击“保存配置”。预设包含 OpenAI、Anthropic/Claude、Google/Gemini、DeepSeek、阿里百炼/千问、Moonshot/Kimi、智谱/GLM、本地 Ollama 和自定义 OpenAI 兼容接口。地址自动填入且可修改；模型名称由用户按账户可用模型填写，预设不代表任意模型都支持工具。
+
+- 高级选项可设置超时（界面单位为秒）、最大输出 Token，以及工具调用推理级别。保存只做配置校验，不发送付费测试请求。
+- 配置保存在被 Git 忽略的 `storage/ai_environment.json`。它是本机配置文件，**包含明文密钥**，应由操作系统目录权限保护；不会写入 `.env`、聊天记录、导出聊天或浏览器本地存储，也不会通过设置读取接口返回密钥。POSIX 上新配置文件使用仅所有者可读写权限，Windows 沿用目录 ACL。
+- 同一厂商和地址下，密钥留空可保留已保存的密钥；切换厂商或地址必须重新输入。不会从 `.env` 自动复制密钥到另一地址。本地 Ollama 可不填写密钥。
+- 保存从下一次请求生效，不重启服务，也不切换正在运行的协作任务所用模型。点击“恢复 .env 配置”删除界面配置，恢复服务器默认；不会清除聊天和成果。
+- 设置接口为 `GET/PUT/DELETE /ai/environment`，仅允许网关所在机器通过 localhost/回环地址访问，同时校验浏览器 Origin 和 Host；它不是多用户配置服务。远程部署仍可由管理员维护 `.env`。
+- 图片生成仍使用单独的 `AI_IMAGE_MODEL` 配置；界面目前不管理图片模型或多个可切换的账户配置。
+
+界面的 Gemini 与本地 Ollama 使用 OpenAI 兼容入口，`.env` 原有原生路由继续保留。[Gemini 官方兼容说明](https://ai.google.dev/gemini-api/docs/openai)、[Ollama 官方 API 地址](https://docs.ollama.com/api/introduction)。百炼预设保留仍受支持的公共地址，可按账户地域替换为专属工作空间地址，见[百炼官方说明](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)。
 
 ## 当前配置排查结论
 
@@ -20,6 +33,8 @@
 - Agent 固定传入 `temperature=0.2`，不适用于部分推理模型；工具调用历史会丢失部分厂商所需的推理状态、签名字段。
 
 ## 选择与优先级
+
+以下顺序适用于未启用界面配置的请求。界面配置启用时，其模型、地址、密钥与预算直接作为请求配置，不与其他厂商的 `.env` 密钥混合。
 
 工具请求可单独设置 `AI_TOOL_REASONING_EFFORT=none`。本次真实联调中的配置网关明确拒绝 Chat Completions 同时携带工具与非 `none` 推理级别，因此启用了此项；普通请求继续使用 `AI_REASONING_EFFORT`。该覆盖仅用于 OpenAI 路由的工具请求，默认不启用，不自动尝试付费重试，也不保证所有兼容网关接受同一参数。
 

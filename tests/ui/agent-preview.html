@@ -14,6 +14,22 @@ const records = new Map([
 ]);
 window.__calls = [];
 AIAPI.listFunctions = async () => ({functions:[]});
+const environmentProviders = [
+    {id:'openai',name:'OpenAI',base_url:'https://api.openai.com/v1'},
+    {id:'deepseek',name:'DeepSeek',base_url:'https://api.deepseek.com'},
+    {id:'compatible',name:'OpenAI-compatible API',base_url:''},
+];
+const environmentDefault = {source:'env',provider:'openai',model:'openai/test-model',base_url:'',has_api_key:true,timeout_ms:90000,max_tokens:4096};
+let environmentSettings = {...environmentDefault};
+window.__environmentCalls = [];
+AIAPI.getEnvironment = async () => ({settings:{...environmentSettings},providers:environmentProviders});
+AIAPI.saveEnvironment = async payload => {
+    window.__environmentCalls.push({...payload});
+    const {api_key,...publicSettings}=payload;
+    environmentSettings={...publicSettings,source:'ui',has_api_key:Boolean(api_key || environmentSettings.has_api_key)};
+    return AIAPI.getEnvironment();
+};
+AIAPI.resetEnvironment = async () => {environmentSettings={...environmentDefault};return AIAPI.getEnvironment();};
 AIAPI.agentProgress = async (sessionId, requestId) => ({request_id: requestId, ...window.__progress});
 AIAPI.listConversations = async () => ({conversations:[...records.values()]});
 AIAPI.getConversation = async id => ({conversation:records.get(id)});

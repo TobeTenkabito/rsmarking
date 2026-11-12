@@ -4,6 +4,8 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -63,7 +65,31 @@ _PROVIDERS = {"openai", "anthropic", "gemini", "deepseek", "openrouter", "groq",
 _EMPTY_VALUES.update({"your_api_key", "your-api-key", "your_model", "<your-api-key>", "hidden", "redacted", "***"})
 
 
+_request_settings: ContextVar[AISettings | None] = ContextVar("ai_request_settings", default=None)
+
+
 def get_ai_settings(model_name: str | None = None) -> AISettings:
+    settings = _request_settings.get()
+    if settings is None:
+        from .environment_settings import saved_ai_settings
+
+        settings = saved_ai_settings()
+    if settings is not None and (model_name is None or model_name in {settings.model, settings.litellm_model}):
+        return settings
+    return _get_environment_settings(model_name)
+
+
+@contextmanager
+def ai_settings_scope():
+    """One request keeps one provider/key snapshot even if settings change mid-task."""
+    token = _request_settings.set(get_ai_settings())
+    try:
+        yield
+    finally:
+        _request_settings.reset(token)
+
+
+def _get_environment_settings(model_name: str | None = None) -> AISettings:
     explicit = _first_env(["AI_PROVIDER"])
     explicit = _ALIASES.get(explicit.lower(), explicit.lower()) if explicit else None
     if explicit and explicit not in _PROVIDERS:

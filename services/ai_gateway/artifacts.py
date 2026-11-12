@@ -163,6 +163,8 @@ def get_artifact(artifact_id: str) -> tuple[dict[str, Any], Path]:
     if not _ARTIFACT_ID.fullmatch(artifact_id):
         raise ArtifactNotFoundError(artifact_id)
     directory = (ARTIFACT_DIR / artifact_id).resolve()
+    if directory.parent != ARTIFACT_DIR.resolve():
+        raise ArtifactNotFoundError(artifact_id)
     manifest_path = directory / "manifest.json"
     if not manifest_path.is_file():
         raise ArtifactNotFoundError(artifact_id)

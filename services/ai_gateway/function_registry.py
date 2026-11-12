@@ -13,6 +13,7 @@ from services.data_service.schemas import (
     ClipRasterByVectorRequest as ClipRasterByGeometryArgs,
 )
 from services.executor_service.security import validate_script_content
+from .workspace_import import WorkspaceImportArgs, import_generated_artifact
 
 logger = logging.getLogger("ai_gateway.function_registry")
 
@@ -2200,6 +2201,21 @@ async def _generate_ai_image(
 REGISTERED_FUNCTIONS: dict[str, RegisteredFunction] = {
     spec.name: spec
     for spec in [
+        RegisteredFunction(
+            name="import_generated_artifact",
+            description=(
+                "Write a saved AI artifact into the workspace by artifact_id. Import a valid WGS84 "
+                "GeoJSON FeatureCollection (.geojson or .json) into a new vector layer, or a georeferenced "
+                "GeoTIFF into the imagery catalog. Retain original files and properties; never overwrite "
+                "existing layers. Omit project_id to use the Agent outputs project. Reimporting the same "
+                "artifact into the same project returns the existing layer. Use after lightweight JSON "
+                "generation or sandbox output when the task needs data usable on the map. Documents, "
+                "plain images and nonspatial tables remain downloadable; arbitrary host paths and URLs are not accepted."
+            ),
+            category="workspace_import",
+            arguments_model=WorkspaceImportArgs,
+            handler=import_generated_artifact,
+        ),
         RegisteredFunction(
             name="inspect_geojson_artifact",
             description=(

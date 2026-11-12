@@ -8,6 +8,8 @@ import pytest
 def isolated_agent_checkpoints(tmp_path, monkeypatch):
     """Unit tests must never read or write the user's durable chat state."""
     from services.ai_gateway import agent_state_store, agent_session
+    from services.ai_gateway import environment_settings
+    monkeypatch.setattr(environment_settings, "SETTINGS_PATH", tmp_path / "ai-environment.json")
     monkeypatch.setattr(agent_state_store, "STATE_DB", tmp_path / "agent-state.sqlite3")
     agent_session._AGENT_SESSIONS.clear()
     agent_session._AGENT_SESSION_EXECUTION_LOCKS.clear()

@@ -73,6 +73,18 @@ async function requestAIDelete(path, fallbackMessage) {
 }
 
 export const AIAPI = {
+    async getEnvironment() {
+        return requestAIGet('/ai/environment', 'Could not load Agent environment');
+    },
+
+    async saveEnvironment(settings) {
+        return requestAI('/ai/environment', settings, 'Could not save Agent environment', 'PUT');
+    },
+
+    async resetEnvironment() {
+        return requestAIDelete('/ai/environment', 'Could not restore environment defaults');
+    },
+
     resolveURL(value) {
         return resolveAIURL(value);
     },

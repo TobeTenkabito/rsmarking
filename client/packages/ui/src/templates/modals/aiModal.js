@@ -1,8 +1,9 @@
 import { agentStyles } from './agentStyles.js';
+import { agentEnvironmentStyles } from './agentEnvironment.js';
 
 export const aiModal = `
 <div id="ai-modal" class="hidden fixed inset-0 z-[2000] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="ai-dialog-title">
- <style>${agentStyles}</style>
+ <style>${agentStyles}${agentEnvironmentStyles}</style>
  <div id="ai-window">
   <aside id="ai-agent-archive-panel" class="ai-history" aria-label="Conversation history">
    <div class="ai-brand"><span class="ai-brand-mark">RS</span> Spatial Assistant</div>
@@ -12,7 +13,7 @@ export const aiModal = `
    <input id="ai-history-import-file" type="file" accept=".json,application/json" class="hidden" aria-label="Import chat">
    <nav id="ai-agent-archive-list" aria-label="Saved conversations"></nav>
    <button id="ai-save-status" class="ai-status" type="button" data-ai-save-chat aria-live="polite">Conversations save automatically</button>
-   <div class="ai-history-note">Your maps, your questions.<br>One workspace.</div>
+    <div class="ai-environment-launcher"><button type="button" class="ai-environment-button" data-ai-environment aria-label="Agent environment" title="Agent environment"><span aria-hidden="true">⚙</span></button><span class="ai-environment-label">Agent environment</span></div>
   </aside>
   <main class="ai-main">
    <header class="ai-header">

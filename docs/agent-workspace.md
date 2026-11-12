@@ -4,6 +4,8 @@ Agent 页采用左侧会话列表、右侧消息和底部输入框。刷新前�
 
 ## 对话与输入
 
+- 左下角圆形齿轮打开独立的“Agent 环境”弹窗，可选择厂商、模型、API 地址及密钥。保存从下一次请求生效，支持恢复 `.env` 默认配置；详见[环境设置](ai-providers.md#在界面设置环境)。
+
 - 消息支持 GFM Markdown：标题、表格、嵌套列表、任务列表、引用、代码块、链接和删除线。分析模式的报告也使用同一渲染器。
 - HTML 作为文字展示，经过 DOMPurify 清洗；不自动加载模型文本里的远程图片。生成图片和附件仍使用已有预览功能。
 - 默认 Enter 发送，Ctrl/Command + Enter 换行；输入框下方可切换为 Ctrl/Command + Enter 发送、Enter 换行。Shift + Enter 始终保留普通换行；中文输入法选词不会发送。偏好保存在浏览器本地。
@@ -98,6 +100,26 @@ API Key 负责向模型供应商鉴权。本次调整的是本应用的 **工具
 
 ## 矢量文件与验收
 
+### 将生成文件写回工作区
+
+工具 `import_generated_artifact` 按已有 `artifact_id` 导入文件，不接收宿主路径或下载 URL：
+
+```json
+{
+  "artifact_id": "实际工具返回的32位产物ID",
+  "name": "提取的海岸线",
+  "project_id": "可选的现有矢量项目UUID"
+}
+```
+
+省略 `project_id` 时使用自动建立的 `Agent outputs` 项目。WGS84 GeoJSON FeatureCollection（`.geojson` 或 `.json`）导入为新图层，保留实际坐标、属性，并建立属性字段；带 CRS 和地理定位的 GeoTIFF 导入影像目录并生成 COG。小型矢量数据可以先由 `create_generated_document` 创建 JSON，再调用此工具，不强制经过沙箱。真实影像提取仍须基于数据和算法，不能由模型编造坐标。
+
+GeoJSON 最多 5 MiB、10,000 要素、100 个属性字段；空几何、无效几何和非 WGS84 坐标在写库前拒绝。GeoTIFF 受产物大小限制（20 MiB）和 1 亿波段像元限制。普通文档、CSV、无地理定位的图片继续作为可下载产物，不伪装成地图图层。原有沙箱栅格输出已经自动入库，不必重复导入。
+
+导入只新建数据，不覆盖已有图层；同一产物导入同一项目会复用原结果，矢量图层与要素在同一事务中写入。新图层返回 `project_id`、`layer_id` 等标识，Agent 响应的 `workspace_imports` 供前端刷新项目、选中图层并显示到地图。导入受当前任务和派生指令权限约束，只读模式拒绝写入；“仅下载”“不要导入工作区”等限制会保留到后续轮次。
+
+### 保存与验收文件
+
 `run_script_sandbox` 支持 `output_format="geojson"`。脚本通过 `sandbox_open(OUTPUT_FILE, "w")` 写入 WGS84 FeatureCollection，网关保存实际坐标并返回 `.geojson` 下载链接，无需模型从日志中复制坐标。单个文件最多 5 MiB、10,000 个要素；原有栅格及仅日志模式继续兼容。
 
 只读工具 `inspect_geojson_artifact` 重新读取文件，返回要素数量、类型、有效性、空几何、范围、线长及 SHA256；可传 `expected_bbox` 检查范围。提供 `raster_id` 与记录的 `threshold` 后，可对实际栅格在线两侧进行 200 对按线长分配的抽样，检查水陆分类交界。当前抽样要求栅格采用米为单位的投影；这个指标不能代替实测精度，也不能单独证明水体属于海洋。海岸线任务须额外说明海水连通域选择，排除内陆池塘和裁剪框边缘。
@@ -116,6 +138,7 @@ Markdown 库锁定在根目录 `package.json` / `package-lock.json`；浏览器�
 npm test
 npm run test:ui
 python -m pytest tests/unit/services/test_ai_agent_security.py tests/unit/services/test_ai_agent.py tests/unit/services/test_ai_conversation_archive.py tests/unit/services/test_ai_conversation_transfer.py tests/unit/services/test_ai_context_recovery.py tests/unit/services/test_ai_collaboration.py tests/unit/services/test_ai_delegation.py -q
+python -m pytest tests/unit/services/test_ai_environment.py tests/unit/services/test_ai_workspace_import.py -q
 ```
 
 浏览器测试使用本机 Edge 的无头模式和隔离的模拟 API，不读取 `.env`，不消耗模型额度。测试服务器只提供公开前端模块和测试页面，不暴露仓库数据或密钥。截图在 `test-results/`；若环境没有 Edge，可在 Playwright 配置中改用已安装的 Chromium。
